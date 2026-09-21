@@ -33,13 +33,21 @@ public class MainWindow extends JFrame {
     }
 
     public MainWindow(MeshClient client) {
-        super("Mesh Console");
+        super(meshconsole.Version.NAME + " " + meshconsole.Version.VERSION);
         this.client = client;
         this.state = client.state();
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) { client.disconnect(); dispose(); System.exit(0); }
         });
+
+        JMenuBar menu = new JMenuBar();
+        JMenu help = new JMenu("Help");
+        JMenuItem about = new JMenuItem("About " + meshconsole.Version.NAME + "…");
+        about.addActionListener(e -> showAbout());
+        help.add(about);
+        menu.add(help);
+        setJMenuBar(menu);
 
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
@@ -73,6 +81,10 @@ public class MainWindow extends JFrame {
         tabs.addTab("Antenna SWR", swrPanel);
         tabs.addTab("Settings & MQTT", settingsPanel);
         add(tabs, BorderLayout.CENTER);
+        JLabel footer = new JLabel(" " + meshconsole.Version.NAME + " " + meshconsole.Version.VERSION + "  ·  " + meshconsole.Version.COPYRIGHT + "  ·  MIT License");
+        footer.setFont(footer.getFont().deriveFont(10f));
+        footer.setForeground(java.awt.Color.DARK_GRAY);
+        add(footer, BorderLayout.SOUTH);
 
         nodesPanel.setOnMessageNode(num -> { messagesPanel.selectDestination(num); tabs.setSelectedComponent(messagesPanel); });
         nodesPanel.setOnShowOnMap(num -> { mapPanel.centerOn(num); tabs.setSelectedComponent(mapPanel); });
@@ -154,6 +166,21 @@ public class MainWindow extends JFrame {
             status.setText("Disconnected – waiting for " + want + " to come back (" + left + " s)");
         });
         reconnectTimer.start();
+    }
+
+    private void showAbout() {
+        String html = "<html><div style='width:420px;font-family:sans-serif'>"
+                + "<h2 style='margin:0'>" + meshconsole.Version.NAME + " " + meshconsole.Version.VERSION + "</h2>"
+                + "<p>Desktop client for Meshtastic radios: messaging, node map, live signal, traceroute, "
+                + "device settings, MQTT client proxy and NanoVNA antenna SWR.</p>"
+                + "<p><b>" + meshconsole.Version.COPYRIGHT + "</b><br>" + meshconsole.Version.LICENSE + "<br>"
+                + "<a href='" + meshconsole.Version.HOMEPAGE + "'>" + meshconsole.Version.HOMEPAGE + "</a></p>"
+                + "<p style='color:#555;font-size:90%'>Built with jSerialComm (LGPL/Apache), Google Protocol Buffers (BSD) and the "
+                + "Meshtastic protobuf definitions (GPL-3.0, fetched at build time). Map tiles © OpenStreetMap contributors (ODbL). "
+                + "Meshtastic is a registered trademark of Meshtastic LLC; this program is not affiliated with or endorsed by Meshtastic.</p>"
+                + "<p style='color:#555;font-size:90%'>Java " + System.getProperty("java.version") + " on " + System.getProperty("os.name") + "</p>"
+                + "</div></html>";
+        JOptionPane.showMessageDialog(this, html, "About " + meshconsole.Version.NAME, JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void connectTcp() {

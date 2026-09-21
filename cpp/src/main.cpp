@@ -54,7 +54,11 @@ uint32_t random_id() {
     return id;
 }
 
+constexpr const char* VERSION = "1.0.0";
+constexpr const char* COPYRIGHT = "Copyright (c) 2026 Mesh Console contributors. MIT License.";   // <- put your name here
+
 void usage() {
+    std::fprintf(stderr, "meshcli %s - %s\n", VERSION, COPYRIGHT);
     std::fprintf(stderr,
         "usage: meshcli (--port <serial> | --tcp <host[:port]>) <command>\n"
         "  info                       radio + own node summary\n"
@@ -75,6 +79,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < args.size(); i++) {
         const std::string& a = args[i];
         auto next = [&](std::string& dst) { if (i + 1 < args.size()) dst = args[++i]; };
+        if (a == "--version") { std::printf("meshcli %s\n%s\n", VERSION, COPYRIGHT); return 0; }
         if (a == "--port") next(port);
         else if (a == "--tcp") next(tcp);
         else if (a == "--to") next(to);
