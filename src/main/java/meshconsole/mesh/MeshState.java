@@ -42,6 +42,7 @@ public class MeshState {
     private long sessionPasskeyTime;
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private final MessageLog log;
+    private volatile boolean verbose;
 
     private int myNodeNum;
     private boolean configComplete;
@@ -56,6 +57,9 @@ public class MeshState {
         this.log = log;
         for (ChatMessage m : log.load()) messages.add(m);
     }
+
+    public void setVerbose(boolean v) { verbose = v; }
+    public boolean verbose() { return verbose; }
 
     public void addListener(Listener l) { listeners.add(l); }
     public void removeListener(Listener l) { listeners.remove(l); }
@@ -175,6 +179,18 @@ public class MeshState {
     // ---- incoming ---------------------------------------------------------
 
     public void handle(FromRadio fr) {
+        if (verbose) {
+            switch (fr.getPayloadVariantCase()) {
+                case PACKET -> { }   // logged in handlePacket with decoded detail
+                case NODE_INFO -> emitLog("[rx] node_info " + String.format("!%08x", fr.getNodeInfo().getNum()) + " " + fr.getNodeInfo().getUser().getLongName());
+                case CONFIG -> emitLog("[rx] config " + fr.getConfig().getPayloadVariantCase());
+                case MODULECONFIG -> emitLog("[rx] module_config " + fr.getModuleConfig().getPayloadVariantCase());
+                case CHANNEL -> emitLog("[rx] channel " + fr.getChannel().getIndex() + " " + fr.getChannel().getRole() + " '" + fr.getChannel().getSettings().getName() + "'");
+                case MQTTCLIENTPROXYMESSAGE -> emitLog("[rx] mqtt_proxy → broker " + fr.getMqttClientProxyMessage().getTopic());
+                case LOG_RECORD -> { }
+                default -> emitLog("[rx] " + fr.getPayloadVariantCase().name().toLowerCase() + " (" + fr.getSerializedSize() + " B)");
+            }
+        }
         switch (fr.getPayloadVariantCase()) {
             case MY_INFO -> {
                 synchronized (lock) { myNodeNum = fr.getMyInfo().getMyNodeNum(); }
@@ -272,6 +288,14 @@ public class MeshState {
             }
         }
         if (!fromMe) fire(Listener::onNodesChanged);
+        if (verbose) {
+            String port = p.hasDecoded() ? p.getDecoded().getPortnum().name() : "ENCRYPTED(" + p.getEncrypted().size() + " B)";
+            emitLog(String.format("[rx] packet id=%08x %s → %s ch=%d %s%s hops=%s rssi=%d snr=%.2f%s%s",
+                    p.getId(), nodeName(from), nodeName(p.getTo()), p.getChannel(), port,
+                    p.hasDecoded() && p.getDecoded().getRequestId() != 0 ? String.format(" reply_to=%08x", p.getDecoded().getRequestId()) : "",
+                    hops < 0 ? "?" : String.valueOf(hops), p.hasRxRssi() ? p.getRxRssi() : 0, p.getRxSnr(),
+                    p.getViaMqtt() ? " via_mqtt" : "", p.getWantAck() ? " want_ack" : ""));
+        }
 
         if (p.getPayloadVariantCase() == MeshPacket.PayloadVariantCase.ENCRYPTED) {
             synchronized (lock) { encryptedSeen++; }
@@ -379,6 +403,7 @@ public class MeshState {
 
     private void handleAdmin(Data d) throws InvalidProtocolBufferException {
         AdminMessage a = AdminMessage.parseFrom(d.getPayload());
+        if (verbose) emitLog("[rx] admin " + a.getPayloadVariantCase() + (a.getSessionPasskey().isEmpty() ? "" : " (+session key)"));
         if (!a.getSessionPasskey().isEmpty()) {
             synchronized (lock) {
                 sessionPasskey = a.getSessionPasskey();

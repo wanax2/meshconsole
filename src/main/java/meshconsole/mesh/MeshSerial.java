@@ -43,6 +43,8 @@ public class MeshSerial implements AutoCloseable {
     private final OutputStream out;
     private final Object writeLock = new Object();
     private volatile boolean running;
+    /** When set, every frame in both directions is logged as protobuf text. */
+    public volatile boolean traceFrames;
     private volatile boolean gotAnyFrame;
     private int configRetries;
     private Runnable onClose;
@@ -147,6 +149,7 @@ public class MeshSerial implements AutoCloseable {
 
     public void send(ToRadio msg) throws IOException {
         byte[] payload = msg.toByteArray();
+        if (traceFrames) listener.onDebugText("[tx " + payload.length + " B] " + shortText(msg));
         if (payload.length > MAX_LEN) {
             throw new IOException("ToRadio too large: " + payload.length);
         }
@@ -241,6 +244,7 @@ public class MeshSerial implements AutoCloseable {
                             try {
                                 FromRadio fr = FromRadio.parseFrom(Arrays.copyOf(payload, len));
                                 gotAnyFrame = true;
+                                if (traceFrames) listener.onDebugText("[rx " + len + " B] " + shortText(fr));
                                 listener.onFromRadio(fr);
                             } catch (InvalidProtocolBufferException e) {
                                 listener.onDebugText("[bad frame: " + e.getMessage() + "]");
@@ -274,6 +278,11 @@ public class MeshSerial implements AutoCloseable {
         try { in.close(); } catch (IOException ignored) { }
         if (port != null) port.closePort();
         if (onClose != null) onClose.run();
+    }
+
+    private static String shortText(com.google.protobuf.MessageOrBuilder m) {
+        String t = com.google.protobuf.TextFormat.printer().emittingSingleLine(true).printToString(m);
+        return t.length() > 600 ? t.substring(0, 600) + "…" : t;
     }
 
     static String bytesToText(byte[] b) {

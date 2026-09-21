@@ -19,6 +19,11 @@ class StatusPanel extends JPanel {
     private final JComboBox<NodeChoice> chartNode = new JComboBox<>();
     private final JTextArea log = new JTextArea();
     private final JLabel lastSignal = new JLabel(" ");
+    private final JCheckBox verbose = new JCheckBox("Verbose");
+    private final JCheckBox trace = new JCheckBox("Trace frames");
+    private final JCheckBox toFile = new JCheckBox("Write meshconsole.log", true);
+    private java.io.PrintWriter logFile;
+    private meshconsole.mesh.MeshClient client;
 
     record NodeChoice(int num, String label) {
         @Override public String toString() { return label; }
@@ -50,9 +55,23 @@ class StatusPanel extends JPanel {
         log.setEditable(false);
         log.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         JScrollPane logScroll = new JScrollPane(log);
-        logScroll.setBorder(BorderFactory.createTitledBorder("Device / app log"));
+        JPanel logBox = new JPanel(new BorderLayout());
+        logBox.setBorder(BorderFactory.createTitledBorder("Device / app log"));
+        JPanel logTop = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        verbose.setToolTipText("Log every packet (from/to, port, hops, RSSI/SNR), config item, admin message and MQTT proxy transfer");
+        trace.setToolTipText("Also log the full protobuf content of every frame sent to and received from the radio (very chatty)");
+        toFile.setToolTipText("Append everything shown here to meshconsole.log in the working directory");
+        JButton clear = new JButton("Clear");
+        JButton copy = new JButton("Copy");
+        logTop.add(verbose); logTop.add(trace); logTop.add(toFile); logTop.add(clear); logTop.add(copy);
+        logBox.add(logTop, BorderLayout.NORTH);
+        logBox.add(logScroll, BorderLayout.CENTER);
+        verbose.addActionListener(e -> state.setVerbose(verbose.isSelected()));
+        trace.addActionListener(e -> { if (client != null) client.setTraceFrames(trace.isSelected()); });
+        clear.addActionListener(e -> log.setText(""));
+        copy.addActionListener(e -> java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(log.getText()), null));
 
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, top, logScroll);
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, top, logBox);
         split.setResizeWeight(0.55);
         add(split, BorderLayout.CENTER);
 
@@ -63,8 +82,17 @@ class StatusPanel extends JPanel {
         });
     }
 
+    void setClient(meshconsole.mesh.MeshClient c) { client = c; }
+
     void appendLog(String line) {
-        log.append(Fmt.time(System.currentTimeMillis()) + "  " + line + "\n");
+        String stamped = Fmt.time(System.currentTimeMillis()) + "  " + line;
+        if (toFile.isSelected()) {
+            try {
+                if (logFile == null) logFile = new java.io.PrintWriter(new java.io.FileWriter("meshconsole.log", true), true);
+                logFile.println(stamped);
+            } catch (java.io.IOException ignored) { }
+        }
+        log.append(stamped + "\n");
         if (log.getDocument().getLength() > 200_000) {
             try { log.getDocument().remove(0, 50_000); } catch (Exception ignored) { }
         }

@@ -85,6 +85,9 @@ public class MeshClient implements MeshSerial.Listener {
 
     public MeshState state() { return state; }
 
+    private volatile boolean traceFrames;
+    public void setTraceFrames(boolean on) { traceFrames = on; MeshSerial s = serial; if (s != null) s.traceFrames = on; }
+
     public void setConnectionListener(ConnectionListener l) { connListener = l; }
 
     public boolean isConnected() { return serial != null; }
@@ -93,6 +96,7 @@ public class MeshClient implements MeshSerial.Listener {
         disconnect();
         state.resetForConnect();
         serial = new MeshSerial(port, this);
+        serial.traceFrames = traceFrames;
         serial.start(rnd.nextInt(Integer.MAX_VALUE) + 1);
         state.emitLog("Opened " + port.getSystemPortName() + ", requesting config…");
         connListener.onConnectionChanged(true, port.getSystemPortName());
@@ -103,6 +107,7 @@ public class MeshClient implements MeshSerial.Listener {
         disconnect();
         state.resetForConnect();
         serial = new MeshSerial(in, out, this, onClose);
+        serial.traceFrames = traceFrames;
         serial.start(rnd.nextInt(Integer.MAX_VALUE) + 1);
         connListener.onConnectionChanged(true, name);
     }
@@ -117,6 +122,7 @@ public class MeshClient implements MeshSerial.Listener {
         serial = new MeshSerial(sock.getInputStream(), sock.getOutputStream(), this, () -> {
             try { sock.close(); } catch (IOException ignored) { }
         });
+        serial.traceFrames = traceFrames;
         serial.start(rnd.nextInt(Integer.MAX_VALUE) + 1);
         state.emitLog("Connected to " + host + ":" + port + ", requesting config…");
         connListener.onConnectionChanged(true, host + ":" + port);
@@ -195,6 +201,7 @@ public class MeshClient implements MeshSerial.Listener {
                 pkt.setPkiEncrypted(true);
             }
         }
+        if (state.verbose()) state.emitLog(String.format("[tx] text id=%08x → %s ch=%d %d B%s", m.packetId, state.nodeName(m.to), m.channel, m.text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length, pkt.getPkiEncrypted() ? " pki" : ""));
         s.send(ToRadio.newBuilder().setPacket(pkt.build()).build());
     }
 
@@ -251,6 +258,7 @@ public class MeshClient implements MeshSerial.Listener {
                 .setTo(state.myNodeNum()).setChannel(0).setId(newPacketId())
                 .setWantAck(false).setHopLimit(0).setDecoded(data)
                 .setPriority(MeshPacket.Priority.RELIABLE).build();
+        if (state.verbose()) state.emitLog("[tx] admin " + msg.getPayloadVariantCase() + (wantResponse ? " (want_response)" : ""));
         s.send(ToRadio.newBuilder().setPacket(pkt).build());
     }
 

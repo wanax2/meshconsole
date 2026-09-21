@@ -35,6 +35,7 @@ class SettingsPanel extends JPanel {
     private final JCheckBox txEnabled = new JCheckBox("TX enabled");
     // device
     private final JComboBox<Config.DeviceConfig.Role> role = new JComboBox<>();
+    private final JCheckBox debugLogApi = new JCheckBox("Stream firmware debug log to this app (security.debug_log_api_enabled)");
     // mqtt
     private final JCheckBox mqttEnabled = new JCheckBox("MQTT module enabled");
     private final JTextField mqttAddress = new JTextField(22), mqttUser = new JTextField(12), mqttRoot = new JTextField(10);
@@ -117,6 +118,16 @@ class SettingsPanel extends JPanel {
             client.setConfig(Config.newBuilder().setDevice(b).build());
         }));
         box.add(dev);
+
+        JPanel sec = section("Logging");
+        sec.add(debugLogApi);
+        sec.add(button("Save logging", () -> {
+            Config base = state.config(Config.PayloadVariantCase.SECURITY);
+            Config.SecurityConfig.Builder b = base == null ? Config.SecurityConfig.newBuilder() : base.getSecurity().toBuilder();
+            b.setDebugLogApiEnabled(debugLogApi.isSelected());
+            client.setConfig(Config.newBuilder().setSecurity(b).build());
+        }));
+        box.add(sec);
 
         // ---- mqtt
         JPanel mq = section("MQTT module (stored on the radio)");
@@ -212,6 +223,8 @@ class SettingsPanel extends JPanel {
         }
         Config dc = state.config(Config.PayloadVariantCase.DEVICE);
         if (dc != null) role.setSelectedItem(dc.getDevice().getRole());
+        Config sc = state.config(Config.PayloadVariantCase.SECURITY);
+        if (sc != null) debugLogApi.setSelected(sc.getSecurity().getDebugLogApiEnabled());
         ModuleConfig mc = state.moduleConfig(ModuleConfig.PayloadVariantCase.MQTT);
         if (mc != null) {
             ModuleConfig.MQTTConfig m = mc.getMqtt();

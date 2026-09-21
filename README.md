@@ -90,8 +90,17 @@ can hold the port.
   install the Meshtastic web-flasher's serial driver.
 * Only one program can open the COM port — close the Meshtastic CLI / web client first.
 
+## Logging
+
+Status tab, above the log: **Verbose** logs every packet (from/to, port, hops, RSSI/SNR, ack references), every
+config/channel/admin item, and MQTT proxy transfers; **Trace frames** additionally dumps the protobuf content of every
+frame in both directions; **Write meshconsole.log** appends everything to `meshconsole.log`. Copy/Clear buttons for
+pasting into a bug report. The radio only streams its *own* debug output to a connected client when
+`security.debug_log_api_enabled` is on — Settings tab → Logging → "Stream firmware debug log".
+
 ## Files it writes
 
+* `meshconsole.log` — app/device log when "Write meshconsole.log" is ticked.
 * `messages.log` — tab-separated message history (time, direction, from, to, channel, packet id, status, RSSI, SNR, hops, text). Pass a path as the first command-line argument to use a different file.
 * `tilecache/` — downloaded OSM tiles.
 

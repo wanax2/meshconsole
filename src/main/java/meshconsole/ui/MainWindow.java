@@ -69,6 +69,7 @@ public class MainWindow extends JFrame {
         add(bar, BorderLayout.NORTH);
 
         statusPanel = new StatusPanel(state);
+        statusPanel.setClient(client);
         messagesPanel = new MessagesPanel(client);
         nodesPanel = new NodesPanel(client);
         mapPanel = new MapPanel(state);
