@@ -1,0 +1,19 @@
+package meshconsole;
+
+import meshconsole.mesh.MeshClient;
+import meshconsole.mesh.MeshState;
+import meshconsole.mesh.MessageLog;
+import meshconsole.ui.MainWindow;
+
+import javax.swing.*;
+import java.nio.file.Path;
+
+public class Main {
+    public static void main(String[] args) {
+        Path logFile = Path.of(args.length > 0 ? args[0] : "messages.log");
+        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) { }
+        MeshState state = new MeshState(new MessageLog(logFile));
+        MeshClient client = new MeshClient(state);
+        SwingUtilities.invokeLater(() -> new MainWindow(client).setVisible(true));
+    }
+}

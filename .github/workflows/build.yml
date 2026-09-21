@@ -1,0 +1,64 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+
+jobs:
+  java:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: ./build.sh
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./build.ps1
+      - name: Smoke test
+        if: runner.os == 'Linux'
+        run: |
+          javac -nowarn --release 17 -cp build/classes:lib/protobuf-java.jar:lib/jSerialComm.jar -d build/test src/test/java/meshconsole/*.java
+          java -Djava.awt.headless=true -cp build/test:build/classes:lib/protobuf-java.jar:lib/jSerialComm.jar meshconsole.SmokeTest
+          java -Djava.awt.headless=true -cp build/test:build/classes:lib/protobuf-java.jar:lib/jSerialComm.jar meshconsole.AdminTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meshconsole-${{ matrix.os }}
+          path: dist/
+
+  cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libprotobuf-dev protobuf-compiler cmake g++
+      - run: ./fetch-protos.sh
+      - run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release && cmake --build cpp/build -j
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meshcli-linux
+          path: cpp/build/meshcli
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ java, cpp ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - run: |
+          cd artifacts && for d in */; do (cd "$d" && zip -qr "../${d%/}.zip" .); done && ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip

@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.google.protobuf' version '0.9.5'
+}
+
+group = 'meshconsole'
+version = '1.0'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(17) }
+}
+
+repositories {
+    mavenCentral()
+}
+
+def protobufVersion = '4.31.1'
+
+dependencies {
+    implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
+    implementation 'com.fazecast:jSerialComm:2.11.4'
+}
+
+// The Meshtastic .proto files live in ./protobufs (run fetch-protos.sh / .ps1 once).
+sourceSets {
+    main {
+        proto { srcDir 'protobufs' }
+    }
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:${protobufVersion}" }
+}
+
+application {
+    mainClass = 'meshconsole.Main'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// `gradle run` starts the GUI; `gradle installDist` makes build/install/meshconsole/bin/meshconsole(.bat)
+
+tasks.register('smokeTest', JavaExec) {
+    description = 'Runs the headless framing/decoding self-test against a fake radio'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'meshconsole.SmokeTest'
+    systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.register('fakeRadio', JavaExec) {
+    description = 'Runs a fake Meshtastic node on TCP port 4403 (connect with the TCP… button or meshcli --tcp 127.0.0.1)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'meshconsole.FakeRadio'
+}
