@@ -29,6 +29,9 @@ public class MainWindow extends JFrame {
     private final SettingsPanel settingsPanel;
     private final TelemetryPanel telemetryPanel;
     private final StatsPanel statsPanel;
+    private final TrafficPanel trafficPanel;
+    private final AlertsPanel alertsPanel;
+    private final meshconsole.mesh.AlertEngine alerts;
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
@@ -40,7 +43,7 @@ public class MainWindow extends JFrame {
         this.state = client.state();
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
-            @Override public void windowClosing(WindowEvent e) { client.disconnect(); dispose(); System.exit(0); }
+            @Override public void windowClosing(WindowEvent e) { client.disconnect(); client.saveDbQuietly(); dispose(); System.exit(0); }
         });
 
         JMenuBar menu = new JMenuBar();
@@ -89,13 +92,18 @@ public class MainWindow extends JFrame {
         settingsPanel = new SettingsPanel(client);
         telemetryPanel = new TelemetryPanel(state);
         statsPanel = new StatsPanel(state);
+        trafficPanel = new TrafficPanel(state);
+        alerts = new meshconsole.mesh.AlertEngine(state);
+        alertsPanel = new AlertsPanel(state, alerts);
         mapPanel.setClient(client);
         tabs.addTab("Status & signal", statusPanel);
         tabs.addTab("Messages", messagesPanel);
         tabs.addTab("Nodes", nodesPanel);
         tabs.addTab("Map", mapPanel);
         tabs.addTab("Telemetry", telemetryPanel);
+        tabs.addTab("Traffic", trafficPanel);
         tabs.addTab("Stats & export", statsPanel);
+        tabs.addTab("Alerts", alertsPanel);
         tabs.addTab("Antenna SWR", swrPanel);
         tabs.addTab("Settings & MQTT", settingsPanel);
         add(tabs, BorderLayout.CENTER);
@@ -126,12 +134,16 @@ public class MainWindow extends JFrame {
             @Override public void onNodesChanged() { SwingUtilities.invokeLater(MainWindow.this::refreshStatusLine); }
         });
 
-        new Timer(2000, e -> { nodesPanel.tick(); statusPanel.refreshChart(); }).start();
+        new Timer(2000, e -> { nodesPanel.tick(); statusPanel.refreshChart(); statusPanel.tickCapture(); }).start();
+        new Timer(60_000, e -> alerts.check()).start();
+        new Timer(5 * 60_000, e -> { if (client.isConnected()) client.saveDbQuietly(); }).start();
 
         refreshPorts();
         setSize(1150, 760);
         setLocationRelativeTo(null);
     }
+
+    public void setSignalHistory(meshconsole.mesh.SignalHistory h) { statusPanel.setHistory(h); }
 
     private void refreshStatusLine() {
         if (!client.isConnected()) return;

@@ -19,11 +19,12 @@ class NodesPanel extends JPanel {
     private final Model model = new Model();
     private final JTable table = new JTable(model);
     private final JTextArea results = new JTextArea(5, 40);
+    private final JLabel dbInfo = new JLabel(" ");
     private IntConsumer onMessageNode = n -> { };
     private IntConsumer onShowOnMap = n -> { };
 
     private static final String[] COLS = {"Name", "Short", "ID", "Last heard", "Hops", "SNR", "RSSI", "Battery", "Distance", "Position", "Hardware",
-            "Role", "Flags", "Pkts", "Direct %", "Avg RSSI", "Avg SNR", "First seen", "Neighbours"};
+            "Role", "Flags", "Pkts", "Direct %", "Avg RSSI", "Avg SNR", "First seen", "Last seen", "Sessions", "Airtime", "Neighbours"};
 
     private class Model extends AbstractTableModel {
         List<NodeEntry> rows = new ArrayList<>();
@@ -53,8 +54,11 @@ class NodesPanel extends JPanel {
                 case 14 -> isMe || n.directPercent() < 0 ? "" : n.directPercent() + "%";
                 case 15 -> isMe || n.rssiCount == 0 ? "" : String.format("%.0f dBm", n.avgRssi());
                 case 16 -> isMe || n.snrCount == 0 ? "" : String.format("%.1f dB", n.avgSnr());
-                case 17 -> n.firstSeen == 0 ? "" : Fmt.ago(n.firstSeen) + " ago";
-                case 18 -> n.neighbors.isEmpty() ? "" : String.valueOf(n.neighbors.size());
+                case 17 -> n.firstSeen == 0 ? "" : Fmt.time(n.firstSeen) + " (" + Fmt.ago(n.firstSeen) + ")";
+                case 18 -> isMe || n.lastHeardMillis() == 0 ? "" : Fmt.time(n.lastHeardMillis());
+                case 19 -> n.sessionsSeen == 0 ? "" : String.valueOf(n.sessionsSeen);
+                case 20 -> n.airtimeMs == 0 ? "" : String.format("%.1f s", n.airtimeMs / 1000.0);
+                case 21 -> n.neighbors.isEmpty() ? "" : String.valueOf(n.neighbors.size());
                 default -> "";
             };
         }
@@ -67,21 +71,39 @@ class NodesPanel extends JPanel {
 
         table.setFillsViewportHeight(true);
         table.setRowHeight(20);
-        int[] widths = {150, 45, 85, 80, 45, 60, 65, 55, 70, 140, 120, 60, 80, 40, 60, 70, 60, 80, 60};
+        int[] widths = {150, 45, 85, 80, 45, 60, 65, 55, 70, 140, 120, 60, 80, 40, 60, 70, 60, 150, 100, 55, 60, 60};
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
-        table.getColumnModel().getColumn(3).setCellRenderer(new DefaultTableCellRenderer() {
+        DefaultTableCellRenderer ageRenderer = new DefaultTableCellRenderer() {
             @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
                 Component c = super.getTableCellRendererComponent(t, v, sel, foc, row, col);
                 if (!sel && row < model.rows.size()) {
-                    long age = System.currentTimeMillis() - model.rows.get(row).lastHeardMillis();
-                    c.setForeground(age < 15 * 60_000 ? new Color(0, 130, 0) : age < 2 * 3600_000 ? new Color(180, 120, 0) : Color.GRAY);
+                    NodeEntry n = model.rows.get(row);
+                    long age = System.currentTimeMillis() - n.lastHeardMillis();
+                    if (col == 3) c.setForeground(age < 15 * 60_000 ? new Color(0, 130, 0) : age < 2 * 3600_000 ? new Color(180, 120, 0) : age < 24 * 3600_000 ? Color.GRAY : new Color(150, 90, 90));
+                    else c.setForeground(n.fromDb ? Color.GRAY : Color.BLACK);
+                    c.setFont(c.getFont().deriveFont(n.fromDb ? Font.ITALIC : Font.PLAIN));
                 }
                 return c;
             }
-        });
+        };
+        for (int i = 0; i < COLS.length; i++) table.getColumnModel().getColumn(i).setCellRenderer(ageRenderer);
         JScrollPane tableScroll = new JScrollPane(table, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         add(tableScroll, BorderLayout.CENTER);
+
+        JPanel dbBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        dbBar.add(dbInfo);
+        JButton save = new JButton("Save DB now");
+        JButton reset = new JButton("Reset DB…");
+        save.setToolTipText("The node database is saved automatically on disconnect and every 5 minutes; this saves it right now");
+        reset.setToolTipText("Forget nodes that were only remembered from earlier sessions and zero all counters");
+        save.addActionListener(e -> { try { state.saveNodeDb(); refreshDbInfo(); } catch (IOException ex) { error(ex); } });
+        reset.addActionListener(e -> {
+            if (JOptionPane.showConfirmDialog(this, "Delete nodes.json and forget nodes not heard in this session?\nCounters (packets, averages, first seen, sessions) are reset for all nodes.", "Reset node database", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.OK_OPTION) return;
+            try { state.resetNodeDb(); refreshDbInfo(); } catch (IOException ex) { error(ex); }
+        });
+        dbBar.add(save); dbBar.add(reset);
+        add(dbBar, BorderLayout.NORTH);
 
         JPanel south = new JPanel(new BorderLayout(4, 4));
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
@@ -160,7 +182,17 @@ class NodesPanel extends JPanel {
         JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
     }
 
+    void refreshDbInfo() {
+        int total = 0, dbOnly = 0;
+        for (NodeEntry n : state.nodes()) { total++; if (n.fromDb) dbOnly++; }
+        String file = state.nodeDb() == null ? "no database" : state.nodeDb().path().toString();
+        long saved = state.nodeDb() == null ? 0 : state.nodeDb().lastSaved();
+        dbInfo.setText(String.format("Node database: %s  ·  %d nodes (%d remembered from earlier sessions, shown grey)  ·  saved %s",
+                file, total, dbOnly, saved == 0 ? "never" : Fmt.ago(saved) + " ago"));
+    }
+
     void reload() {
+        refreshDbInfo();
         int selNum = 0;
         int r = table.getSelectedRow();
         if (r >= 0 && r < model.rows.size()) selNum = model.rows.get(r).num;

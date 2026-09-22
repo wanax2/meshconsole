@@ -19,6 +19,11 @@ class StatusPanel extends JPanel {
     private final SignalChart chart = new SignalChart();
     private final UtilChart utilChart = new UtilChart();
     private final JComboBox<NodeChoice> chartNode = new JComboBox<>();
+    private final JComboBox<String> chartRange = new JComboBox<>(new String[]{"Live (this session)", "Last hour", "Last 24 h", "Last 7 days"});
+    private meshconsole.mesh.SignalHistory history;
+    private final JButton captureBtn = new JButton("● Record packets");
+    private final JButton replayBtn = new JButton("Replay capture…");
+    private final JLabel captureInfo = new JLabel(" ");
     private final JTextArea log = new JTextArea();
     private final JLabel lastSignal = new JLabel(" ");
     private final JCheckBox verbose = new JCheckBox("Verbose");
@@ -47,6 +52,9 @@ class StatusPanel extends JPanel {
         chartNode.addItem(new NodeChoice(0, "All nodes"));
         chartNode.addActionListener(e -> refreshChart());
         chartTop.add(chartNode);
+        chartTop.add(new JLabel("Range:"));
+        chartRange.addActionListener(e -> refreshChart());
+        chartTop.add(chartRange);
         chartTop.add(lastSignal);
         chartBox.add(chartTop, BorderLayout.NORTH);
         chartBox.add(chart, BorderLayout.CENTER);
@@ -73,6 +81,12 @@ class StatusPanel extends JPanel {
         JButton clear = new JButton("Clear");
         JButton copy = new JButton("Copy");
         logTop.add(verbose); logTop.add(trace); logTop.add(toFile); logTop.add(clear); logTop.add(copy);
+        logTop.add(new JSeparator(SwingConstants.VERTICAL));
+        captureBtn.setToolTipText("Save every frame from the radio to a .mcap file; replay it later (or send it with a bug report)");
+        replayBtn.setToolTipText("Feed a recorded .mcap file through the app as if it were live traffic");
+        logTop.add(captureBtn); logTop.add(replayBtn); logTop.add(captureInfo);
+        captureBtn.addActionListener(e -> toggleCapture());
+        replayBtn.addActionListener(e -> replay());
         logBox.add(logTop, BorderLayout.NORTH);
         logBox.add(logScroll, BorderLayout.CENTER);
         verbose.addActionListener(e -> state.setVerbose(verbose.isSelected()));
@@ -93,6 +107,43 @@ class StatusPanel extends JPanel {
     }
 
     void setClient(meshconsole.mesh.MeshClient c) { client = c; }
+    void setHistory(meshconsole.mesh.SignalHistory h) { history = h; }
+
+    private void toggleCapture() {
+        if (client == null) return;
+        if (client.isCapturing()) { client.stopCapture(); captureBtn.setText("● Record packets"); captureInfo.setText(" "); return; }
+        JFileChooser fc = new JFileChooser();
+        fc.setSelectedFile(new java.io.File("capture-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".mcap"));
+        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        try {
+            client.startCapture(fc.getSelectedFile().toPath());
+            captureBtn.setText("■ Stop recording");
+        } catch (java.io.IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "Capture", JOptionPane.ERROR_MESSAGE); }
+    }
+
+    private void replay() {
+        if (client == null) return;
+        JFileChooser fc = new JFileChooser();
+        fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Mesh Console capture (*.mcap)", "mcap"));
+        if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        String[] speeds = {"As fast as possible", "Real time", "10× speed"};
+        int sp = JOptionPane.showOptionDialog(this, "Replay speed:", "Replay", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, speeds, speeds[0]);
+        if (sp < 0) return;
+        double speed = sp == 0 ? 0 : sp == 1 ? 1 : 10;
+        final boolean[] cancel = {false};
+        replayBtn.setText("Stop replay");
+        for (java.awt.event.ActionListener l : replayBtn.getActionListeners()) replayBtn.removeActionListener(l);
+        replayBtn.addActionListener(e -> cancel[0] = true);
+        new Thread(() -> {
+            try { long n = client.replay(fc.getSelectedFile().toPath(), speed, () -> cancel[0]); SwingUtilities.invokeLater(() -> captureInfo.setText(n + " frames replayed")); }
+            catch (java.io.IOException ex) { SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, ex.getMessage(), "Replay", JOptionPane.ERROR_MESSAGE)); }
+            finally { SwingUtilities.invokeLater(() -> { replayBtn.setText("Replay capture…"); for (java.awt.event.ActionListener l : replayBtn.getActionListeners()) replayBtn.removeActionListener(l); replayBtn.addActionListener(e -> replay()); }); }
+        }, "replay").start();
+    }
+
+    void tickCapture() {
+        if (client != null && client.isCapturing()) captureInfo.setText("recording: " + client.captureFrames() + " frames");
+    }
 
     void appendLog(String line) {
         String stamped = Fmt.time(System.currentTimeMillis()) + "  " + line;
@@ -135,7 +186,13 @@ class StatusPanel extends JPanel {
 
     void refreshChart() {
         NodeChoice sel = (NodeChoice) chartNode.getSelectedItem();
-        List<SignalSample> s = state.signalHistory();
+        int range = chartRange.getSelectedIndex();
+        List<SignalSample> s;
+        if (range <= 0 || history == null) s = state.signalHistory();
+        else {
+            long[] ms = {0, 3600_000L, 24 * 3600_000L, 7 * 24 * 3600_000L};
+            s = history.since(System.currentTimeMillis() - ms[range]);
+        }
         chart.setData(s, sel == null ? 0 : sel.num());
         SignalSample last = null;
         for (int i = s.size() - 1; i >= 0; i--) {
@@ -193,6 +250,11 @@ class StatusPanel extends JPanel {
                 sb.append("Uptime:       ").append(ls.getUptimeSeconds() / 3600).append(" h ").append((ls.getUptimeSeconds() % 3600) / 60).append(" m\n");
             }
             if (state.queueFree() >= 0) sb.append("TX queue:     ").append(state.queueFree()).append(" free slots\n");
+            long drift = state.clockDriftMs();
+            if (drift != Long.MIN_VALUE) {
+                long abs = Math.abs(drift) / 1000;
+                sb.append("Radio clock:  ").append(abs < 2 ? "in sync with PC" : abs > 365L * 86400 ? "not set (no GPS/phone time source)" : String.format("%s%d s vs PC", drift > 0 ? "+" : "-", abs)).append('\n');
+            }
             sb.append("Nodes known:  ").append(state.nodes().size()).append('\n');
             if (state.encryptedSeen() > 0) sb.append("Undecodable:  ").append(state.encryptedSeen()).append(" encrypted packets\n");
             sb.append(state.configComplete() ? "" : "\n(config still loading…)\n");

@@ -14,6 +14,8 @@ plugged into a Windows or Linux PC over USB. Same code runs on both; no OS switc
 | Nodes | Every node in the radio's DB: last heard, hops, SNR/RSSI, battery, distance, position, hardware, role, flags, packets heard, direct %, average RSSI/SNR, first seen. Buttons: message node, **traceroute** (per-hop SNR both ways), request position, show on map, request node info, remote info (admin), store-&-forward history. |
 | Map | OpenStreetMap tiles with node markers (colour = age), your node highlighted, lines to direct neighbours, the **neighbour graph** (who hears whom, with SNR), **tracks** of moving nodes, **waypoints** (right-click to create), and a **coverage** layer (RSSI-coloured dots where your node was when it heard packets). Tiles are cached in `tilecache/`. |
 | Telemetry | Battery, voltage, utilisation, uptime, environment (temperature, humidity, pressure, IAQ, lux, wind) and power-monitor channels per node. |
+| Traffic | Airtime by node, app and channel from packet size × modem preset; share of elapsed time; last relay node. |
+| Alerts | Silent node, low battery, high utilisation, reboot, key change, admin audit, detection sensor, new DM — with tray notifications and `alerts.log`. |
 | Stats & export | Delivery statistics per destination (success %, attempts, time to ack) and CSV export of nodes, signal samples, telemetry, messages, coverage points and neighbour links. |
 | Antenna SWR | Sweeps a **NanoVNA** on a second USB port and plots SWR vs frequency with band presets (US 915, EU 868, 433, …). |
 | Settings & MQTT | Edit and write back owner name, LoRa (region, preset, hop limit, tx power, frequency override), device role, the MQTT module config, and all 8 channel slots (name, PSK, role, uplink/downlink). Reboot. **MQTT client proxy**: this PC relays the radio's MQTT traffic through its own internet connection — the only way a WiFi-less RAK4631 reaches MQTT. |
@@ -94,7 +96,7 @@ can hold the port.
 
 ## Logging
 
-Status tab, above the log: **Verbose** logs every packet (from/to, port, hops, RSSI/SNR, ack references), every
+Status tab, above the log: **Record packets** saves every frame to a `.mcap` capture; **Replay capture…** plays one back through the whole app. **Verbose** logs every packet (from/to, port, hops, RSSI/SNR, ack references), every
 config/channel/admin item, and MQTT proxy transfers; **Trace frames** additionally dumps the protobuf content of every
 frame in both directions; **Write meshconsole.log** appends everything to `meshconsole.log`. Copy/Clear buttons for
 pasting into a bug report. The radio only streams its *own* debug output to a connected client when
@@ -102,6 +104,10 @@ pasting into a bug report. The radio only streams its *own* debug output to a co
 
 ## Files it writes
 
+* `nodes.json` — persistent node database (identity, first/last seen, counters). Reset from the Nodes tab.
+* `signal_history.csv` — RSSI/SNR samples, last 7 days, for the long-range chart.
+* `sessions.log`, `alerts.log` — one line per connection / alert.
+* `*.mcap` — packet captures (Status tab → Record packets).
 * `meshconsole.log` — app/device log when "Write meshconsole.log" is ticked.
 * `messages.log` — tab-separated message history (time, direction, from, to, channel, packet id, status, RSSI, SNR, hops, text). Pass a path as the first command-line argument to use a different file.
 * `tilecache/` — downloaded OSM tiles.

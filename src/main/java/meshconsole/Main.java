@@ -18,10 +18,13 @@ public class Main {
             splash.setVisible(true);
             // build the app while the splash is up (message log load can take a moment)
             new Thread(() -> {
-                MeshState state = new MeshState(new MessageLog(logFile));
+                MeshState state = new MeshState(new MessageLog(logFile), new meshconsole.mesh.NodeDb(Path.of("nodes.json")));
+                meshconsole.mesh.SignalHistory history = new meshconsole.mesh.SignalHistory(Path.of("signal_history.csv"));
+                state.setSignalHistory(history);
                 MeshClient client = new MeshClient(state);
                 SwingUtilities.invokeLater(() -> {
                     MainWindow w = new MainWindow(client);
+                    w.setSignalHistory(history);
                     w.setVisible(true);
                     splash.closeAfter(1500);
                 });

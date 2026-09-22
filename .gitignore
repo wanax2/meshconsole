@@ -7,3 +7,9 @@ cpp/build/
 *.class
 .idea/
 .vscode/
+nodes.json
+signal_history.csv
+meshconsole.log
+sessions.log
+alerts.log
+*.mcap

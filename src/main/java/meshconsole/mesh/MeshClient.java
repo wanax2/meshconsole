@@ -86,6 +86,35 @@ public class MeshClient implements MeshSerial.Listener {
     public MeshState state() { return state; }
 
     private volatile boolean traceFrames;
+    private volatile Capture capture;
+    private final java.nio.file.Path sessionLog = java.nio.file.Path.of("sessions.log");
+    private long connectedAt;
+
+    public void startCapture(java.nio.file.Path p) throws IOException { stopCapture(); capture = new Capture(p); state.emitLog("Recording packets to " + p); }
+    public void stopCapture() { Capture c = capture; capture = null; if (c != null) { c.close(); state.emitLog("Capture stopped: " + c.frames() + " frames in " + c.path()); } }
+    public boolean isCapturing() { return capture != null; }
+    public long captureFrames() { Capture c = capture; return c == null ? 0 : c.frames(); }
+
+    /** Replays a capture file into the state as if it came from the radio (disconnects first). */
+    public long replay(java.nio.file.Path p, double speed, java.util.function.BooleanSupplier cancelled) throws IOException {
+        disconnect();
+        state.resetForConnect();
+        state.emitLog("Replaying " + p + (speed == 0 ? " (fast)" : " at " + speed + "×"));
+        connListener.onConnectionChanged(true, "replay " + p.getFileName());
+        try {
+            return Capture.replay(p, speed, state::handle, cancelled);
+        } finally {
+            connListener.onConnectionChanged(false, "");
+            state.emitLog("Replay finished");
+        }
+    }
+
+    private void session(String line) {
+        try {
+            java.nio.file.Files.writeString(sessionLog, java.time.ZonedDateTime.now().format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "  " + line + "\n",
+                    java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException ignored) { }
+    }
     public void setTraceFrames(boolean on) { traceFrames = on; MeshSerial s = serial; if (s != null) s.traceFrames = on; }
 
     public void setConnectionListener(ConnectionListener l) { connListener = l; }
@@ -99,6 +128,8 @@ public class MeshClient implements MeshSerial.Listener {
         serial.traceFrames = traceFrames;
         serial.start(rnd.nextInt(Integer.MAX_VALUE) + 1);
         state.emitLog("Opened " + port.getSystemPortName() + ", requesting config…");
+        connectedAt = System.currentTimeMillis();
+        session("connect serial " + port.getSystemPortName() + " (" + port.getDescriptivePortName() + ")");
         connListener.onConnectionChanged(true, port.getSystemPortName());
     }
 
@@ -125,6 +156,8 @@ public class MeshClient implements MeshSerial.Listener {
         serial.traceFrames = traceFrames;
         serial.start(rnd.nextInt(Integer.MAX_VALUE) + 1);
         state.emitLog("Connected to " + host + ":" + port + ", requesting config…");
+        connectedAt = System.currentTimeMillis();
+        session("connect tcp " + host + ":" + port);
         connListener.onConnectionChanged(true, host + ":" + port);
     }
 
@@ -134,6 +167,8 @@ public class MeshClient implements MeshSerial.Listener {
             serial = null;
             s.close();
             state.emitLog("Disconnected");
+            session("disconnect by user after " + (System.currentTimeMillis() - connectedAt) / 1000 + " s");
+            saveDbQuietly();
             connListener.onConnectionChanged(false, "");
         }
     }
@@ -389,7 +424,14 @@ public class MeshClient implements MeshSerial.Listener {
 
     @Override
     public void onFromRadio(FromRadio fr) {
+        Capture c = capture;
+        if (c != null) c.write(fr);
+        if (fr.hasConfigCompleteId()) session("config complete: node " + String.format("!%08x", state.myNodeNum()) + " " + state.nodeName(state.myNodeNum()) + ", firmware " + state.firmware() + ", " + state.nodes().size() + " nodes");
         state.handle(fr);
+    }
+
+    public void saveDbQuietly() {
+        try { state.saveNodeDb(); } catch (IOException e) { state.emitLog("Could not save nodes.json: " + e.getMessage()); }
     }
 
     @Override
@@ -407,6 +449,8 @@ public class MeshClient implements MeshSerial.Listener {
             }
         }
         state.emitLog("Connection lost: " + reason);
+        session("connection lost (" + reason + ") after " + (System.currentTimeMillis() - connectedAt) / 1000 + " s");
+        saveDbQuietly();
         connListener.onConnectionChanged(false, reason);
     }
 }

@@ -53,6 +53,14 @@ public class NodeEntry {
     public final java.util.LinkedHashMap<Integer, Float> neighbors = new java.util.LinkedHashMap<>();
     public long neighborsTime;
 
+    public int sessionsSeen;        // how many app sessions this node was heard in
+    public boolean fromDb;          // loaded from nodes.json, not (yet) confirmed by this radio
+    public int lastRelayNode = -1;  // low byte of the node that relayed the last packet (-1 unknown)
+    public int rangeTestLast = -1, rangeTestReceived, rangeTestExpected;
+    public Integer paxWifi, paxBle;
+    public long airtimeMs;          // total channel time this node's packets occupied (as heard here)
+    public long airBytes;
+
     public double avgRssi() { return rssiCount == 0 ? 0 : (double) rssiSum / rssiCount; }
     public double avgSnr() { return snrCount == 0 ? 0 : snrSum / snrCount; }
     public int directPercent() { return packetsSeen == 0 ? -1 : (int) Math.round(100.0 * directPackets / packetsSeen); }
