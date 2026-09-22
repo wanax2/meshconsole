@@ -52,7 +52,8 @@ class SignalChart extends JComponent {
             g.drawString(String.valueOf(s), right + 6, y + 4);
         }
         g.setColor(Color.DARK_GRAY);
-        g.drawString(pts.isEmpty() ? "No packets received yet" : pts.size() + " packets (latest at right)", left + 4, bottom + 15);
+        boolean averaged = !pts.isEmpty() && pts.get(0).hops() == -1;
+        g.drawString(pts.isEmpty() ? "No packets received yet" : pts.size() + (averaged ? " points, hourly averages then packets (latest at right)" : " packets (latest at right)"), left + 4, bottom + 15);
         if (pts.isEmpty()) return;
 
         int n = pts.size();

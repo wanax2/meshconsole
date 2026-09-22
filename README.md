@@ -105,7 +105,7 @@ pasting into a bug report. The radio only streams its *own* debug output to a co
 ## Files it writes
 
 * `nodes.json` — persistent node database (identity, first/last seen, counters). Reset from the Nodes tab.
-* `signal_history.csv` — RSSI/SNR samples, last 7 days, for the long-range chart.
+* `signal_history.csv` — every RSSI/SNR sample for one year (pruned at startup). The chart keeps 7 days at full resolution and hourly per-node averages beyond that; in a busy mesh expect the file to grow by a few MB per day.
 * `sessions.log`, `alerts.log` — one line per connection / alert.
 * `*.mcap` — packet captures (Status tab → Record packets).
 * `meshconsole.log` — app/device log when "Write meshconsole.log" is ticked.

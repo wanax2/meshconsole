@@ -19,7 +19,7 @@ class StatusPanel extends JPanel {
     private final SignalChart chart = new SignalChart();
     private final UtilChart utilChart = new UtilChart();
     private final JComboBox<NodeChoice> chartNode = new JComboBox<>();
-    private final JComboBox<String> chartRange = new JComboBox<>(new String[]{"Live (this session)", "Last hour", "Last 24 h", "Last 7 days"});
+    private final JComboBox<String> chartRange = new JComboBox<>(new String[]{"Live (this session)", "Last hour", "Last 24 h", "Last 7 days", "Last 30 days (hourly avg)", "Last year (hourly avg)"});
     private meshconsole.mesh.SignalHistory history;
     private final JButton captureBtn = new JButton("● Record packets");
     private final JButton replayBtn = new JButton("Replay capture…");
@@ -190,7 +190,7 @@ class StatusPanel extends JPanel {
         List<SignalSample> s;
         if (range <= 0 || history == null) s = state.signalHistory();
         else {
-            long[] ms = {0, 3600_000L, 24 * 3600_000L, 7 * 24 * 3600_000L};
+            long[] ms = {0, 3600_000L, 24 * 3600_000L, 7 * 24 * 3600_000L, 30L * 24 * 3600_000L, 365L * 24 * 3600_000L};
             s = history.since(System.currentTimeMillis() - ms[range]);
         }
         chart.setData(s, sel == null ? 0 : sel.num());
