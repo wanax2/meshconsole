@@ -15,7 +15,7 @@ public class MainWindow extends JFrame {
     private final MeshClient client;
     private final MeshState state;
     private final JComboBox<PortItem> ports = new JComboBox<>();
-    private final JButton connect = new JButton("Connect");
+    private final JButton connect = new JButton("Connect to device");
     private final JLabel status = new JLabel("Not connected");
     private final JCheckBox autoReconnect = new JCheckBox("Auto-reconnect", true);
     private String lastPortName;
@@ -57,7 +57,17 @@ public class MainWindow extends JFrame {
         refresh.setToolTipText("Rescan serial ports");
         refresh.addActionListener(e -> refreshPorts());
         bar.add(refresh);
+        connect.setFont(connect.getFont().deriveFont(Font.BOLD, 15f));
+        connect.setPreferredSize(new Dimension(200, 36));
+        connect.setMaximumSize(new Dimension(200, 36));
+        connect.setBackground(new Color(40, 120, 70));
+        connect.setForeground(Color.WHITE);
+        connect.setOpaque(true);
+        connect.setBorderPainted(false);
+        connect.setFocusPainted(false);
+        bar.add(Box.createHorizontalStrut(8));
         bar.add(connect);
+        bar.add(Box.createHorizontalStrut(8));
         JButton tcp = new JButton("TCP…");
         tcp.setToolTipText("Connect to a WiFi/Ethernet node (port 4403) instead of USB");
         tcp.addActionListener(e -> connectTcp());
@@ -92,7 +102,8 @@ public class MainWindow extends JFrame {
 
         connect.addActionListener(e -> toggleConnect());
         client.setConnectionListener((c, d) -> SwingUtilities.invokeLater(() -> {
-            connect.setText(c ? "Disconnect" : "Connect");
+            connect.setText(c ? "Disconnect" : "Connect to device");
+            connect.setBackground(c ? new Color(160, 60, 50) : new Color(40, 120, 70));
             ports.setEnabled(!c);
             if (!c) {
                 status.setText(d.isEmpty() ? "Not connected" : "Disconnected: " + d);
