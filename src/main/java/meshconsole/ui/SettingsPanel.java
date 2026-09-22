@@ -35,6 +35,7 @@ class SettingsPanel extends JPanel {
     private final JCheckBox txEnabled = new JCheckBox("TX enabled");
     // device
     private final JComboBox<Config.DeviceConfig.Role> role = new JComboBox<>();
+    private final JTextField posLat = new JTextField(10), posLon = new JTextField(10), posAlt = new JTextField(5);
     private final JCheckBox debugLogApi = new JCheckBox("Stream firmware debug log to this app (security.debug_log_api_enabled)");
     // mqtt
     private final JCheckBox mqttEnabled = new JCheckBox("MQTT module enabled");
@@ -118,6 +119,23 @@ class SettingsPanel extends JPanel {
             client.setConfig(Config.newBuilder().setDevice(b).build());
         }));
         box.add(dev);
+
+        JPanel posP = section("Fixed position (for nodes without GPS)");
+        posP.add(new JLabel("Latitude:")); posP.add(posLat);
+        posP.add(new JLabel("Longitude:")); posP.add(posLon);
+        posP.add(new JLabel("Altitude m:")); posP.add(posAlt);
+        posP.add(button("Set fixed position", () -> {
+            double lat, lon; int alt;
+            try { lat = Double.parseDouble(posLat.getText().trim()); lon = Double.parseDouble(posLon.getText().trim()); alt = posAlt.getText().isBlank() ? 0 : (int) Double.parseDouble(posAlt.getText().trim()); }
+            catch (NumberFormatException e) { throw new IOException("Enter decimal degrees, e.g. 38.8895 and -77.0353"); }
+            if (Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new IOException("Latitude must be -90..90 and longitude -180..180");
+            client.setFixedPosition(lat, lon, alt);
+        }));
+        posP.add(button("Remove fixed position", client::removeFixedPosition));
+        box.add(posP);
+        JPanel posNote = section(null);
+        posNote.add(new JLabel("Tip: right-click the Map and choose \"Set as my fixed position\" to pick the spot visually. The radio advertises this position to the mesh and uses it for distances, coverage and weather-station lookup."));
+        box.add(posNote);
 
         JPanel sec = section("Logging");
         sec.add(debugLogApi);
@@ -210,7 +228,10 @@ class SettingsPanel extends JPanel {
         populated = true;
         loaded.setText("Loaded from " + state.nodeName(state.myNodeNum()) + ".");
         NodeEntry me = state.myNode();
-        if (me != null) { longName.setText(me.longName); shortName.setText(me.shortName); }
+        if (me != null) {
+            longName.setText(me.longName); shortName.setText(me.shortName);
+            if (me.hasPosition) { posLat.setText(String.format(java.util.Locale.ROOT, "%.5f", me.lat)); posLon.setText(String.format(java.util.Locale.ROOT, "%.5f", me.lon)); posAlt.setText(String.valueOf(me.altitude)); }
+        }
         Config lc = state.config(Config.PayloadVariantCase.LORA);
         if (lc != null) {
             Config.LoRaConfig l = lc.getLora();

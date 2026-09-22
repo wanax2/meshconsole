@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 — 2026-09-22
+
+- **Fixed position**: set the radio's coordinates from the Settings tab (lat/lon/altitude) or by right-clicking the map → "Set as my fixed position"; uses the firmware's `set_fixed_position` admin command, which also enables fixed-position mode. "Remove fixed position" reverts to GPS.
+
+
 ## 1.3.0 — 2026-09-22
 
 Analysis and weather:

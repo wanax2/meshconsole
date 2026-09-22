@@ -215,7 +215,20 @@ class MapPanel extends JPanel {
                     if (SwingUtilities.isRightMouseButton(e)) {
                         double lat = yToLat(latToY(centerLat, zoom) + e.getY() - getHeight() / 2.0, zoom);
                         double lon = xToLon(lonToX(centerLon, zoom) + e.getX() - getWidth() / 2.0, zoom);
-                        addWaypointAt(lat, lon);
+                        JPopupMenu menu = new JPopupMenu();
+                        JMenuItem wp = new JMenuItem(String.format("Add waypoint here (%.5f, %.5f)", lat, lon));
+                        wp.addActionListener(a -> addWaypointAt(lat, lon));
+                        JMenuItem fix = new JMenuItem("Set as my fixed position");
+                        fix.addActionListener(a -> {
+                            if (client == null || !client.isConnected()) { status.setText("Connect to a radio first"); return; }
+                            if (JOptionPane.showConfirmDialog(MapPanel.this, String.format("Store %.5f, %.5f on the radio as its fixed position?", lat, lon), "Fixed position", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                            new Thread(() -> {
+                                try { client.setFixedPosition(lat, lon, 0); SwingUtilities.invokeLater(() -> { status.setText("Fixed position set"); repaint(); }); }
+                                catch (java.io.IOException ex) { SwingUtilities.invokeLater(() -> status.setText("Failed: " + ex.getMessage())); }
+                            }, "set-position").start();
+                        });
+                        menu.add(wp); menu.add(fix);
+                        menu.show(MapView.this, e.getX(), e.getY());
                         return;
                     }
                     for (WaypointEntry wp : state.waypoints()) {

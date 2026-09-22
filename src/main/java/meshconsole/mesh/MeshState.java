@@ -761,6 +761,8 @@ public class MeshState {
         return " ─(?)→ ";
     }
 
+    public void notifyNodesChanged() { fire(Listener::onNodesChanged); }
+
     public void emitAlert(String kind, String text) { fire(l -> l.onAlert(kind, text)); }
 
     public void emitLog(String line) {

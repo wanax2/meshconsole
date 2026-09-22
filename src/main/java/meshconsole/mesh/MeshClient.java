@@ -345,6 +345,26 @@ public class MeshClient implements MeshSerial.Listener {
         state.emitLog("Channel " + c.getIndex() + " written");
     }
 
+    /** Stores a fixed position on the radio (also enables position.fixed_position). */
+    public void setFixedPosition(double lat, double lon, int altitudeM) throws IOException {
+        ensureSessionKey();
+        Position pos = Position.newBuilder()
+                .setLatitudeI((int) Math.round(lat * 1e7)).setLongitudeI((int) Math.round(lon * 1e7))
+                .setAltitude(altitudeM).setTime((int) (System.currentTimeMillis() / 1000))
+                .setLocationSource(Position.LocSource.LOC_MANUAL).build();
+        sendAdmin(AdminMessage.newBuilder().setSetFixedPosition(pos), false);
+        NodeEntry me = state.myNode();
+        if (me != null) { me.lat = lat; me.lon = lon; me.altitude = altitudeM; me.hasPosition = true; }
+        state.emitLog(String.format("Fixed position set to %.5f, %.5f (%d m)", lat, lon, altitudeM));
+        state.notifyNodesChanged();
+    }
+
+    public void removeFixedPosition() throws IOException {
+        ensureSessionKey();
+        sendAdmin(AdminMessage.newBuilder().setRemoveFixedPosition(true), false);
+        state.emitLog("Fixed position removed (radio will use GPS if it has one)");
+    }
+
     public void reboot(int seconds) throws IOException {
         ensureSessionKey();
         sendAdmin(AdminMessage.newBuilder().setRebootSeconds(seconds), false);
