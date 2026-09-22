@@ -434,9 +434,14 @@ public class MeshClient implements MeshSerial.Listener {
         try { state.saveNodeDb(); } catch (IOException e) { state.emitLog("Could not save nodes.json: " + e.getMessage()); }
     }
 
+    private static final java.util.regex.Pattern ANSI = java.util.regex.Pattern.compile("\u001B\\[[0-9;]*[A-Za-z]");
+
     @Override
     public void onDebugText(String line) {
-        state.emitLog("[serial] " + line);
+        // firmware debug output carries ANSI colour codes; drop them and the [serial] prefix noise
+        String clean = ANSI.matcher(line).replaceAll("").trim();
+        if (clean.isEmpty()) return;
+        state.emitLog("[serial] " + clean);
     }
 
     @Override
