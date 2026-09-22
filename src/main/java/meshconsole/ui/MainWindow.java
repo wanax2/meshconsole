@@ -15,7 +15,7 @@ public class MainWindow extends JFrame {
     private final MeshClient client;
     private final MeshState state;
     private final JComboBox<PortItem> ports = new JComboBox<>();
-    private final JButton connect = new JButton("Connect");
+    private final JButton connect = new JButton("Connect to device");
     private final JLabel status = new JLabel("Not connected");
     private final JCheckBox autoReconnect = new JCheckBox("Auto-reconnect", true);
     private String lastPortName;
@@ -27,19 +27,29 @@ public class MainWindow extends JFrame {
     private final MapPanel mapPanel;
     private final SwrPanel swrPanel;
     private final SettingsPanel settingsPanel;
+    private final TelemetryPanel telemetryPanel;
+    private final StatsPanel statsPanel;
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
     }
 
     public MainWindow(MeshClient client) {
-        super("Mesh Console");
+        super(meshconsole.Version.NAME + " " + meshconsole.Version.VERSION);
         this.client = client;
         this.state = client.state();
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) { client.disconnect(); dispose(); System.exit(0); }
         });
+
+        JMenuBar menu = new JMenuBar();
+        JMenu help = new JMenu("Help");
+        JMenuItem about = new JMenuItem("About " + meshconsole.Version.NAME + "…");
+        about.addActionListener(e -> showAbout());
+        help.add(about);
+        menu.add(help);
+        setJMenuBar(menu);
 
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
@@ -49,7 +59,17 @@ public class MainWindow extends JFrame {
         refresh.setToolTipText("Rescan serial ports");
         refresh.addActionListener(e -> refreshPorts());
         bar.add(refresh);
+        connect.setFont(connect.getFont().deriveFont(Font.BOLD, 15f));
+        connect.setPreferredSize(new Dimension(200, 36));
+        connect.setMaximumSize(new Dimension(200, 36));
+        connect.setBackground(new Color(40, 120, 70));
+        connect.setForeground(Color.WHITE);
+        connect.setOpaque(true);
+        connect.setBorderPainted(false);
+        connect.setFocusPainted(false);
+        bar.add(Box.createHorizontalStrut(8));
         bar.add(connect);
+        bar.add(Box.createHorizontalStrut(8));
         JButton tcp = new JButton("TCP…");
         tcp.setToolTipText("Connect to a WiFi/Ethernet node (port 4403) instead of USB");
         tcp.addActionListener(e -> connectTcp());
@@ -61,25 +81,36 @@ public class MainWindow extends JFrame {
         add(bar, BorderLayout.NORTH);
 
         statusPanel = new StatusPanel(state);
+        statusPanel.setClient(client);
         messagesPanel = new MessagesPanel(client);
         nodesPanel = new NodesPanel(client);
         mapPanel = new MapPanel(state);
         swrPanel = new SwrPanel(state);
         settingsPanel = new SettingsPanel(client);
+        telemetryPanel = new TelemetryPanel(state);
+        statsPanel = new StatsPanel(state);
+        mapPanel.setClient(client);
         tabs.addTab("Status & signal", statusPanel);
         tabs.addTab("Messages", messagesPanel);
         tabs.addTab("Nodes", nodesPanel);
         tabs.addTab("Map", mapPanel);
+        tabs.addTab("Telemetry", telemetryPanel);
+        tabs.addTab("Stats & export", statsPanel);
         tabs.addTab("Antenna SWR", swrPanel);
         tabs.addTab("Settings & MQTT", settingsPanel);
         add(tabs, BorderLayout.CENTER);
+        JLabel footer = new JLabel(" " + meshconsole.Version.NAME + " " + meshconsole.Version.VERSION + "  ·  " + meshconsole.Version.COPYRIGHT + "  ·  MIT License");
+        footer.setFont(footer.getFont().deriveFont(10f));
+        footer.setForeground(java.awt.Color.DARK_GRAY);
+        add(footer, BorderLayout.SOUTH);
 
         nodesPanel.setOnMessageNode(num -> { messagesPanel.selectDestination(num); tabs.setSelectedComponent(messagesPanel); });
         nodesPanel.setOnShowOnMap(num -> { mapPanel.centerOn(num); tabs.setSelectedComponent(mapPanel); });
 
         connect.addActionListener(e -> toggleConnect());
         client.setConnectionListener((c, d) -> SwingUtilities.invokeLater(() -> {
-            connect.setText(c ? "Disconnect" : "Connect");
+            connect.setText(c ? "Disconnect" : "Connect to device");
+            connect.setBackground(c ? new Color(160, 60, 50) : new Color(40, 120, 70));
             ports.setEnabled(!c);
             if (!c) {
                 status.setText(d.isEmpty() ? "Not connected" : "Disconnected: " + d);
@@ -154,6 +185,21 @@ public class MainWindow extends JFrame {
             status.setText("Disconnected – waiting for " + want + " to come back (" + left + " s)");
         });
         reconnectTimer.start();
+    }
+
+    private void showAbout() {
+        String html = "<html><div style='width:420px;font-family:sans-serif'>"
+                + "<h2 style='margin:0'>" + meshconsole.Version.NAME + " " + meshconsole.Version.VERSION + "</h2>"
+                + "<p>Desktop client for Meshtastic radios: messaging, node map, live signal, traceroute, "
+                + "device settings, MQTT client proxy and NanoVNA antenna SWR.</p>"
+                + "<p><b>" + meshconsole.Version.COPYRIGHT + "</b><br>" + meshconsole.Version.LICENSE + "<br>"
+                + "<a href='" + meshconsole.Version.HOMEPAGE + "'>" + meshconsole.Version.HOMEPAGE + "</a></p>"
+                + "<p style='color:#555;font-size:90%'>Built with jSerialComm (LGPL/Apache), Google Protocol Buffers (BSD) and the "
+                + "Meshtastic protobuf definitions (GPL-3.0, fetched at build time). Map tiles © OpenStreetMap contributors (ODbL). "
+                + "Meshtastic is a registered trademark of Meshtastic LLC; this program is not affiliated with or endorsed by Meshtastic.</p>"
+                + "<p style='color:#555;font-size:90%'>Java " + System.getProperty("java.version") + " on " + System.getProperty("os.name") + "</p>"
+                + "</div></html>";
+        JOptionPane.showMessageDialog(this, html, "About " + meshconsole.Version.NAME, JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void connectTcp() {

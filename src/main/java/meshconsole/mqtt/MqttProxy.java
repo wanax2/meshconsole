@@ -83,6 +83,7 @@ public class MqttProxy implements AutoCloseable {
                     : m.getData().toByteArray();
             c.publish(m.getTopic(), payload, m.getRetained(), 0);
             published++;
+            if (state.verbose()) state.emitLog("[mqtt] ↑ " + m.getTopic() + " (" + payload.length + " B" + (m.getRetained() ? ", retained" : "") + ")");
             status.accept(String.format("Running  ·  published %d  received %d  ·  last ↑ %s", published, received, m.getTopic()));
         } catch (IOException e) {
             state.emitLog("[mqtt] publish failed: " + e.getMessage());
@@ -94,6 +95,7 @@ public class MqttProxy implements AutoCloseable {
             client.sendMqttProxy(MqttClientProxyMessage.newBuilder()
                     .setTopic(topic).setData(ByteString.copyFrom(payload)).setRetained(retained).build());
             received++;
+            if (state.verbose()) state.emitLog("[mqtt] ↓ " + topic + " (" + payload.length + " B)");
             status.accept(String.format("Running  ·  published %d  received %d  ·  last ↓ %s", published, received, topic));
         } catch (IOException e) {
             state.emitLog("[mqtt] could not forward to radio: " + e.getMessage());

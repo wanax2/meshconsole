@@ -8,8 +8,11 @@ import org.meshtastic.proto.MeshProtos.*;
 import org.meshtastic.proto.ModuleConfigProtos.ModuleConfig;
 import org.meshtastic.proto.Portnums.PortNum;
 import org.meshtastic.proto.TelemetryProtos.DeviceMetrics;
+import org.meshtastic.proto.TelemetryProtos.EnvironmentMetrics;
 import org.meshtastic.proto.TelemetryProtos.LocalStats;
+import org.meshtastic.proto.TelemetryProtos.PowerMetrics;
 import org.meshtastic.proto.TelemetryProtos.Telemetry;
+import org.meshtastic.proto.StoreAndForwardProtos.StoreAndForward;
 
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -29,12 +32,18 @@ public class MeshState {
         default void onConfigChanged() { }
         default void onMqttProxyMessage(MqttClientProxyMessage m) { }
         default void onAdminResponse(AdminMessage m) { }
+        default void onRemoteAdminResponse(int from, AdminMessage m) { }
+        default void onWaypointsChanged() { }
+        default void onTelemetryChanged() { }
     }
 
     private final Object lock = new Object();
     private final Map<Integer, NodeEntry> nodes = new HashMap<>();
     private final List<ChatMessage> messages = new ArrayList<>();
     private final Deque<SignalSample> signal = new ArrayDeque<>();
+    private final Deque<CoverageSample> coverage = new ArrayDeque<>();
+    private final Deque<UtilSample> util = new ArrayDeque<>();
+    private final Map<Integer, WaypointEntry> waypoints = new LinkedHashMap<>();
     private final List<Channel> channels = new ArrayList<>();
     private final Map<Config.PayloadVariantCase, Config> configs = new EnumMap<>(Config.PayloadVariantCase.class);
     private final Map<ModuleConfig.PayloadVariantCase, ModuleConfig> moduleConfigs = new EnumMap<>(ModuleConfig.PayloadVariantCase.class);
@@ -42,6 +51,7 @@ public class MeshState {
     private long sessionPasskeyTime;
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private final MessageLog log;
+    private volatile boolean verbose;
 
     private int myNodeNum;
     private boolean configComplete;
@@ -56,6 +66,9 @@ public class MeshState {
         this.log = log;
         for (ChatMessage m : log.load()) messages.add(m);
     }
+
+    public void setVerbose(boolean v) { verbose = v; }
+    public boolean verbose() { return verbose; }
 
     public void addListener(Listener l) { listeners.add(l); }
     public void removeListener(Listener l) { listeners.remove(l); }
@@ -141,6 +154,15 @@ public class MeshState {
     public List<ChatMessage> messages() { synchronized (lock) { return new ArrayList<>(messages); } }
 
     public List<SignalSample> signalHistory() { synchronized (lock) { return new ArrayList<>(signal); } }
+    public List<CoverageSample> coverage() { synchronized (lock) { return new ArrayList<>(coverage); } }
+    public List<UtilSample> utilHistory() { synchronized (lock) { return new ArrayList<>(util); } }
+    public List<WaypointEntry> waypoints() { synchronized (lock) { return new ArrayList<>(waypoints.values()); } }
+    public void clearCoverage() { synchronized (lock) { coverage.clear(); } }
+
+    public void putWaypoint(WaypointEntry w) {
+        synchronized (lock) { waypoints.put(w.id, w); }
+        fire(Listener::onWaypointsChanged);
+    }
 
     public void resetForConnect() {
         synchronized (lock) {
@@ -155,6 +177,8 @@ public class MeshState {
             queueFree = -1;
             encryptedSeen = 0;
             signal.clear();
+            util.clear();
+            waypoints.clear();
         }
         fire(Listener::onNodesChanged);
         fire(Listener::onStatusChanged);
@@ -175,6 +199,18 @@ public class MeshState {
     // ---- incoming ---------------------------------------------------------
 
     public void handle(FromRadio fr) {
+        if (verbose) {
+            switch (fr.getPayloadVariantCase()) {
+                case PACKET -> { }   // logged in handlePacket with decoded detail
+                case NODE_INFO -> emitLog("[rx] node_info " + String.format("!%08x", fr.getNodeInfo().getNum()) + " " + fr.getNodeInfo().getUser().getLongName());
+                case CONFIG -> emitLog("[rx] config " + fr.getConfig().getPayloadVariantCase());
+                case MODULECONFIG -> emitLog("[rx] module_config " + fr.getModuleConfig().getPayloadVariantCase());
+                case CHANNEL -> emitLog("[rx] channel " + fr.getChannel().getIndex() + " " + fr.getChannel().getRole() + " '" + fr.getChannel().getSettings().getName() + "'");
+                case MQTTCLIENTPROXYMESSAGE -> emitLog("[rx] mqtt_proxy → broker " + fr.getMqttClientProxyMessage().getTopic());
+                case LOG_RECORD -> { }
+                default -> emitLog("[rx] " + fr.getPayloadVariantCase().name().toLowerCase() + " (" + fr.getSerializedSize() + " B)");
+            }
+        }
         switch (fr.getPayloadVariantCase()) {
             case MY_INFO -> {
                 synchronized (lock) { myNodeNum = fr.getMyInfo().getMyNodeNum(); }
@@ -222,6 +258,8 @@ public class MeshState {
             if (ni.getLastHeard() != 0) n.lastHeard = Integer.toUnsignedLong(ni.getLastHeard());
             if (ni.hasHopsAway()) n.hopsAway = ni.getHopsAway();
             n.viaMqtt = ni.getViaMqtt();
+            n.isFavorite = ni.getIsFavorite();
+            n.isIgnored = ni.getIsIgnored();
             if (ni.hasDeviceMetrics()) applyMetrics(n, ni.getDeviceMetrics());
         }
     }
@@ -231,6 +269,9 @@ public class MeshState {
         n.shortName = u.getShortName();
         n.hwModel = u.getHwModel().name();
         if (!u.getPublicKey().isEmpty()) n.publicKey = u.getPublicKey().toByteArray();
+        n.role = u.getRole().name();
+        n.isLicensed = u.getIsLicensed();
+        n.isUnmessagable = u.hasIsUnmessagable() && u.getIsUnmessagable();
     }
 
     private static void applyPosition(NodeEntry n, Position p) {
@@ -239,6 +280,12 @@ public class MeshState {
             n.lon = p.getLongitudeI() * 1e-7;
             n.altitude = p.getAltitude();
             n.hasPosition = true;
+            n.positionTime = p.getTime() != 0 ? Integer.toUnsignedLong(p.getTime()) * 1000L : System.currentTimeMillis();
+            if (p.hasGroundSpeed()) n.groundSpeed = p.getGroundSpeed();
+            if (p.hasGroundTrack()) n.groundTrack = (int) (p.getGroundTrack() / 100000L);
+            if (p.getSatsInView() != 0) n.satsInView = p.getSatsInView();
+            n.precisionBits = p.getPrecisionBits();
+            n.addTrackPoint(System.currentTimeMillis(), n.lat, n.lon);
         }
     }
 
@@ -247,6 +294,38 @@ public class MeshState {
         if (m.hasVoltage()) n.voltage = m.getVoltage();
         if (m.hasChannelUtilization()) n.channelUtil = m.getChannelUtilization();
         if (m.hasAirUtilTx()) n.airUtilTx = m.getAirUtilTx();
+        if (m.hasUptimeSeconds()) n.uptimeSeconds = m.getUptimeSeconds();
+        n.deviceMetricsTime = System.currentTimeMillis();
+    }
+
+    private static void applyEnvironment(NodeEntry n, EnvironmentMetrics e) {
+        if (e.hasTemperature()) n.temperature = e.getTemperature();
+        if (e.hasRelativeHumidity()) n.humidity = e.getRelativeHumidity();
+        if (e.hasBarometricPressure()) n.pressure = e.getBarometricPressure();
+        if (e.hasIaq()) n.iaq = e.getIaq();
+        if (e.hasLux()) n.lux = e.getLux();
+        if (e.hasWindSpeed()) n.windSpeed = e.getWindSpeed();
+        if (e.hasWindDirection()) n.windDirection = e.getWindDirection();
+        n.envTime = System.currentTimeMillis();
+    }
+
+    private static void applyPower(NodeEntry n, PowerMetrics p) {
+        float[][] v = {
+            {p.hasCh1Voltage() ? p.getCh1Voltage() : Float.NaN, p.hasCh1Current() ? p.getCh1Current() : Float.NaN},
+            {p.hasCh2Voltage() ? p.getCh2Voltage() : Float.NaN, p.hasCh2Current() ? p.getCh2Current() : Float.NaN},
+            {p.hasCh3Voltage() ? p.getCh3Voltage() : Float.NaN, p.hasCh3Current() ? p.getCh3Current() : Float.NaN},
+            {p.hasCh4Voltage() ? p.getCh4Voltage() : Float.NaN, p.hasCh4Current() ? p.getCh4Current() : Float.NaN},
+            {p.hasCh5Voltage() ? p.getCh5Voltage() : Float.NaN, p.hasCh5Current() ? p.getCh5Current() : Float.NaN},
+            {p.hasCh6Voltage() ? p.getCh6Voltage() : Float.NaN, p.hasCh6Current() ? p.getCh6Current() : Float.NaN},
+            {p.hasCh7Voltage() ? p.getCh7Voltage() : Float.NaN, p.hasCh7Current() ? p.getCh7Current() : Float.NaN},
+            {p.hasCh8Voltage() ? p.getCh8Voltage() : Float.NaN, p.hasCh8Current() ? p.getCh8Current() : Float.NaN}};
+        for (int i = 0; i < 8; i++) {
+            if (!Float.isNaN(v[i][0]) || !Float.isNaN(v[i][1])) {
+                n.powerVolts[i] = v[i][0]; n.powerAmps[i] = v[i][1];
+                n.powerChannels = Math.max(n.powerChannels, i + 1);
+            }
+        }
+        n.powerTime = System.currentTimeMillis();
     }
 
     private void handlePacket(MeshPacket p) {
@@ -258,20 +337,36 @@ public class MeshState {
             fromMe = from == myNodeNum;
             n = nodes.computeIfAbsent(from, NodeEntry::new);
             if (!fromMe) {
-                n.lastLocalRx = System.currentTimeMillis();
+                long now = System.currentTimeMillis();
+                n.lastLocalRx = now;
+                if (n.firstSeen == 0) n.firstSeen = now;
                 if (p.hasRxTime() && p.getRxTime() != 0) n.lastHeard = Integer.toUnsignedLong(p.getRxTime());
                 n.packetsSeen++;
-                if (p.getRxSnr() != 0) n.snr = p.getRxSnr();
-                if (p.hasRxRssi() && p.getRxRssi() != 0) n.rssi = p.getRxRssi();
+                if (hops == 0) n.directPackets++;
+                if (p.getRxSnr() != 0) { n.snr = p.getRxSnr(); n.snrSum += p.getRxSnr(); n.snrCount++; }
+                if (p.hasRxRssi() && p.getRxRssi() != 0) { n.rssi = p.getRxRssi(); n.rssiSum += p.getRxRssi(); n.rssiCount++; }
                 if (hops >= 0) n.hopsAway = hops;
                 n.viaMqtt = p.getViaMqtt();
                 if (p.hasRxRssi() && p.getRxRssi() != 0 && !p.getViaMqtt()) {
-                    signal.addLast(new SignalSample(System.currentTimeMillis(), from, p.getRxRssi(), p.getRxSnr(), hops));
+                    signal.addLast(new SignalSample(now, from, p.getRxRssi(), p.getRxSnr(), hops));
                     while (signal.size() > SIGNAL_HISTORY) signal.removeFirst();
+                    NodeEntry me = nodes.get(myNodeNum);
+                    if (me != null && me.hasPosition) {
+                        coverage.addLast(new CoverageSample(now, me.lat, me.lon, from, p.getRxRssi(), p.getRxSnr()));
+                        while (coverage.size() > 20000) coverage.removeFirst();
+                    }
                 }
             }
         }
         if (!fromMe) fire(Listener::onNodesChanged);
+        if (verbose) {
+            String port = p.hasDecoded() ? p.getDecoded().getPortnum().name() : "ENCRYPTED(" + p.getEncrypted().size() + " B)";
+            emitLog(String.format("[rx] packet id=%08x %s → %s ch=%d %s%s hops=%s rssi=%d snr=%.2f%s%s",
+                    p.getId(), nodeName(from), nodeName(p.getTo()), p.getChannel(), port,
+                    p.hasDecoded() && p.getDecoded().getRequestId() != 0 ? String.format(" reply_to=%08x", p.getDecoded().getRequestId()) : "",
+                    hops < 0 ? "?" : String.valueOf(hops), p.hasRxRssi() ? p.getRxRssi() : 0, p.getRxSnr(),
+                    p.getViaMqtt() ? " via_mqtt" : "", p.getWantAck() ? " want_ack" : ""));
+        }
 
         if (p.getPayloadVariantCase() == MeshPacket.PayloadVariantCase.ENCRYPTED) {
             synchronized (lock) { encryptedSeen++; }
@@ -295,6 +390,8 @@ public class MeshState {
                     m.rssi = p.hasRxRssi() ? p.getRxRssi() : 0;
                     m.snr = p.getRxSnr();
                     m.hops = hops;
+                    m.replyId = d.getReplyId();
+                    m.emoji = d.getEmoji() != 0;
                     synchronized (lock) { messages.add(m); }
                     log.append(m);
                     fire(l -> l.onMessage(m, true));
@@ -312,8 +409,23 @@ public class MeshState {
                 case TELEMETRY_APP -> {
                     Telemetry t = Telemetry.parseFrom(d.getPayload());
                     if (t.hasDeviceMetrics()) {
-                        synchronized (lock) { applyMetrics(n, t.getDeviceMetrics()); }
+                        synchronized (lock) {
+                            applyMetrics(n, t.getDeviceMetrics());
+                            if (fromMe) {
+                                util.addLast(new UtilSample(System.currentTimeMillis(), n.channelUtil, n.airUtilTx, queueFree));
+                                while (util.size() > 2000) util.removeFirst();
+                            }
+                        }
                         fire(Listener::onNodesChanged);
+                        fire(Listener::onTelemetryChanged);
+                    }
+                    if (t.hasEnvironmentMetrics()) {
+                        synchronized (lock) { applyEnvironment(n, t.getEnvironmentMetrics()); }
+                        fire(Listener::onTelemetryChanged);
+                    }
+                    if (t.hasPowerMetrics()) {
+                        synchronized (lock) { applyPower(n, t.getPowerMetrics()); }
+                        fire(Listener::onTelemetryChanged);
                     }
                     if (t.hasLocalStats() && fromMe) {
                         synchronized (lock) { localStats = t.getLocalStats(); }
@@ -321,15 +433,54 @@ public class MeshState {
                     }
                 }
                 case ROUTING_APP -> handleRouting(from, d);
-                case ADMIN_APP -> handleAdmin(d);
+                case ADMIN_APP -> handleAdmin(from, fromMe, d);
+                case WAYPOINT_APP -> {
+                    Waypoint w = Waypoint.parseFrom(d.getPayload());
+                    if (w.hasLatitudeI() && w.hasLongitudeI()) {
+                        WaypointEntry e = new WaypointEntry();
+                        e.id = w.getId(); e.lat = w.getLatitudeI() * 1e-7; e.lon = w.getLongitudeI() * 1e-7;
+                        e.name = w.getName(); e.description = w.getDescription(); e.expire = w.getExpire();
+                        e.lockedTo = w.getLockedTo(); e.from = from; e.received = System.currentTimeMillis();
+                        putWaypoint(e);
+                        emitLog("Waypoint '" + e.name + "' from " + nodeName(from));
+                    }
+                }
+                case STORE_FORWARD_APP -> {
+                    StoreAndForward sf = StoreAndForward.parseFrom(d.getPayload());
+                    switch (sf.getRr()) {
+                        case ROUTER_TEXT_DIRECT, ROUTER_TEXT_BROADCAST -> {
+                            ChatMessage m = new ChatMessage();
+                            m.time = System.currentTimeMillis(); m.from = from; m.to = p.getTo(); m.channel = p.getChannel();
+                            m.text = sf.getText().toStringUtf8(); m.packetId = p.getId(); m.status = ChatMessage.Status.RECEIVED;
+                            m.fromStoreForward = true; m.statusDetail = "from store & forward";
+                            synchronized (lock) { messages.add(m); }
+                            log.append(m);
+                            fire(l -> l.onMessage(m, true));
+                        }
+                        case ROUTER_STATS -> emitLog("S&F server " + nodeName(from) + ": " + sf.getStats().getMessagesSaved() + "/" + sf.getStats().getMessagesMax()
+                                + " messages stored, " + sf.getStats().getMessagesTotal() + " total, up " + sf.getStats().getUpTime() / 3600 + " h");
+                        case ROUTER_HISTORY -> emitLog("S&F server " + nodeName(from) + " is sending " + sf.getHistory().getHistoryMessages() + " message(s) from the last " + sf.getHistory().getWindow() + " min");
+                        case ROUTER_BUSY -> emitLog("S&F server " + nodeName(from) + " is busy, try later");
+                        case ROUTER_ERROR -> emitLog("S&F server " + nodeName(from) + " reported an error");
+                        case ROUTER_HEARTBEAT -> { }
+                        default -> emitLog("S&F " + sf.getRr() + " from " + nodeName(from));
+                    }
+                }
                 case TRACEROUTE_APP -> handleTraceroute(p, d);
                 case NEIGHBORINFO_APP -> {
                     NeighborInfo ni = NeighborInfo.parseFrom(d.getPayload());
                     StringBuilder sb = new StringBuilder("Neighbors of " + nodeName(ni.getNodeId()) + ":");
+                    synchronized (lock) {
+                        NodeEntry owner = nodes.computeIfAbsent(ni.getNodeId(), NodeEntry::new);
+                        owner.neighbors.clear();
+                        for (Neighbor nb : ni.getNeighborsList()) owner.neighbors.put(nb.getNodeId(), nb.getSnr());
+                        owner.neighborsTime = System.currentTimeMillis();
+                    }
                     for (Neighbor nb : ni.getNeighborsList()) {
                         sb.append(' ').append(nodeName(nb.getNodeId())).append(String.format(" (%.1f dB)", nb.getSnr()));
                     }
                     emitLog(sb.toString());
+                    fire(Listener::onNodesChanged);
                 }
                 default -> { }
             }
@@ -368,17 +519,37 @@ public class MeshState {
             } else {
                 target.status = ChatMessage.Status.DELIVERED;
                 target.statusDetail = "delivered to " + nodeName(from);
+                target.ackTime = System.currentTimeMillis();
             }
         } else {
             target.status = ChatMessage.Status.FAILED;
+            target.ackTime = System.currentTimeMillis();
             target.statusDetail = err.name() + (fromMe ? "" : " (from " + nodeName(from) + ")");
         }
         log.append(target);
         updateMessage(target);
     }
 
-    private void handleAdmin(Data d) throws InvalidProtocolBufferException {
+    private void handleAdmin(int from, boolean fromMe, Data d) throws InvalidProtocolBufferException {
         AdminMessage a = AdminMessage.parseFrom(d.getPayload());
+        if (verbose) emitLog("[rx] admin " + a.getPayloadVariantCase() + (a.getSessionPasskey().isEmpty() ? "" : " (+session key)") + (fromMe ? "" : " from " + nodeName(from)));
+        if (!fromMe) {
+            // a remote node answering our request: never mix into our own config
+            switch (a.getPayloadVariantCase()) {
+                case GET_DEVICE_METADATA_RESPONSE -> {
+                    DeviceMetadata md = a.getGetDeviceMetadataResponse();
+                    emitLog("Remote " + nodeName(from) + ": firmware " + md.getFirmwareVersion() + ", " + md.getHwModel()
+                            + (md.getHasWifi() ? ", wifi" : "") + (md.getHasBluetooth() ? ", bluetooth" : "") + (md.getHasEthernet() ? ", ethernet" : "")
+                            + ", role " + md.getRole());
+                }
+                case GET_CONFIG_RESPONSE -> emitLog("Remote " + nodeName(from) + " config: "
+                        + com.google.protobuf.TextFormat.printer().emittingSingleLine(true).printToString(a.getGetConfigResponse()));
+                case GET_OWNER_RESPONSE -> emitLog("Remote " + nodeName(from) + " owner: " + a.getGetOwnerResponse().getLongName() + " / " + a.getGetOwnerResponse().getShortName());
+                default -> emitLog("Remote " + nodeName(from) + " admin " + a.getPayloadVariantCase());
+            }
+            fire(l -> l.onRemoteAdminResponse(from, a));
+            return;
+        }
         if (!a.getSessionPasskey().isEmpty()) {
             synchronized (lock) {
                 sessionPasskey = a.getSessionPasskey();

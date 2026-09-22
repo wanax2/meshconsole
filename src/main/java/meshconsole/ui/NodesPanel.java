@@ -22,7 +22,8 @@ class NodesPanel extends JPanel {
     private IntConsumer onMessageNode = n -> { };
     private IntConsumer onShowOnMap = n -> { };
 
-    private static final String[] COLS = {"Name", "Short", "ID", "Last heard", "Hops", "SNR", "RSSI", "Battery", "Distance", "Position", "Hardware", "Pkts"};
+    private static final String[] COLS = {"Name", "Short", "ID", "Last heard", "Hops", "SNR", "RSSI", "Battery", "Distance", "Position", "Hardware",
+            "Role", "Flags", "Pkts", "Direct %", "Avg RSSI", "Avg SNR", "First seen", "Neighbours"};
 
     private class Model extends AbstractTableModel {
         List<NodeEntry> rows = new ArrayList<>();
@@ -46,7 +47,14 @@ class NodesPanel extends JPanel {
                         ? Fmt.distance(Fmt.distanceM(me.lat, me.lon, n.lat, n.lon)) : "";
                 case 9 -> n.hasPosition ? String.format("%.4f, %.4f", n.lat, n.lon) : "";
                 case 10 -> n.hwModel;
-                case 11 -> isMe ? "" : String.valueOf(n.packetsSeen);
+                case 11 -> n.role.isEmpty() || n.role.equals("CLIENT") ? (n.role.isEmpty() ? "" : "client") : n.role.toLowerCase();
+                case 12 -> (n.isFavorite ? "★" : "") + (n.isLicensed ? " ham" : "") + (n.isUnmessagable ? " no-msg" : "") + (n.viaMqtt ? " mqtt" : "") + (n.isIgnored ? " ignored" : "");
+                case 13 -> isMe ? "" : String.valueOf(n.packetsSeen);
+                case 14 -> isMe || n.directPercent() < 0 ? "" : n.directPercent() + "%";
+                case 15 -> isMe || n.rssiCount == 0 ? "" : String.format("%.0f dBm", n.avgRssi());
+                case 16 -> isMe || n.snrCount == 0 ? "" : String.format("%.1f dB", n.avgSnr());
+                case 17 -> n.firstSeen == 0 ? "" : Fmt.ago(n.firstSeen) + " ago";
+                case 18 -> n.neighbors.isEmpty() ? "" : String.valueOf(n.neighbors.size());
                 default -> "";
             };
         }
@@ -59,7 +67,8 @@ class NodesPanel extends JPanel {
 
         table.setFillsViewportHeight(true);
         table.setRowHeight(20);
-        int[] widths = {160, 50, 90, 90, 50, 70, 70, 60, 80, 150, 140, 40};
+        int[] widths = {150, 45, 85, 80, 45, 60, 65, 55, 70, 140, 120, 60, 80, 40, 60, 70, 60, 80, 60};
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         table.getColumnModel().getColumn(3).setCellRenderer(new DefaultTableCellRenderer() {
             @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
@@ -71,7 +80,8 @@ class NodesPanel extends JPanel {
                 return c;
             }
         });
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        JScrollPane tableScroll = new JScrollPane(table, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        add(tableScroll, BorderLayout.CENTER);
 
         JPanel south = new JPanel(new BorderLayout(4, 4));
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
@@ -79,7 +89,13 @@ class NodesPanel extends JPanel {
         JButton tr = new JButton("Traceroute");
         JButton pos = new JButton("Request position");
         JButton map = new JButton("Show on map");
-        buttons.add(dm); buttons.add(tr); buttons.add(pos); buttons.add(map);
+        JButton info = new JButton("Request node info");
+        JButton remote = new JButton("Remote info (admin)");
+        JButton sf = new JButton("S&F history…");
+        info.setToolTipText("Ask the node to resend its name, hardware, role and key");
+        remote.setToolTipText("Ask the node for its firmware/metadata and LoRa config – only answered if it trusts this node (admin key)");
+        sf.setToolTipText("Ask a store-and-forward server node to replay recent messages you missed");
+        buttons.add(dm); buttons.add(tr); buttons.add(pos); buttons.add(map); buttons.add(info); buttons.add(remote); buttons.add(sf);
         south.add(buttons, BorderLayout.NORTH);
         results.setEditable(false);
         results.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -97,6 +113,19 @@ class NodesPanel extends JPanel {
         pos.addActionListener(e -> withSelected(n -> {
             try { client.requestPosition(n.num); } catch (IOException ex) { error(ex); }
         }));
+        info.addActionListener(e -> withSelected(n -> {
+            try { client.requestNodeInfo(n.num); } catch (IOException ex) { error(ex); }
+        }));
+        remote.addActionListener(e -> withSelected(n -> {
+            try { client.requestRemoteInfo(n.num); } catch (IOException ex) { error(ex); }
+        }));
+        sf.addActionListener(e -> withSelected(n -> {
+            String w = JOptionPane.showInputDialog(this, "Replay messages from the last how many minutes?", "240");
+            if (w == null) return;
+            try { client.requestStoreForwardHistory(n.num, Integer.parseInt(w.trim())); }
+            catch (NumberFormatException ex) { error(new IOException("Enter a number of minutes")); }
+            catch (IOException ex) { error(ex); }
+        }));
 
         state.addListener(new MeshState.Listener() {
             @Override public void onNodesChanged() { SwingUtilities.invokeLater(NodesPanel.this::reload); }
@@ -104,7 +133,7 @@ class NodesPanel extends JPanel {
                 SwingUtilities.invokeLater(() -> results.append(Fmt.time(System.currentTimeMillis()) + "  " + summary + "\n"));
             }
             @Override public void onLog(String line) {
-                if (line.startsWith("Neighbors of"))
+                if (line.startsWith("Neighbors of") || line.startsWith("Remote ") || line.startsWith("S&F "))
                     SwingUtilities.invokeLater(() -> results.append(Fmt.time(System.currentTimeMillis()) + "  " + line + "\n"));
             }
         });

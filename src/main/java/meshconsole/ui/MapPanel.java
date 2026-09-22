@@ -1,7 +1,10 @@
 package meshconsole.ui;
 
+import meshconsole.mesh.CoverageSample;
+import meshconsole.mesh.MeshClient;
 import meshconsole.mesh.MeshState;
 import meshconsole.mesh.NodeEntry;
+import meshconsole.mesh.WaypointEntry;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -26,8 +29,13 @@ import java.util.concurrent.Executors;
 class MapPanel extends JPanel {
     private static final int TILE = 256;
     private final MeshState state;
+    private MeshClient client;
     private final MapView view = new MapView();
-    private final JCheckBox showLinks = new JCheckBox("Lines to direct neighbours", true);
+    private final JCheckBox showLinks = new JCheckBox("My direct links", true);
+    private final JCheckBox showNeighbors = new JCheckBox("Neighbour graph", true);
+    private final JCheckBox showTracks = new JCheckBox("Tracks", true);
+    private final JCheckBox showWaypoints = new JCheckBox("Waypoints", true);
+    private final JCheckBox showCoverage = new JCheckBox("Coverage", false);
     private final JCheckBox showNames = new JCheckBox("Names", true);
     private final JLabel status = new JLabel(" ");
 
@@ -37,10 +45,18 @@ class MapPanel extends JPanel {
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         JButton me = new JButton("Center on me");
         JButton fit = new JButton("Fit all nodes");
-        top.add(me); top.add(fit); top.add(showLinks); top.add(showNames); top.add(status);
+        top.add(me); top.add(fit); top.add(showLinks); top.add(showNeighbors); top.add(showTracks); top.add(showWaypoints); top.add(showCoverage); top.add(showNames);
+        JButton clearCov = new JButton("Clear coverage");
+        clearCov.addActionListener(e -> { state.clearCoverage(); view.repaint(); });
+        top.add(clearCov);
+        top.add(status);
+        showNeighbors.setToolTipText("Links reported by nodes running the Neighbor Info module (who hears whom), labelled with SNR");
+        showTracks.setToolTipText("Position history of moving nodes");
+        showCoverage.setToolTipText("Where this radio was when it heard packets, coloured by RSSI – a drive-test map (needs a GPS position on this node)");
+        for (JCheckBox c : new JCheckBox[]{showNeighbors, showTracks, showWaypoints, showCoverage}) c.addActionListener(e -> view.repaint());
         add(top, BorderLayout.NORTH);
         add(view, BorderLayout.CENTER);
-        JLabel credit = new JLabel("  Map data © OpenStreetMap contributors  ·  drag to pan, wheel to zoom, click a marker for details");
+        JLabel credit = new JLabel("  Map data © OpenStreetMap contributors  ·  drag to pan, wheel to zoom, click a marker for details, right-click to add a waypoint");
         credit.setFont(credit.getFont().deriveFont(10f));
         add(credit, BorderLayout.SOUTH);
 
@@ -51,7 +67,27 @@ class MapPanel extends JPanel {
 
         state.addListener(new MeshState.Listener() {
             @Override public void onNodesChanged() { SwingUtilities.invokeLater(() -> { view.autoCenterOnce(); view.repaint(); }); }
+            @Override public void onWaypointsChanged() { SwingUtilities.invokeLater(view::repaint); }
         });
+    }
+
+    void setClient(MeshClient c) { client = c; }
+
+    private void addWaypointAt(double lat, double lon) {
+        if (client == null || !client.isConnected()) { status.setText("Connect to a radio to send waypoints"); return; }
+        JTextField name = new JTextField(20), desc = new JTextField(20);
+        JComboBox<String> expire = new JComboBox<>(new String[]{"Never", "1 hour", "1 day", "1 week"});
+        JPanel form = new JPanel(new GridLayout(0, 2, 4, 4));
+        form.add(new JLabel("Name:")); form.add(name);
+        form.add(new JLabel("Description:")); form.add(desc);
+        form.add(new JLabel("Expires:")); form.add(expire);
+        form.add(new JLabel("Position:")); form.add(new JLabel(String.format("%.5f, %.5f", lat, lon)));
+        if (JOptionPane.showConfirmDialog(this, form, "New waypoint", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        if (name.getText().isBlank()) return;
+        long[] secs = {0, 3600, 86400, 7 * 86400};
+        long exp = secs[expire.getSelectedIndex()] == 0 ? 0 : System.currentTimeMillis() / 1000 + secs[expire.getSelectedIndex()];
+        try { client.sendWaypoint(name.getText().trim(), desc.getText().trim(), lat, lon, exp); }
+        catch (java.io.IOException e) { status.setText("Waypoint failed: " + e.getMessage()); }
     }
 
     void centerOnMe() {
@@ -130,6 +166,14 @@ class MapPanel extends JPanel {
         return null;
     }
 
+    static Color rssiColor(int rssi, int alpha) {
+        // -60 strong (green) … -95 (yellow) … -130 weak (red)
+        double t = Math.max(0, Math.min(1, (rssi + 130) / 70.0));
+        int r = (int) (255 * (1 - Math.max(0, t - 0.5) * 2));
+        int gg = (int) (255 * Math.min(1, t * 2));
+        return new Color(r, gg, 40, alpha);
+    }
+
     // ---- projection ---------------------------------------------------------
 
     static double lonToX(double lon, int z) { return (lon + 180) / 360 * (1 << z) * TILE; }
@@ -166,6 +210,21 @@ class MapPanel extends JPanel {
                     repaint();
                 }
                 @Override public void mouseClicked(MouseEvent e) {
+                    if (SwingUtilities.isRightMouseButton(e)) {
+                        double lat = yToLat(latToY(centerLat, zoom) + e.getY() - getHeight() / 2.0, zoom);
+                        double lon = xToLon(lonToX(centerLon, zoom) + e.getX() - getWidth() / 2.0, zoom);
+                        addWaypointAt(lat, lon);
+                        return;
+                    }
+                    for (WaypointEntry wp : state.waypoints()) {
+                        Point p = toScreen(wp.lat, wp.lon);
+                        if (p.distance(e.getPoint()) < 10) {
+                            status.setText("Waypoint '" + wp.name + "'" + (wp.description.isEmpty() ? "" : " – " + wp.description) + "  from " + state.nodeName(wp.from)
+                                    + (wp.expire == 0 ? "" : "  expires " + Fmt.time(wp.expire * 1000)));
+                            repaint();
+                            return;
+                        }
+                    }
                     NodeEntry hit = null;
                     for (NodeEntry n : state.nodes()) {
                         if (!n.hasPosition) continue;
@@ -253,6 +312,50 @@ class MapPanel extends JPanel {
             List<NodeEntry> nodes = state.nodes();
             NodeEntry me = state.myNode();
             Point mePt = (me != null && me.hasPosition) ? toScreen(me.lat, me.lon) : null;
+            long now = System.currentTimeMillis();
+
+            // coverage dots (under everything else)
+            if (showCoverage.isSelected()) {
+                for (CoverageSample c : state.coverage()) {
+                    Point p = toScreen(c.lat(), c.lon());
+                    if (p.x < -5 || p.y < -5 || p.x > w + 5 || p.y > h + 5) continue;
+                    g.setColor(rssiColor(c.rssi(), 150));
+                    g.fillOval(p.x - 5, p.y - 5, 10, 10);
+                }
+            }
+            // tracks
+            if (showTracks.isSelected()) {
+                g.setStroke(new BasicStroke(2f));
+                for (NodeEntry n : nodes) {
+                    if (n.track.size() < 2) continue;
+                    boolean isMe = me != null && n.num == me.num;
+                    g.setColor(isMe ? new Color(30, 100, 220, 150) : new Color(120, 60, 180, 130));
+                    Point prev = null;
+                    for (double[] t : n.track) {
+                        Point p = toScreen(t[1], t[2]);
+                        if (prev != null) g.drawLine(prev.x, prev.y, p.x, p.y);
+                        prev = p;
+                    }
+                }
+            }
+            // neighbour graph
+            if (showNeighbors.isSelected()) {
+                g.setStroke(new BasicStroke(1.2f));
+                g.setFont(g.getFont().deriveFont(9f));
+                for (NodeEntry n : nodes) {
+                    if (!n.hasPosition || n.neighbors.isEmpty()) continue;
+                    Point a = toScreen(n.lat, n.lon);
+                    for (Map.Entry<Integer, Float> e : n.neighbors.entrySet()) {
+                        NodeEntry o = state.node(e.getKey());
+                        if (o == null || !o.hasPosition) continue;
+                        Point b = toScreen(o.lat, o.lon);
+                        g.setColor(new Color(60, 160, 90, 140));
+                        g.drawLine(a.x, a.y, b.x, b.y);
+                        g.setColor(new Color(20, 90, 40));
+                        g.drawString(String.format("%.0f", e.getValue()), (a.x + b.x) / 2 + 3, (a.y + b.y) / 2 - 2);
+                    }
+                }
+            }
 
             if (showLinks.isSelected() && mePt != null) {
                 g.setColor(new Color(40, 90, 200, 110));
@@ -263,7 +366,27 @@ class MapPanel extends JPanel {
                     g.drawLine(mePt.x, mePt.y, p.x, p.y);
                 }
             }
-            long now = System.currentTimeMillis();
+            // waypoints
+            if (showWaypoints.isSelected()) {
+                g.setFont(g.getFont().deriveFont(Font.BOLD, 11f));
+                for (WaypointEntry wp : state.waypoints()) {
+                    if (wp.expire != 0 && wp.expire * 1000 < now) continue;
+                    Point p = toScreen(wp.lat, wp.lon);
+                    if (p.x < -50 || p.y < -50 || p.x > w + 50 || p.y > h + 50) continue;
+                    int[] xs = {p.x, p.x + 8, p.x, p.x - 8}, ys = {p.y - 10, p.y, p.y + 10, p.y};
+                    g.setColor(new Color(200, 60, 160));
+                    g.fillPolygon(xs, ys, 4);
+                    g.setColor(Color.WHITE);
+                    g.drawPolygon(xs, ys, 4);
+                    if (showNames.isSelected()) {
+                        int lw = g.getFontMetrics().stringWidth(wp.name);
+                        g.setColor(new Color(255, 255, 255, 200));
+                        g.fillRoundRect(p.x + 10, p.y - 8, lw + 6, 15, 4, 4);
+                        g.setColor(new Color(120, 20, 90));
+                        g.drawString(wp.name, p.x + 13, p.y + 4);
+                    }
+                }
+            }
             g.setFont(g.getFont().deriveFont(Font.BOLD, 11f));
             for (NodeEntry n : nodes) {
                 if (!n.hasPosition) continue;
@@ -291,7 +414,8 @@ class MapPanel extends JPanel {
             g.setColor(Color.DARK_GRAY);
             g.setFont(g.getFont().deriveFont(Font.PLAIN, 11f));
             long withPos = nodes.stream().filter(n -> n.hasPosition).count();
-            g.drawString("z" + zoom + "   " + withPos + "/" + nodes.size() + " nodes have a position" + (online ? "" : "   (tile download failed – offline?)"), 6, h - 6);
+            String cov = showCoverage.isSelected() ? "   coverage: " + state.coverage().size() + " pts (green strong → red weak)" : "";
+            g.drawString("z" + zoom + "   " + withPos + "/" + nodes.size() + " nodes have a position" + cov + (online ? "" : "   (tile download failed – offline?)"), 6, h - 6);
         }
     }
 }
