@@ -26,7 +26,7 @@ public class NodeDb {
             if (!first) sb.append(",\n");
             first = false;
             sb.append("  {")
-              .append(kv("num", n.num)).append(kv("long", n.longName)).append(kv("short", n.shortName)).append(kv("hw", n.hwModel)).append(kv("role", n.role))
+              .append("\"num\":").append(Integer.toUnsignedString(n.num)).append(',').append(kv("long", n.longName)).append(kv("short", n.shortName)).append(kv("hw", n.hwModel)).append(kv("role", n.role))
               .append(kv("key", n.publicKey.length == 0 ? "" : Base64.getEncoder().encodeToString(n.publicKey)))
               .append(kv("lat", n.hasPosition ? n.lat : null)).append(kv("lon", n.hasPosition ? n.lon : null)).append(kv("alt", n.hasPosition ? n.altitude : null))
               .append(kv("lastHeard", n.lastHeardMillis())).append(kv("firstSeen", n.firstSeen)).append(kv("packets", n.packetsSeen)).append(kv("direct", n.directPackets))
@@ -68,12 +68,12 @@ public class NodeDb {
                 if (!"null".equals(m.get("lat")) && m.containsKey("lat")) { n.lat = Double.parseDouble(m.get("lat")); n.lon = Double.parseDouble(m.get("lon")); n.altitude = (int) Double.parseDouble(m.getOrDefault("alt", "0")); n.hasPosition = true; }
                 n.lastLocalRx = Long.parseLong(m.getOrDefault("lastHeard", "0"));
                 n.firstSeen = Long.parseLong(m.getOrDefault("firstSeen", "0"));
-                n.packetsSeen = Integer.parseInt(m.getOrDefault("packets", "0"));
-                n.directPackets = Integer.parseInt(m.getOrDefault("direct", "0"));
+                n.packetsSeen = (int) Long.parseLong(m.getOrDefault("packets", "0"));
+                n.directPackets = (int) Long.parseLong(m.getOrDefault("direct", "0"));
                 n.rssiSum = Long.parseLong(m.getOrDefault("rssiSum", "0")); n.rssiCount = Integer.parseInt(m.getOrDefault("rssiCount", "0"));
                 n.snrSum = Double.parseDouble(m.getOrDefault("snrSum", "0")); n.snrCount = Integer.parseInt(m.getOrDefault("snrCount", "0"));
-                n.hopsAway = Integer.parseInt(m.getOrDefault("hops", "-1"));
-                n.battery = Integer.parseInt(m.getOrDefault("battery", "-1"));
+                n.hopsAway = (int) Long.parseLong(m.getOrDefault("hops", "-1"));      // older files wrote -1 as 4294967295
+                n.battery = (int) Long.parseLong(m.getOrDefault("battery", "-1"));
                 n.isFavorite = Boolean.parseBoolean(m.getOrDefault("favorite", "false"));
                 n.isLicensed = Boolean.parseBoolean(m.getOrDefault("licensed", "false"));
                 n.sessionsSeen = Integer.parseInt(m.getOrDefault("sessions", "0"));
@@ -90,7 +90,6 @@ public class NodeDb {
         String val;
         if (v == null) val = "null";
         else if (v instanceof String s) val = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-        else if (v instanceof Integer i) val = Integer.toUnsignedString(i);
         else val = String.valueOf(v);
         return "\"" + k + "\":" + val + ",";
     }
