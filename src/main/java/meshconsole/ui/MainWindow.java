@@ -27,6 +27,8 @@ public class MainWindow extends JFrame {
     private final MapPanel mapPanel;
     private final SwrPanel swrPanel;
     private final SettingsPanel settingsPanel;
+    private final TelemetryPanel telemetryPanel;
+    private final StatsPanel statsPanel;
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
@@ -85,10 +87,15 @@ public class MainWindow extends JFrame {
         mapPanel = new MapPanel(state);
         swrPanel = new SwrPanel(state);
         settingsPanel = new SettingsPanel(client);
+        telemetryPanel = new TelemetryPanel(state);
+        statsPanel = new StatsPanel(state);
+        mapPanel.setClient(client);
         tabs.addTab("Status & signal", statusPanel);
         tabs.addTab("Messages", messagesPanel);
         tabs.addTab("Nodes", nodesPanel);
         tabs.addTab("Map", mapPanel);
+        tabs.addTab("Telemetry", telemetryPanel);
+        tabs.addTab("Stats & export", statsPanel);
         tabs.addTab("Antenna SWR", swrPanel);
         tabs.addTab("Settings & MQTT", settingsPanel);
         add(tabs, BorderLayout.CENTER);

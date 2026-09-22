@@ -3,6 +3,7 @@ package meshconsole.ui;
 import meshconsole.mesh.MeshState;
 import meshconsole.mesh.NodeEntry;
 import meshconsole.mesh.SignalSample;
+import meshconsole.mesh.UtilSample;
 import org.meshtastic.proto.ChannelProtos.Channel;
 import org.meshtastic.proto.ConfigProtos.Config;
 import org.meshtastic.proto.TelemetryProtos.LocalStats;
@@ -16,6 +17,7 @@ class StatusPanel extends JPanel {
     private final MeshState state;
     private final JTextArea info = new JTextArea(12, 40);
     private final SignalChart chart = new SignalChart();
+    private final UtilChart utilChart = new UtilChart();
     private final JComboBox<NodeChoice> chartNode = new JComboBox<>();
     private final JTextArea log = new JTextArea();
     private final JLabel lastSignal = new JLabel(" ");
@@ -48,8 +50,15 @@ class StatusPanel extends JPanel {
         chartTop.add(lastSignal);
         chartBox.add(chartTop, BorderLayout.NORTH);
         chartBox.add(chart, BorderLayout.CENTER);
+        utilChart.setPreferredSize(new Dimension(500, 110));
+        JPanel utilBox = new JPanel(new BorderLayout());
+        utilBox.setBorder(BorderFactory.createTitledBorder("Channel utilisation (blue) and air-time TX (orange), this radio, %"));
+        utilBox.add(utilChart, BorderLayout.CENTER);
+        JPanel charts = new JPanel(new BorderLayout());
+        charts.add(chartBox, BorderLayout.CENTER);
+        charts.add(utilBox, BorderLayout.SOUTH);
 
-        JSplitPane top = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, infoScroll, chartBox);
+        JSplitPane top = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, infoScroll, charts);
         top.setResizeWeight(0.4);
 
         log.setEditable(false);
@@ -79,6 +88,7 @@ class StatusPanel extends JPanel {
             @Override public void onStatusChanged() { SwingUtilities.invokeLater(StatusPanel.this::refreshInfo); }
             @Override public void onNodesChanged() { SwingUtilities.invokeLater(StatusPanel.this::refreshAll); }
             @Override public void onLog(String line) { SwingUtilities.invokeLater(() -> appendLog(line)); }
+            @Override public void onTelemetryChanged() { SwingUtilities.invokeLater(() -> utilChart.setData(state.utilHistory())); }
         });
     }
 
@@ -178,6 +188,8 @@ class StatusPanel extends JPanel {
                         ls.getNumPacketsRx(), ls.getNumPacketsRxBad(), ls.getNumRxDupe(), ls.getNumPacketsTx(),
                         ls.getNumTxRelay(), ls.getNumOnlineNodes(), ls.getNumTotalNodes()));
                 if (ls.getNoiseFloor() != 0) sb.append("Noise floor:  ").append(ls.getNoiseFloor()).append(" dBm\n");
+                if (ls.getHeapTotalBytes() != 0) sb.append(String.format("Memory:       %d / %d KB free\n", ls.getHeapFreeBytes() / 1024, ls.getHeapTotalBytes() / 1024));
+                if (ls.getNumTxRelayCanceled() != 0) sb.append("Relays cancelled: ").append(ls.getNumTxRelayCanceled()).append('\n');
                 sb.append("Uptime:       ").append(ls.getUptimeSeconds() / 3600).append(" h ").append((ls.getUptimeSeconds() % 3600) / 60).append(" m\n");
             }
             if (state.queueFree() >= 0) sb.append("TX queue:     ").append(state.queueFree()).append(" free slots\n");
@@ -186,5 +198,47 @@ class StatusPanel extends JPanel {
             sb.append(state.configComplete() ? "" : "\n(config still loading…)\n");
         }
         info.setText(sb.toString());
+    }
+}
+
+/** Small strip chart of channel utilisation and air-time TX percentage. */
+class UtilChart extends JComponent {
+    private List<UtilSample> data = List.of();
+
+    void setData(List<UtilSample> d) { data = d; repaint(); }
+
+    @Override
+    protected void paintComponent(Graphics g0) {
+        Graphics2D g = (Graphics2D) g0;
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        int w = getWidth(), h = getHeight();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, w, h);
+        int left = 34, right = w - 10, top = 8, bottom = h - 18;
+        g.setColor(Color.GRAY);
+        g.drawRect(left, top, right - left, bottom - top);
+        g.setFont(g.getFont().deriveFont(10f));
+        for (int v : new int[]{0, 25, 50, 75, 100}) {
+            int y = bottom - (bottom - top) * v / 100;
+            g.setColor(v == 25 ? new Color(230, 160, 120) : new Color(225, 225, 225));
+            g.drawLine(left + 1, y, right - 1, y);
+            g.setColor(Color.DARK_GRAY);
+            g.drawString(String.valueOf(v), 6, y + 4);
+        }
+        if (data.isEmpty()) { g.setColor(Color.DARK_GRAY); g.drawString("Waiting for device telemetry (every few minutes)", left + 6, top + 14); return; }
+        List<UtilSample> pts = data.size() > (right - left) / 3 ? data.subList(data.size() - (right - left) / 3, data.size()) : data;
+        int n = pts.size();
+        int[] xs = new int[n], yc = new int[n], ya = new int[n];
+        for (int i = 0; i < n; i++) {
+            xs[i] = left + (int) ((right - left) * (n == 1 ? 0.5 : (double) i / (n - 1)));
+            yc[i] = bottom - (int) ((bottom - top) * Math.min(100, pts.get(i).channelUtil()) / 100);
+            ya[i] = bottom - (int) ((bottom - top) * Math.min(100, pts.get(i).airUtilTx()) / 100);
+        }
+        g.setStroke(new BasicStroke(1.5f));
+        g.setColor(new Color(40, 90, 200)); g.drawPolyline(xs, yc, n);
+        g.setColor(new Color(220, 120, 20)); g.drawPolyline(xs, ya, n);
+        UtilSample last = pts.get(n - 1);
+        g.setColor(Color.BLACK);
+        g.drawString(String.format("now: util %.1f %%  air-tx %.2f %%   (orange line at 25 %% = congested)", last.channelUtil(), last.airUtilTx()), left + 6, bottom + 13);
     }
 }

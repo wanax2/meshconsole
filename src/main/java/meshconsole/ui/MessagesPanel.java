@@ -45,7 +45,7 @@ class MessagesPanel extends JPanel {
                 case 2 -> state.nodeName(m.from);
                 case 3 -> state.nodeName(m.to);
                 case 4 -> m.channel;
-                case 5 -> m.text;
+                case 5 -> messageText(m);
                 case 6 -> statusText(m);
                 case 7 -> m.rssi == 0 ? "" : m.rssi + " dBm";
                 case 8 -> m.outgoing || (m.rssi == 0 && m.snr == 0) ? "" : String.format("%.1f", m.snr);
@@ -53,6 +53,26 @@ class MessagesPanel extends JPanel {
                 default -> "";
             };
         }
+    }
+
+    private String messageText(ChatMessage m) {
+        String t = m.text;
+        if (m.emoji) {
+            String target = quoted(m.replyId);
+            return t + "  (reaction" + (target.isEmpty() ? "" : " to \u201c" + target + "\u201d") + ")";
+        }
+        if (m.replyId != 0) {
+            String target = quoted(m.replyId);
+            if (!target.isEmpty()) t = "\u21a9 \u201c" + target + "\u201d: " + t;
+        }
+        if (m.fromStoreForward) t = "[S&F] " + t;
+        return t;
+    }
+
+    private String quoted(int packetId) {
+        if (packetId == 0) return "";
+        for (ChatMessage x : model.rows) if (x.packetId == packetId) return x.text.length() > 30 ? x.text.substring(0, 30) + "…" : x.text;
+        return "";
     }
 
     static String statusText(ChatMessage m) {

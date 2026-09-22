@@ -322,6 +322,63 @@ public class MeshClient implements MeshSerial.Listener {
         sender.submit(() -> { try { s.send(ToRadio.newBuilder().setMqttClientProxyMessage(m).build()); } catch (IOException e) { state.emitLog("MQTT forward to radio failed: " + e.getMessage()); } });
     }
 
+    // ---- requests to other nodes ------------------------------------------
+
+    private void sendTo(int to, Data data, boolean wantAck, String logLine) throws IOException {
+        MeshSerial s = requireSerial();
+        MeshPacket pkt = MeshPacket.newBuilder()
+                .setTo(to).setChannel(0).setId(newPacketId())
+                .setWantAck(wantAck).setHopLimit(hopLimit()).setDecoded(data).build();
+        sender.submit(() -> {
+            try { s.send(ToRadio.newBuilder().setPacket(pkt).build()); if (logLine != null) state.emitLog(logLine); }
+            catch (IOException e) { state.emitLog("Send failed: " + e.getMessage()); }
+        });
+    }
+
+    /** Asks a node to (re)send its user info: name, hardware, role, public key. */
+    public void requestNodeInfo(int to) throws IOException {
+        NodeEntry me = state.myNode();
+        User.Builder u = User.newBuilder().setId(String.format("!%08x", state.myNodeNum()));
+        if (me != null) u.setLongName(me.longName).setShortName(me.shortName);
+        Data d = Data.newBuilder().setPortnum(PortNum.NODEINFO_APP).setPayload(u.build().toByteString()).setWantResponse(true).build();
+        sendTo(to, d, true, "Node info request sent to " + state.nodeName(to));
+    }
+
+    /** Asks a remote node for its metadata and LoRa config (it must trust us: admin key or shared admin channel). */
+    public void requestRemoteInfo(int to) throws IOException {
+        for (AdminMessage.Builder b : new AdminMessage.Builder[]{
+                AdminMessage.newBuilder().setGetDeviceMetadataRequest(true),
+                AdminMessage.newBuilder().setGetConfigRequest(AdminMessage.ConfigType.LORA_CONFIG)}) {
+            Data d = Data.newBuilder().setPortnum(PortNum.ADMIN_APP).setPayload(b.build().toByteString()).setWantResponse(true).build();
+            sendTo(to, d, true, null);
+        }
+        state.emitLog("Remote admin request sent to " + state.nodeName(to) + " (answers appear here; needs admin rights on that node)");
+    }
+
+    /** Asks a store-and-forward server node to replay the last windowMinutes of traffic. */
+    public void requestStoreForwardHistory(int server, int windowMinutes) throws IOException {
+        org.meshtastic.proto.StoreAndForwardProtos.StoreAndForward sf = org.meshtastic.proto.StoreAndForwardProtos.StoreAndForward.newBuilder()
+                .setRr(org.meshtastic.proto.StoreAndForwardProtos.StoreAndForward.RequestResponse.CLIENT_HISTORY)
+                .setHistory(org.meshtastic.proto.StoreAndForwardProtos.StoreAndForward.History.newBuilder().setWindow(windowMinutes).setLastRequest(0))
+                .build();
+        Data d = Data.newBuilder().setPortnum(PortNum.STORE_FORWARD_APP).setPayload(sf.toByteString()).setWantResponse(true).build();
+        sendTo(server, d, true, "Store & forward history request (" + windowMinutes + " min) sent to " + state.nodeName(server));
+    }
+
+    /** Broadcasts a waypoint (map marker) to the mesh. */
+    public void sendWaypoint(String name, String description, double lat, double lon, long expireEpochSec) throws IOException {
+        int id = newPacketId() & 0x7FFFFFFF;
+        Waypoint w = Waypoint.newBuilder().setId(id).setName(name).setDescription(description)
+                .setLatitudeI((int) Math.round(lat * 1e7)).setLongitudeI((int) Math.round(lon * 1e7))
+                .setExpire((int) expireEpochSec).build();
+        Data d = Data.newBuilder().setPortnum(PortNum.WAYPOINT_APP).setPayload(w.toByteString()).build();
+        sendTo(ChatMessage.BROADCAST, d, false, "Waypoint '" + name + "' sent");
+        WaypointEntry e = new WaypointEntry();
+        e.id = id; e.lat = lat; e.lon = lon; e.name = name; e.description = description; e.expire = expireEpochSec;
+        e.from = state.myNodeNum(); e.received = System.currentTimeMillis();
+        state.putWaypoint(e);
+    }
+
     private MeshSerial requireSerial() throws IOException {
         MeshSerial s = serial;
         if (s == null) throw new IOException("Not connected");
