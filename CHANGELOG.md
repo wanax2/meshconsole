@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 — 2026-09-22
+
+- Fix: RAK4631 / nRF52 radios never answered in 1.2.0 because DTR was de-asserted on connect (added in 1.1 for ESP32 boards). DTR and RTS are now both asserted, which nRF52 needs and which does not reset ESP32 boards.
+
+
 ## 1.2.0 — 2026-09-22
 
 Capture, analysis, history and alerts:

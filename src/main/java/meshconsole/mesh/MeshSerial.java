@@ -69,10 +69,10 @@ public class MeshSerial implements AutoCloseable {
             throw new IOException("Could not open " + port.getSystemPortName()
                     + " (in use, or missing permission — on Linux add yourself to the dialout group)");
         }
-        // ESP32-based nodes (Station G2, Heltec, T-Beam…) use DTR/RTS as reset/boot lines; leave them
-        // de-asserted so opening the port doesn't hold the board in reset.
-        port.clearDTR();
-        port.clearRTS();
+        // nRF52 boards (RAK4631) only talk once the host asserts DTR (USB-CDC "terminal attached").
+        // ESP32 boards auto-reset only when DTR and RTS differ, so asserting BOTH is safe for all.
+        port.setDTR();
+        port.setRTS();
         in = port.getInputStream();
         out = port.getOutputStream();
         port.addDataListener(new com.fazecast.jSerialComm.SerialPortDataListener() {
