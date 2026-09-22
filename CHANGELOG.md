@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.0 — 2026-09-22
+
+Analysis and weather:
+
+- **Weather tab** — automatic METAR download from NOAA aviationweather.gov (default KDCA, or **Find nearest…** / auto-nearest from the node's position), every 30 min, with 48 h backfill; `weather_history.csv`. Per-node correlation of hourly RSSI with temperature, humidity, wind and pressure (Pearson r) and the wet-vs-dry RSSI difference; scatter plot per node.
+- **Analysis tab** with sub-tabs:
+  - *Link quality* — day-of-week × hour-of-day RSSI heat map per node; link margin (avg SNR minus the modem's demodulation limit) with verdicts.
+  - *Mesh structure* — graph from neighbour reports, traceroutes and direct reception: degree, hops from you, **critical relays** (articulation points), relay share from `relay_node`; node churn chart (active per day, arrivals) and median lifetime.
+  - *Channel health* — utilisation by hour of day (`util_history.csv`, 90 days), per-node air-time budget with the 10 % guideline flagged, duplicate-packet trend.
+  - *Delivery* — success rate by hops, distance and time of day.
+  - *Antenna A/B* — record which antenna is in use (`antenna_log.csv`); compare average RSSI/SNR per antenna on all nodes and on the nodes heard under every antenna.
+  - *Report* — one-click `mesh_report.html` (new/gone nodes, busiest talkers, weakest links, critical relays, utilisation curve, delivery, weather correlation, antenna comparison, recent alerts), opened in the browser.
+- **Coverage grid** map layer: 100 m cells with median RSSI.
+
+
 ## 1.2.1 — 2026-09-22
 
 - Signal history kept for one year (was 7 days): full resolution for 7 days, hourly per-node averages beyond; chart ranges for 30 days and 1 year. ANSI colour codes stripped from firmware log lines.

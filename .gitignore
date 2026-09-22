@@ -13,3 +13,7 @@ meshconsole.log
 sessions.log
 alerts.log
 *.mcap
+weather_history.csv
+util_history.csv
+antenna_log.csv
+mesh_report.html

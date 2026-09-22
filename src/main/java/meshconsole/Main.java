@@ -21,10 +21,12 @@ public class Main {
                 MeshState state = new MeshState(new MessageLog(logFile), new meshconsole.mesh.NodeDb(Path.of("nodes.json")));
                 meshconsole.mesh.SignalHistory history = new meshconsole.mesh.SignalHistory(Path.of("signal_history.csv"));
                 state.setSignalHistory(history);
+                meshconsole.analysis.UtilHistory utilHistory = new meshconsole.analysis.UtilHistory(Path.of("util_history.csv"));
+                state.setUtilHistory(utilHistory);
                 MeshClient client = new MeshClient(state);
                 SwingUtilities.invokeLater(() -> {
                     MainWindow w = new MainWindow(client);
-                    w.setSignalHistory(history);
+                    w.setHistories(history, utilHistory);
                     w.setVisible(true);
                     splash.closeAfter(1500);
                 });

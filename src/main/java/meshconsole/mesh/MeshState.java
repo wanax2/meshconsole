@@ -62,6 +62,19 @@ public class MeshState {
     private long clockDriftMs = Long.MIN_VALUE;
     private SignalHistory signalHistoryFile;
     public void setSignalHistory(SignalHistory h) { signalHistoryFile = h; }
+    private meshconsole.analysis.UtilHistory utilHistoryFile;
+    public void setUtilHistory(meshconsole.analysis.UtilHistory h) { utilHistoryFile = h; }
+    private final Map<Integer, Set<Integer>> edges = new HashMap<>();      // mesh graph (undirected), from neighbours/traceroutes/direct
+    private final Map<Integer, Long> relayCounts = new HashMap<>();         // relay_node low byte → packets relayed
+
+    private void addEdge(int a, int b) {
+        if (a == b || a == 0 || b == 0 || a == 0xFFFFFFFF || b == 0xFFFFFFFF) return;
+        edges.computeIfAbsent(a, k -> new HashSet<>()).add(b);
+        edges.computeIfAbsent(b, k -> new HashSet<>()).add(a);
+    }
+    /** Copy of the mesh adjacency known so far. */
+    public Map<Integer, Set<Integer>> graphEdges() { synchronized (lock) { Map<Integer, Set<Integer>> m = new HashMap<>(); edges.forEach((k, v) -> m.put(k, new HashSet<>(v))); return m; } }
+    public Map<Integer, Long> relayCounts() { synchronized (lock) { return new HashMap<>(relayCounts); } }
     private int lastUptime = -1;
     private final List<Channel> channels = new ArrayList<>();
     private final Map<Config.PayloadVariantCase, Config> configs = new EnumMap<>(Config.PayloadVariantCase.class);
@@ -419,7 +432,8 @@ public class MeshState {
                 n.airtimeMs += Math.round(ms);
                 n.airBytes += airBytes;
             }
-            if (p.getRelayNode() != 0) n.lastRelayNode = p.getRelayNode();
+            if (p.getRelayNode() != 0) { n.lastRelayNode = p.getRelayNode(); relayCounts.merge(p.getRelayNode(), 1L, Long::sum); }
+            if (!fromMe && hops == 0) addEdge(myNodeNum, from);
             if (!fromMe) {
                 long now = System.currentTimeMillis();
                 n.lastLocalRx = now;
@@ -503,8 +517,10 @@ public class MeshState {
                             if (fromMe) {
                                 if (lastUptime > 0 && n.uptimeSeconds >= 0 && n.uptimeSeconds < lastUptime - 60) fire(l -> l.onAlert("REBOOT", "This radio rebooted (uptime reset)"));
                                 if (n.uptimeSeconds >= 0) lastUptime = n.uptimeSeconds;
-                                util.addLast(new UtilSample(System.currentTimeMillis(), n.channelUtil, n.airUtilTx, queueFree));
+                                UtilSample us = new UtilSample(System.currentTimeMillis(), n.channelUtil, n.airUtilTx, queueFree);
+                                util.addLast(us);
                                 while (util.size() > 2000) util.removeFirst();
+                                if (utilHistoryFile != null) utilHistoryFile.addUtil(us);
                             }
                         }
                         fire(Listener::onNodesChanged);
@@ -520,6 +536,7 @@ public class MeshState {
                     }
                     if (t.hasLocalStats() && fromMe) {
                         synchronized (lock) { localStats = t.getLocalStats(); }
+                        if (utilHistoryFile != null) utilHistoryFile.addDupe(t.getLocalStats().getNumPacketsRx(), t.getLocalStats().getNumRxDupe(), t.getLocalStats().getNumOnlineNodes());
                         fire(Listener::onStatusChanged);
                     }
                 }
@@ -591,7 +608,7 @@ public class MeshState {
                     synchronized (lock) {
                         NodeEntry owner = nodes.computeIfAbsent(ni.getNodeId(), NodeEntry::new);
                         owner.neighbors.clear();
-                        for (Neighbor nb : ni.getNeighborsList()) owner.neighbors.put(nb.getNodeId(), nb.getSnr());
+                        for (Neighbor nb : ni.getNeighborsList()) { owner.neighbors.put(nb.getNodeId(), nb.getSnr()); addEdge(ni.getNodeId(), nb.getNodeId()); }
                         owner.neighborsTime = System.currentTimeMillis();
                     }
                     for (Neighbor nb : ni.getNeighborsList()) {
@@ -714,6 +731,11 @@ public class MeshState {
         sb.append(nodeName(p.getTo()));
         List<Integer> route = rd.getRouteList();
         List<Integer> snrs = rd.getSnrTowardsList();
+        synchronized (lock) {
+            int prev = p.getTo();
+            for (int r : route) { addEdge(prev, r); prev = r; }
+            addEdge(prev, p.getFrom());
+        }
         for (int i = 0; i < route.size(); i++) {
             sb.append(snrLabel(snrs, i)).append(nodeName(route.get(i)));
         }

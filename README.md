@@ -15,6 +15,8 @@ plugged into a Windows or Linux PC over USB. Same code runs on both; no OS switc
 | Map | OpenStreetMap tiles with node markers (colour = age), your node highlighted, lines to direct neighbours, the **neighbour graph** (who hears whom, with SNR), **tracks** of moving nodes, **waypoints** (right-click to create), and a **coverage** layer (RSSI-coloured dots where your node was when it heard packets). Tiles are cached in `tilecache/`. |
 | Telemetry | Battery, voltage, utilisation, uptime, environment (temperature, humidity, pressure, IAQ, lux, wind) and power-monitor channels per node. |
 | Traffic | Airtime by node, app and channel from packet size × modem preset; share of elapsed time; last relay node. |
+| Analysis | Link-quality heat map and link margin per node, mesh graph with critical relays and relay share, churn, utilisation by hour, air-time budget, delivery by hops/distance/time, antenna A/B, one-click HTML report. |
+| Weather | METARs from NOAA aviationweather.gov (KDCA by default, nearest-station lookup), fetched every 30 min; correlation of each node's signal with temperature, humidity, wind, pressure and rain. |
 | Alerts | Silent node, low battery, high utilisation, reboot, key change, admin audit, detection sensor, new DM — with tray notifications and `alerts.log`. |
 | Stats & export | Delivery statistics per destination (success %, attempts, time to ack) and CSV export of nodes, signal samples, telemetry, messages, coverage points and neighbour links. |
 | Antenna SWR | Sweeps a **NanoVNA** on a second USB port and plots SWR vs frequency with band presets (US 915, EU 868, 433, …). |
@@ -107,6 +109,7 @@ pasting into a bug report. The radio only streams its *own* debug output to a co
 * `nodes.json` — persistent node database (identity, first/last seen, counters). Reset from the Nodes tab.
 * `signal_history.csv` — every RSSI/SNR sample for one year (pruned at startup). The chart keeps 7 days at full resolution and hourly per-node averages beyond that; in a busy mesh expect the file to grow by a few MB per day.
 * `sessions.log`, `alerts.log` — one line per connection / alert.
+* `weather_history.csv`, `util_history.csv`, `antenna_log.csv`, `mesh_report.html` — analysis inputs and output.
 * `*.mcap` — packet captures (Status tab → Record packets).
 * `meshconsole.log` — app/device log when "Write meshconsole.log" is ticked.
 * `messages.log` — tab-separated message history (time, direction, from, to, channel, packet id, status, RSSI, SNR, hops, text). Pass a path as the first command-line argument to use a different file.

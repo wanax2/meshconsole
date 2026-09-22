@@ -32,6 +32,8 @@ public class MainWindow extends JFrame {
     private final TrafficPanel trafficPanel;
     private final AlertsPanel alertsPanel;
     private final meshconsole.mesh.AlertEngine alerts;
+    private AnalysisPanel analysisPanel;
+    private WeatherPanel weatherPanel;
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
@@ -104,6 +106,7 @@ public class MainWindow extends JFrame {
         tabs.addTab("Traffic", trafficPanel);
         tabs.addTab("Stats & export", statsPanel);
         tabs.addTab("Alerts", alertsPanel);
+        // Analysis + Weather are added once the histories are known (setHistories)
         tabs.addTab("Antenna SWR", swrPanel);
         tabs.addTab("Settings & MQTT", settingsPanel);
         add(tabs, BorderLayout.CENTER);
@@ -144,6 +147,15 @@ public class MainWindow extends JFrame {
     }
 
     public void setSignalHistory(meshconsole.mesh.SignalHistory h) { statusPanel.setHistory(h); }
+
+    public void setHistories(meshconsole.mesh.SignalHistory sig, meshconsole.analysis.UtilHistory util) {
+        statusPanel.setHistory(sig);
+        analysisPanel = new AnalysisPanel(state, sig, util);
+        weatherPanel = new WeatherPanel(state, sig);
+        analysisPanel.setWeatherPanel(weatherPanel);
+        tabs.insertTab("Analysis", null, analysisPanel, null, tabs.indexOfComponent(alertsPanel));
+        tabs.insertTab("Weather", null, weatherPanel, null, tabs.indexOfComponent(alertsPanel));
+    }
 
     private void refreshStatusLine() {
         if (!client.isConnected()) return;

@@ -36,6 +36,7 @@ class MapPanel extends JPanel {
     private final JCheckBox showTracks = new JCheckBox("Tracks", true);
     private final JCheckBox showWaypoints = new JCheckBox("Waypoints", true);
     private final JCheckBox showCoverage = new JCheckBox("Coverage", false);
+    private final JCheckBox showGrid = new JCheckBox("Coverage grid", false);
     private final JCheckBox showNames = new JCheckBox("Names", true);
     private final JLabel status = new JLabel(" ");
 
@@ -45,7 +46,7 @@ class MapPanel extends JPanel {
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         JButton me = new JButton("Center on me");
         JButton fit = new JButton("Fit all nodes");
-        top.add(me); top.add(fit); top.add(showLinks); top.add(showNeighbors); top.add(showTracks); top.add(showWaypoints); top.add(showCoverage); top.add(showNames);
+        top.add(me); top.add(fit); top.add(showLinks); top.add(showNeighbors); top.add(showTracks); top.add(showWaypoints); top.add(showCoverage); top.add(showGrid); top.add(showNames);
         JButton clearCov = new JButton("Clear coverage");
         clearCov.addActionListener(e -> { state.clearCoverage(); view.repaint(); });
         top.add(clearCov);
@@ -53,7 +54,8 @@ class MapPanel extends JPanel {
         showNeighbors.setToolTipText("Links reported by nodes running the Neighbor Info module (who hears whom), labelled with SNR");
         showTracks.setToolTipText("Position history of moving nodes");
         showCoverage.setToolTipText("Where this radio was when it heard packets, coloured by RSSI – a drive-test map (needs a GPS position on this node)");
-        for (JCheckBox c : new JCheckBox[]{showNeighbors, showTracks, showWaypoints, showCoverage}) c.addActionListener(e -> view.repaint());
+        showGrid.setToolTipText("Coverage points binned into 100 m cells, median RSSI per cell");
+        for (JCheckBox c : new JCheckBox[]{showNeighbors, showTracks, showWaypoints, showCoverage, showGrid}) c.addActionListener(e -> view.repaint());
         add(top, BorderLayout.NORTH);
         add(view, BorderLayout.CENTER);
         JLabel credit = new JLabel("  Map data © OpenStreetMap contributors  ·  drag to pan, wheel to zoom, click a marker for details, right-click to add a waypoint");
@@ -314,6 +316,17 @@ class MapPanel extends JPanel {
             Point mePt = (me != null && me.hasPosition) ? toScreen(me.lat, me.lon) : null;
             long now = System.currentTimeMillis();
 
+            if (showGrid.isSelected()) {
+                for (meshconsole.analysis.Analysis.Cell cell : meshconsole.analysis.Analysis.coverageGrid(state.coverage(), 100)) {
+                    Point p = toScreen(cell.lat(), cell.lon());
+                    if (p.x < -40 || p.y < -40 || p.x > w + 40 || p.y > h + 40) continue;
+                    double mPerPx = 156543.03 * Math.cos(Math.toRadians(cell.lat())) / (1 << zoom);
+                    int sz = Math.max(4, (int) (100 / mPerPx));
+                    g.setColor(rssiColor((int) cell.medianRssi(), 120));
+                    g.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
+                    if (sz > 30) { g.setColor(Color.BLACK); g.setFont(g.getFont().deriveFont(9f)); g.drawString(String.valueOf((int) cell.medianRssi()), p.x - 8, p.y + 3); }
+                }
+            }
             // coverage dots (under everything else)
             if (showCoverage.isSelected()) {
                 for (CoverageSample c : state.coverage()) {

@@ -1,0 +1,318 @@
+package meshconsole.ui;
+
+import meshconsole.analysis.*;
+import meshconsole.mesh.*;
+
+import javax.swing.*;
+import javax.swing.table.AbstractTableModel;
+import java.awt.*;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.List;
+
+/** Derived analytics over the collected data. */
+class AnalysisPanel extends JPanel {
+    private final MeshState state;
+    private final SignalHistory history;
+    private final UtilHistory utilHistory;
+    private final AntennaLog antennaLog = new AntennaLog(Path.of("antenna_log.csv"));
+    private WeatherPanel weatherPanel;
+
+    // link quality
+    private final JComboBox<NodeItem> nodePick = new JComboBox<>();
+    private final Heatmap heatmap = new Heatmap();
+    private final SimpleModel margin = new SimpleModel(new String[]{"Node", "Avg SNR", "Link margin dB", "Verdict", "Avg RSSI", "Samples"});
+    // structure
+    private final SimpleModel structure = new SimpleModel(new String[]{"Node", "Degree", "Hops from me", "Critical relay", "Relayed packets", "Relay share"});
+    private final JLabel structureSummary = new JLabel(" ");
+    private final JLabel churnSummary = new JLabel(" ");
+    private final BarChart churnChart = new BarChart();
+    // channel
+    private final BarChart utilChart = new BarChart();
+    private final SimpleModel budget = new SimpleModel(new String[]{"Node", "Airtime", "Air-time %", "Over 10 % budget", "Packets"});
+    private final JLabel dupeSummary = new JLabel(" ");
+    // delivery
+    private final SimpleModel delivery = new SimpleModel(new String[]{"Group", "Bucket", "Sent", "Delivered", "Success"});
+    // antenna
+    private final JTextField antennaName = new JTextField(14);
+    private final JLabel antennaCurrent = new JLabel(" ");
+    private final SimpleModel antenna = new SimpleModel(new String[]{"Antenna", "Samples", "Avg RSSI (all)", "Avg SNR (all)", "Nodes", "Avg RSSI (common nodes)", "Avg SNR (common)", "Common nodes"});
+
+    record NodeItem(int num, String label) { @Override public String toString() { return label; } }
+
+    static class SimpleModel extends AbstractTableModel {
+        final String[] cols; List<Object[]> rows = new ArrayList<>();
+        SimpleModel(String[] c) { cols = c; }
+        @Override public int getRowCount() { return rows.size(); }
+        @Override public int getColumnCount() { return cols.length; }
+        @Override public String getColumnName(int c) { return cols[c]; }
+        @Override public Object getValueAt(int r, int c) { return rows.get(r)[c]; }
+        void set(List<Object[]> r) { rows = r; fireTableDataChanged(); }
+    }
+
+    AnalysisPanel(MeshState state, SignalHistory history, UtilHistory utilHistory) {
+        this.state = state;
+        this.history = history;
+        this.utilHistory = utilHistory;
+        setLayout(new BorderLayout());
+        JTabbedPane tabs = new JTabbedPane();
+
+        // ---- link quality
+        JPanel lq = new JPanel(new BorderLayout(6, 6));
+        JPanel lqTop = row();
+        lqTop.add(new JLabel("Node:")); lqTop.add(nodePick);
+        nodePick.addActionListener(e -> refreshHeatmap());
+        JButton refresh = new JButton("Refresh all");
+        refresh.addActionListener(e -> refreshAll());
+        lqTop.add(refresh);
+        lq.add(lqTop, BorderLayout.NORTH);
+        heatmap.setPreferredSize(new Dimension(700, 230));
+        JPanel hmBox = new JPanel(new BorderLayout()); hmBox.setBorder(BorderFactory.createTitledBorder("Average RSSI by day of week × hour (last year; darker = weaker)")); hmBox.add(heatmap);
+        JScrollPane mt = new JScrollPane(table(margin)); mt.setBorder(BorderFactory.createTitledBorder("Link margin = average SNR minus the modem's demodulation limit; < 3 dB is fragile, < 0 means packets are already being lost"));
+        JSplitPane lqSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, hmBox, mt); lqSplit.setResizeWeight(0.5);
+        lq.add(lqSplit, BorderLayout.CENTER);
+        tabs.addTab("Link quality", lq);
+
+        // ---- structure
+        JPanel st = new JPanel(new BorderLayout(6, 6));
+        JPanel stTop = new JPanel(); stTop.setLayout(new BoxLayout(stTop, BoxLayout.Y_AXIS));
+        JPanel s1 = row(); s1.add(structureSummary); JPanel s2 = row(); s2.add(churnSummary);
+        stTop.add(s1); stTop.add(s2);
+        st.add(stTop, BorderLayout.NORTH);
+        JScrollPane stT = new JScrollPane(table(structure)); stT.setBorder(BorderFactory.createTitledBorder("Mesh graph from neighbour reports, traceroutes and direct reception. 'Critical relay' = removing it splits the mesh"));
+        churnChart.setPreferredSize(new Dimension(600, 150));
+        JPanel cc = new JPanel(new BorderLayout()); cc.setBorder(BorderFactory.createTitledBorder("Node churn, last 30 days: active nodes per day (blue) and new arrivals (orange)")); cc.add(churnChart);
+        JSplitPane stSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, stT, cc); stSplit.setResizeWeight(0.65);
+        st.add(stSplit, BorderLayout.CENTER);
+        tabs.addTab("Mesh structure", st);
+
+        // ---- channel
+        JPanel ch = new JPanel(new BorderLayout(6, 6));
+        utilChart.setPreferredSize(new Dimension(600, 150));
+        JPanel uc = new JPanel(new BorderLayout()); uc.setBorder(BorderFactory.createTitledBorder("Channel utilisation by hour of day, % (this radio, up to 90 days)")); uc.add(utilChart);
+        JPanel chTop = new JPanel(new BorderLayout()); chTop.add(uc, BorderLayout.CENTER); JPanel d = row(); d.add(dupeSummary); chTop.add(d, BorderLayout.SOUTH);
+        JScrollPane bt = new JScrollPane(table(budget)); bt.setBorder(BorderFactory.createTitledBorder("Air-time budget per node since counters were reset (Meshtastic guideline: keep each node under 10 %)"));
+        JSplitPane chSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, chTop, bt); chSplit.setResizeWeight(0.45);
+        ch.add(chSplit, BorderLayout.CENTER);
+        tabs.addTab("Channel health", ch);
+
+        // ---- delivery
+        JPanel dv = new JPanel(new BorderLayout(6, 6));
+        JScrollPane dt = new JScrollPane(table(delivery)); dt.setBorder(BorderFactory.createTitledBorder("Direct-message delivery success by hops, distance and time of day (retries count as one message)"));
+        dv.add(dt, BorderLayout.CENTER);
+        tabs.addTab("Delivery", dv);
+
+        // ---- antenna
+        JPanel an = new JPanel(new BorderLayout(6, 6));
+        JPanel anTop = new JPanel(); anTop.setLayout(new BoxLayout(anTop, BoxLayout.Y_AXIS));
+        JPanel a1 = row(); a1.add(new JLabel("Antenna now in use:")); a1.add(antennaName);
+        JButton setAnt = new JButton("Start using this antenna");
+        setAnt.addActionListener(e -> {
+            String n = antennaName.getText().trim();
+            if (n.isEmpty()) return;
+            try { antennaLog.set(n); antennaCurrent.setText("Current: " + n + " since " + Fmt.time(System.currentTimeMillis())); refreshAntenna(); }
+            catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+        });
+        a1.add(setAnt); a1.add(antennaCurrent);
+        JPanel a2 = row(); a2.add(new JLabel("Every signal sample from now on is attributed to that antenna. Compare on 'common nodes' (heard under every antenna) for a fair A/B; give each antenna at least a few hours."));
+        anTop.add(a1); anTop.add(a2);
+        an.add(anTop, BorderLayout.NORTH);
+        an.add(new JScrollPane(table(antenna)), BorderLayout.CENTER);
+        if (!antennaLog.current().isEmpty()) { antennaName.setText(antennaLog.current()); antennaCurrent.setText("Current: " + antennaLog.current() + " since " + Fmt.time(antennaLog.starts.get(antennaLog.starts.size() - 1)[0])); }
+        tabs.addTab("Antenna A/B", an);
+
+        // ---- report
+        JPanel rp = new JPanel(new BorderLayout(6, 6));
+        JTextArea rpText = new JTextArea("Generates mesh_report.html: new/gone nodes, busiest talkers, weakest links, critical relays, utilisation curve, delivery stats, weather correlation, recent alerts. Opens in your browser; share it with your local mesh group.");
+        rpText.setEditable(false); rpText.setLineWrap(true); rpText.setWrapStyleWord(true); rpText.setBackground(getBackground());
+        rp.add(rpText, BorderLayout.NORTH);
+        JPanel rpBtns = row();
+        JButton gen = new JButton("Generate report");
+        gen.addActionListener(e -> generateReport());
+        rpBtns.add(gen);
+        rp.add(rpBtns, BorderLayout.CENTER);
+        tabs.addTab("Report", rp);
+
+        add(tabs, BorderLayout.CENTER);
+        tabs.addChangeListener(e -> refreshAll());
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override public void componentShown(java.awt.event.ComponentEvent e) { refreshAll(); }
+        });
+        state.addListener(new MeshState.Listener() {
+            @Override public void onStatusChanged() { if (state.configComplete()) SwingUtilities.invokeLater(AnalysisPanel.this::refreshNodePick); }
+        });
+        new javax.swing.Timer(60_000, e -> { if (isShowing()) { lastRefresh = 0; refreshAll(); } }).start();
+    }
+
+    void setWeatherPanel(WeatherPanel w) { weatherPanel = w; }
+
+    private static JTable table(AbstractTableModel m) { JTable t = new JTable(m); t.setRowHeight(20); t.setAutoCreateRowSorter(true); return t; }
+    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+
+    private long lastRefresh;
+    void refreshAll() {
+        if (System.currentTimeMillis() - lastRefresh < 2000) return;
+        lastRefresh = System.currentTimeMillis();
+        refreshNodePick(); refreshHeatmap(); refreshMargin(); refreshStructure(); refreshChannel(); refreshDelivery(); refreshAntenna();
+    }
+
+    private void refreshNodePick() {
+        NodeItem sel = (NodeItem) nodePick.getSelectedItem();
+        List<NodeItem> items = new ArrayList<>();
+        int me = state.myNodeNum();
+        for (NodeEntry n : state.nodes()) if (n.num != me && (n.rssiCount > 0 || n.packetsSeen > 0)) items.add(new NodeItem(n.num, n.displayName()));
+        boolean same = items.size() == nodePick.getItemCount();
+        if (same) for (int i = 0; i < items.size(); i++) if (!items.get(i).equals(nodePick.getItemAt(i))) { same = false; break; }
+        if (same) return;
+        nodePick.removeAllItems();
+        for (NodeItem it : items) { nodePick.addItem(it); if (sel != null && it.num() == sel.num()) nodePick.setSelectedItem(it); }
+    }
+
+    private void refreshHeatmap() {
+        NodeItem sel = (NodeItem) nodePick.getSelectedItem();
+        if (sel == null || history == null) { heatmap.set(null, ""); return; }
+        List<SignalSample> s = new ArrayList<>();
+        for (SignalSample x : history.since(System.currentTimeMillis() - 365L * 86400_000L)) if (x.from() == sel.num() && x.hops() != -1) s.add(x);
+        heatmap.set(Analysis.heatmap(s), sel.label() + " – " + s.size() + " packets");
+    }
+
+    private void refreshMargin() {
+        List<Object[]> rows = new ArrayList<>();
+        int me = state.myNodeNum();
+        for (NodeEntry n : state.nodes()) {
+            if (n.num == me || n.snrCount == 0) continue;
+            double m = Analysis.linkMargin(n.avgSnr(), state.lora());
+            rows.add(new Object[]{n.displayName(), String.format("%.1f", n.avgSnr()), String.format("%+.1f", m), m < 0 ? "losing packets" : m < 3 ? "fragile" : m < 8 ? "ok" : "solid", n.rssiCount == 0 ? "" : String.format("%.0f", n.avgRssi()), n.snrCount});
+        }
+        rows.sort(Comparator.comparingDouble(r -> Double.parseDouble(((String) r[2]).replace("+", ""))));
+        margin.set(rows);
+    }
+
+    private void refreshStructure() {
+        Map<Integer, Set<Integer>> adj = state.graphEdges();
+        int me = state.myNodeNum();
+        Analysis.GraphStats g = Analysis.graph(adj, me);
+        Map<Integer, Long> relays = state.relayCounts();
+        long relayTotal = relays.values().stream().mapToLong(Long::longValue).sum();
+        List<Object[]> rows = new ArrayList<>();
+        for (NodeEntry n : state.nodes()) {
+            long relayed = relays.getOrDefault(n.num & 0xFF, 0L);
+            Integer deg = g.degree().get(n.num), hops = g.hopsFromMe().get(n.num);
+            if (deg == null && relayed == 0) continue;
+            rows.add(new Object[]{n.displayName() + (n.num == me ? " (me)" : ""), deg == null ? 0 : deg, hops == null ? "" : String.valueOf(hops), g.articulation().contains(n.num) ? "YES" : "",
+                    relayed == 0 ? "" : String.valueOf(relayed), relayed == 0 || relayTotal == 0 ? "" : String.format("%.0f%%", 100.0 * relayed / relayTotal)});
+        }
+        rows.sort((a, b) -> Integer.compare((Integer) b[1], (Integer) a[1]));
+        structure.set(rows);
+        structureSummary.setText(String.format("Graph: %d nodes with known links, %d component(s), %d reachable from me, %d critical relay(s). Relay attribution uses the packet's relay_node byte, so nodes sharing a last ID byte are listed together.",
+                adj.size(), g.components(), g.reachable(), g.articulation().size()));
+        Analysis.Churn c = Analysis.churn(state.nodes(), me, 30);
+        churnChart.set(c.activePerDay(), c.arrivalsPerDay());
+        churnSummary.setText(String.format("Churn: %d nodes known, %d not heard in 24 h, median node lifetime %s, %d new in the last 7 days.",
+                c.total(), c.departed(), Fmt.ago(System.currentTimeMillis() - c.medianLifetimeMs()), Arrays.stream(c.arrivalsPerDay(), 23, 30).sum()));
+    }
+
+    private void refreshChannel() {
+        List<UtilSample> u = utilHistory != null ? utilHistory.util() : state.utilHistory();
+        double[] byHour = Analysis.byHour(u);
+        int[] vals = new int[24];
+        for (int h = 0; h < 24; h++) vals[h] = Double.isNaN(byHour[h]) ? 0 : (int) Math.round(byHour[h]);
+        utilChart.set(vals, null);
+        long elapsed = Math.max(1, System.currentTimeMillis() - state.trafficSince());
+        List<Object[]> rows = new ArrayList<>();
+        for (NodeEntry n : state.nodes()) {
+            if (n.airtimeMs == 0) continue;
+            double pct = 100.0 * n.airtimeMs / elapsed;
+            rows.add(new Object[]{n.displayName(), String.format("%.1f s", n.airtimeMs / 1000.0), String.format("%.2f%%", pct), pct > 10 ? "YES" : "", n.packetsSeen});
+        }
+        rows.sort((a, b) -> Double.compare(Double.parseDouble(((String) b[2]).replace("%", "")), Double.parseDouble(((String) a[2]).replace("%", ""))));
+        budget.set(rows);
+        List<UtilHistory.DupeSample> ds = utilHistory != null ? utilHistory.dupes() : List.of();
+        if (ds.size() >= 2) {
+            UtilHistory.DupeSample a = ds.get(0), b = ds.get(ds.size() - 1);
+            long rx = b.rx() - a.rx(), dupe = b.dupe() - a.dupe();
+            dupeSummary.setText(String.format("Duplicates: radio has seen %d duplicate packets out of %d received since %s (%.0f%%); rising share with a steady node count usually means hop limits are set too high somewhere.",
+                    dupe, rx, Fmt.time(a.time()), rx == 0 ? 0 : 100.0 * dupe / rx));
+        } else dupeSummary.setText("Duplicates: waiting for the radio's local statistics (sent every few minutes).");
+    }
+
+    private void refreshDelivery() {
+        List<Object[]> rows = new ArrayList<>();
+        for (Map.Entry<String, List<Analysis.Bucket>> e : Analysis.deliveryBuckets(state.messages(), state).entrySet())
+            for (Analysis.Bucket b : e.getValue()) if (b.sent() > 0) rows.add(new Object[]{e.getKey(), b.label(), b.sent(), b.delivered(), b.pct() + "%"});
+        delivery.set(rows);
+    }
+
+    private void refreshAntenna() {
+        if (history == null || antennaLog.labels.isEmpty()) { antenna.set(List.of()); return; }
+        List<Object[]> rows = new ArrayList<>();
+        for (Analysis.AntennaResult r : Analysis.antennaAB(antennaLog.starts, antennaLog.labels, history.since(System.currentTimeMillis() - 365L * 86400_000L)))
+            rows.add(new Object[]{r.label(), r.samples(), String.format("%.1f", r.avgRssi()), String.format("%.1f", r.avgSnr()), r.nodes(),
+                    Double.isNaN(r.commonRssi()) ? "" : String.format("%.1f", r.commonRssi()), Double.isNaN(r.commonSnr()) ? "" : String.format("%.1f", r.commonSnr()), r.commonNodes()});
+        antenna.set(rows);
+    }
+
+    private void generateReport() {
+        refreshAll();
+        try {
+            Path p = Path.of("mesh_report.html");
+            Files.writeString(p, Report.html(state, history, utilHistory, weatherPanel == null ? null : weatherPanel.history(), antennaLog, Path.of("alerts.log")), StandardCharsets.UTF_8);
+            state.emitLog("Report written to " + p.toAbsolutePath());
+            if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(p.toAbsolutePath().toUri());
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Report", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /** 7 × 24 heat map. */
+    static class Heatmap extends JComponent {
+        private double[][][] data; private String title = "";
+        void set(double[][][] d, String t) { data = d; title = t; repaint(); }
+        @Override protected void paintComponent(Graphics g0) {
+            Graphics2D g = (Graphics2D) g0;
+            int w = getWidth(), h = getHeight();
+            g.setColor(Color.WHITE); g.fillRect(0, 0, w, h);
+            g.setColor(Color.BLACK); g.setFont(g.getFont().deriveFont(11f)); g.drawString(title, 6, 14);
+            if (data == null) return;
+            String[] days = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+            int left = 40, top = 34, cw = Math.max(8, (w - left - 10) / 24), chh = Math.max(8, (h - top - 20) / 7);
+            g.setFont(g.getFont().deriveFont(9f));
+            for (int hr = 0; hr < 24; hr += 2) g.drawString(String.valueOf(hr), left + hr * cw + 2, top - 3);
+            for (int d = 0; d < 7; d++) {
+                g.setColor(Color.BLACK); g.drawString(days[d], 6, top + d * chh + chh / 2 + 4);
+                for (int hr = 0; hr < 24; hr++) {
+                    double v = data[0][d][hr];
+                    if (Double.isNaN(v)) g.setColor(new Color(240, 240, 240)); else g.setColor(MapPanel.rssiColor((int) v, 255));
+                    g.fillRect(left + hr * cw, top + d * chh, cw - 1, chh - 1);
+                    if (!Double.isNaN(v) && cw >= 26) { g.setColor(Color.BLACK); g.drawString(String.valueOf((int) v), left + hr * cw + 2, top + d * chh + chh / 2 + 4); }
+                }
+            }
+        }
+    }
+
+    /** Small bar chart with an optional second series. */
+    static class BarChart extends JComponent {
+        private int[] a, b;
+        void set(int[] x, int[] y) { a = x; b = y; repaint(); }
+        @Override protected void paintComponent(Graphics g0) {
+            Graphics2D g = (Graphics2D) g0;
+            int w = getWidth(), h = getHeight();
+            g.setColor(Color.WHITE); g.fillRect(0, 0, w, h);
+            if (a == null || a.length == 0) return;
+            int max = 1; for (int v : a) max = Math.max(max, v); if (b != null) for (int v : b) max = Math.max(max, v);
+            int left = 30, bottom = h - 16, top = 10, bw = Math.max(2, (w - left - 10) / a.length);
+            g.setFont(g.getFont().deriveFont(9f));
+            g.setColor(Color.DARK_GRAY); g.drawString(String.valueOf(max), 4, top + 8); g.drawString("0", 4, bottom);
+            for (int i = 0; i < a.length; i++) {
+                int x = left + i * bw;
+                int ha = (int) ((bottom - top) * (double) a[i] / max);
+                g.setColor(new Color(40, 90, 200, 180)); g.fillRect(x, bottom - ha, bw - 2, ha);
+                if (b != null && i < b.length) { int hb = (int) ((bottom - top) * (double) b[i] / max); g.setColor(new Color(220, 120, 20, 200)); g.fillRect(x + bw / 3, bottom - hb, bw / 3, hb); }
+                if (a.length <= 30 && (i % (a.length > 24 ? 5 : 2) == 0)) { g.setColor(Color.DARK_GRAY); g.drawString(String.valueOf(a.length == 24 ? i : i - a.length + 1), x, h - 4); }
+            }
+        }
+    }
+}
