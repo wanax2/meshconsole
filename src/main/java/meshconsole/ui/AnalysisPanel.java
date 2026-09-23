@@ -219,6 +219,8 @@ class AnalysisPanel extends JPanel {
         rd.add(rdNote, BorderLayout.SOUTH);
         tabs.addTab("My radios", rd);
 
+        tabs.addTab("Path / LOS", new PathPanel(state));
+
         // ---- report
         JPanel rp = new JPanel(new BorderLayout(6, 6));
         JTextArea rpText = new JTextArea("Generates mesh_report.html: new/gone nodes, busiest talkers, weakest links, critical relays, utilisation curve, delivery stats, weather correlation, recent alerts. Opens in your browser; share it with your local mesh group.");
@@ -427,6 +429,7 @@ class AnalysisPanel extends JPanel {
     }
 
     RadioDb radioDb() { return radioDb; }
+    UtilHistory utilHistory() { return utilHistory; }
 
     private static int parseId(String id) { return (int) Long.parseLong(id.replace("!", ""), 16); }
 

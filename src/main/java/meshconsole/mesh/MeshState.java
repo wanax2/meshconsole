@@ -80,6 +80,12 @@ public class MeshState {
     private final Map<Config.PayloadVariantCase, Config> configs = new EnumMap<>(Config.PayloadVariantCase.class);
     private final Map<ModuleConfig.PayloadVariantCase, ModuleConfig> moduleConfigs = new EnumMap<>(ModuleConfig.PayloadVariantCase.class);
     private com.google.protobuf.ByteString sessionPasskey = com.google.protobuf.ByteString.EMPTY;
+    private final Map<Integer, com.google.protobuf.ByteString> remotePasskeys = new HashMap<>();
+    private final Map<Integer, Map<Config.PayloadVariantCase, Config>> remoteConfigs = new HashMap<>();
+    private final Map<Integer, Map<ModuleConfig.PayloadVariantCase, ModuleConfig>> remoteModuleConfigs = new HashMap<>();
+    public com.google.protobuf.ByteString remotePasskey(int node) { synchronized (lock) { return remotePasskeys.getOrDefault(node, com.google.protobuf.ByteString.EMPTY); } }
+    public Config remoteConfig(int node, Config.PayloadVariantCase which) { synchronized (lock) { Map<Config.PayloadVariantCase, Config> m = remoteConfigs.get(node); return m == null ? null : m.get(which); } }
+    public ModuleConfig remoteModuleConfig(int node, ModuleConfig.PayloadVariantCase which) { synchronized (lock) { Map<ModuleConfig.PayloadVariantCase, ModuleConfig> m = remoteModuleConfigs.get(node); return m == null ? null : m.get(which); } }
     private long sessionPasskeyTime;
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private final MessageLog log;
@@ -717,6 +723,11 @@ public class MeshState {
         }
         if (!fromMe) {
             // a remote node answering our request: never mix into our own config
+            synchronized (lock) {
+                if (!a.getSessionPasskey().isEmpty()) remotePasskeys.put(from, a.getSessionPasskey());
+                if (a.hasGetConfigResponse()) remoteConfigs.computeIfAbsent(from, k -> new EnumMap<>(Config.PayloadVariantCase.class)).put(a.getGetConfigResponse().getPayloadVariantCase(), a.getGetConfigResponse());
+                if (a.hasGetModuleConfigResponse()) remoteModuleConfigs.computeIfAbsent(from, k -> new EnumMap<>(ModuleConfig.PayloadVariantCase.class)).put(a.getGetModuleConfigResponse().getPayloadVariantCase(), a.getGetModuleConfigResponse());
+            }
             switch (a.getPayloadVariantCase()) {
                 case GET_DEVICE_METADATA_RESPONSE -> {
                     DeviceMetadata md = a.getGetDeviceMetadataResponse();

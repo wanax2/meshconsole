@@ -14,6 +14,7 @@ public class AlertEngine {
     private final Set<Integer> silentFlagged = new HashSet<>();
     private final Set<Integer> batteryFlagged = new HashSet<>();
     private boolean utilFlagged;
+    private final Set<Integer> watchedSilent = new HashSet<>();
 
     public AlertEngine(MeshState state) { this.state = state; }
 
@@ -30,6 +31,11 @@ public class AlertEngine {
                 continue;
             }
             long last = n.lastHeardMillis();
+            if (n.watched && last > 0) {
+                // watch-list: tighter rules, independent of the general silent-node setting
+                if (now - last > 3600_000L) { if (watchedSilent.add(n.num)) state.emitAlert("WATCH", n.displayName() + " (watched) not heard for " + meshconsole.ui.FmtBridge.ago(last)); }
+                else if (watchedSilent.remove(n.num)) state.emitAlert("WATCH", n.displayName() + " (watched) is back, heard " + meshconsole.ui.FmtBridge.ago(last) + " ago");
+            }
             if (last > 0 && (!silentFavoritesOnly || n.isFavorite) && !n.fromDb) {
                 if (now - last > silentHours * 3600_000L) {
                     if (silentFlagged.add(n.num)) state.emitAlert("SILENT", n.displayName() + " has been silent for " + meshconsole.ui.FmtBridge.ago(last));

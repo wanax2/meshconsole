@@ -49,7 +49,7 @@ class NodesPanel extends JPanel {
                 case 9 -> n.hasPosition ? String.format("%.4f, %.4f", n.lat, n.lon) : "";
                 case 10 -> n.hwModel;
                 case 11 -> n.role.isEmpty() || n.role.equals("CLIENT") ? (n.role.isEmpty() ? "" : "client") : n.role.toLowerCase();
-                case 12 -> (n.isFavorite ? "★" : "") + (n.isLicensed ? " ham" : "") + (n.isUnmessagable ? " no-msg" : "") + (n.viaMqtt ? " mqtt" : "") + (n.isIgnored ? " ignored" : "");
+                case 12 -> (n.watched ? "👁 " : "") + (n.isFavorite ? "★" : "") + (n.isLicensed ? " ham" : "") + (n.isUnmessagable ? " no-msg" : "") + (n.viaMqtt ? " mqtt" : "") + (n.isIgnored ? " ignored" : "");
                 case 13 -> isMe ? "" : String.valueOf(n.packetsSeen);
                 case 14 -> isMe || n.directPercent() < 0 ? "" : n.directPercent() + "%";
                 case 15 -> isMe || n.rssiCount == 0 ? "" : String.format("%.0f dBm", n.avgRssi());
@@ -114,10 +114,15 @@ class NodesPanel extends JPanel {
         JButton info = new JButton("Request node info");
         JButton remote = new JButton("Remote info (admin)");
         JButton sf = new JButton("S&F history…");
+        JButton watch = new JButton("Watch / unwatch"), fav = new JButton("★ Favourite on radio");
+        watch.setToolTipText("Watch-list: alert when this node goes quiet for an hour or comes back");
+        fav.setToolTipText("Toggle the favourite flag on the radio itself (the phone app shows the same star)");
+        watch.addActionListener(e -> withSelected(n -> { n.watched = !n.watched; state.notifyNodesChanged(); state.emitLog((n.watched ? "Watching " : "Stopped watching ") + n.displayName()); }));
+        fav.addActionListener(e -> withSelected(n -> { try { client.setFavoriteOnRadio(n.num, !n.isFavorite); } catch (IOException ex) { error(ex); } }));
         info.setToolTipText("Ask the node to resend its name, hardware, role and key");
         remote.setToolTipText("Ask the node for its firmware/metadata and LoRa config – only answered if it trusts this node (admin key)");
         sf.setToolTipText("Ask a store-and-forward server node to replay recent messages you missed");
-        buttons.add(dm); buttons.add(tr); buttons.add(pos); buttons.add(map); buttons.add(info); buttons.add(remote); buttons.add(sf);
+        buttons.add(dm); buttons.add(tr); buttons.add(pos); buttons.add(map); buttons.add(info); buttons.add(remote); buttons.add(sf); buttons.add(watch); buttons.add(fav);
         south.add(buttons, BorderLayout.NORTH);
         results.setEditable(false);
         results.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));

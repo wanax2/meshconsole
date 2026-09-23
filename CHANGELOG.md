@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.5.0 — 2026-09-23
+
+- **MQTT witness** tab — read-only subscription to a public Meshtastic broker; decodes gateway envelopes (default key and your radio's channel keys) and lists **your node's packets as heard by gateways**: an independent "does the mesh hear me?" check. Gateway table, feed view, `mqtt_witness.csv`, WITNESS alerts.
+- **Second radio window** (Tools) — connect a second radio (USB or TCP) alongside the main one; live signal chart, packet log and a 15-minute side-by-side RSSI/packet comparison; its samples feed the shared history for the My-radios comparison.
+- **Path / LOS** (Analysis) — terrain profile between two nodes (SRTM via opentopodata.org), 4/3-earth curvature, 60 % first-Fresnel clearance at the chosen frequency, verdict and the antenna height that would clear an obstruction.
+- **Channel URL import/export** (Tools) — paste a `meshtastic.org/e/#…` link to write its channels and LoRa settings; export your own.
+- **Schedule** tab — daily report, nightly zip export to a folder, weekly traceroutes to watched nodes, periodic beacon message (an automated range test tracked in the delivery stats). Runs in headless mode too.
+- **Web dashboard** (Tools, or `--web 8080` headless) — built-in HTTP server: status, node table, Leaflet map, recent messages, report; check the Pi from a phone.
+- **Notifications** — Discord/Slack-style webhook and Pushover for alerts and DMs (Alerts tab).
+- **Watch-list** — per-node watch flag with lost/back alerts; **favourite on radio** syncs the star with the phone app.
+- **Google Earth (KML) export** — nodes, tracks, coverage grid.
+- **Message search** and **thread view** (replies and reactions).
+- **Remote node admin** — the All-settings editor can target another node you own: read a section from it, edit, write back (uses that node's session key and PKI).
+- **Firmware check** — Status shows whether the radio's firmware is the latest stable release.
+
+
 ## 1.4.4 — 2026-09-23
 
 - **View → Show BBS features** (off by default): hides the BBS tab, toolbar toggle and sysop button. The BBS code stays isolated in its own package and does nothing while disabled.

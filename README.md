@@ -17,13 +17,15 @@ plugged into a Windows or Linux PC over USB. Same code runs on both; no OS switc
 | Traffic | Airtime by node, app and channel from packet size × modem preset; share of elapsed time; last relay node. |
 | Analysis | Link-quality heat map and link margin per node, mesh graph with critical relays and relay share, churn, utilisation by hour, air-time budget, delivery by hops/distance/time, antenna A/B, one-click HTML report. |
 | Weather | METARs from NOAA aviationweather.gov (KDCA by default, nearest-station lookup), fetched every 30 min; correlation of each node's signal with temperature, humidity, wind, pressure and rain. |
+| MQTT witness | Read-only view of a public broker: what gateways heard, especially packets from your own node — proves the mesh hears you independently of your receiver. |
+| Schedule | Daily report, nightly export, weekly traceroutes to watched nodes, periodic beacon. |
 | BBS | Optional (View → Show BBS features): a bulletin-board bot answering DMs to this node (bulletins, mail, node list, signal report, weather), with a classic sysop screen. Lives in `bbs/` + `ui/BbsPanel`, `ui/SysopWindow`; delete those to remove it. |
 | Alerts | Silent node, low battery, high utilisation, reboot, key change, admin audit, detection sensor, new DM — with tray notifications and `alerts.log`. |
 | Stats & export | Delivery statistics per destination (success %, attempts, time to ack) and CSV export of nodes, signal samples, telemetry, messages, coverage points and neighbour links. |
 | Antenna SWR | Sweeps a **NanoVNA** on a second USB port and plots SWR vs frequency with band presets (US 915, EU 868, 433, …). |
 | Settings & MQTT | Edit and write back owner name, LoRa (region, preset, hop limit, tx power, frequency override), device role, the MQTT module config, and all 8 channel slots (name, PSK, role, uplink/downlink). Reboot. **MQTT client proxy**: this PC relays the radio's MQTT traffic through its own internet connection — the only way a WiFi-less RAK4631 reaches MQTT. |
 
-Connection: USB serial, or **TCP** (port 4403) for WiFi/Ethernet nodes and the bundled fake radio.
+Connection: USB serial, or **TCP** (port 4403) for WiFi/Ethernet nodes and the bundled fake radio. Tools menu: a **second radio window** for two radios at once, a **web dashboard** on port 8080, **channel URL** import/export.
 
 Tested on a RAK4631. Any board running Meshtastic firmware uses the same protocol — Station G2, LilyGo T-Deck /
 T-Deck Pro, Heltec V3 / V4, T-Beam, etc. ESP32 boards need two allowances the app makes automatically: DTR/RTS are
@@ -176,7 +178,7 @@ The same build runs without a display — useful for a Pi sitting next to the ra
 
 ```
 sudo apt install -y openjdk-17-jre unzip && sudo usermod -aG dialout $USER   # log out/in once
-./meshconsole.sh --headless --port /dev/ttyACM0 --data /home/pi/meshdata --bbs
+./meshconsole.sh --headless --port /dev/ttyACM0 --data /home/pi/meshdata --bbs --web 8080
 ```
 
 It connects (and reconnects after unplugs/reboots), writes the same log and history files as the GUI, runs the alerts and the BBS, and saves the node DB every 5 minutes. As a service:

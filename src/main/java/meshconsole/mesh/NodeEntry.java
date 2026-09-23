@@ -53,6 +53,7 @@ public class NodeEntry {
     public final java.util.LinkedHashMap<Integer, Float> neighbors = new java.util.LinkedHashMap<>();
     public long neighborsTime;
 
+    public boolean watched;         // user watch-list: alert on heard / lost / low battery
     public int sessionsSeen;        // how many app sessions this node was heard in
     public boolean fromDb;          // loaded from nodes.json, not (yet) confirmed by this radio
     public int lastRelayNode = -1;  // low byte of the node that relayed the last packet (-1 unknown)

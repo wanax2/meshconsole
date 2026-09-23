@@ -28,6 +28,8 @@ class AlertsPanel extends JPanel {
     private final JSpinner batt = new JSpinner(new SpinnerNumberModel(20, 1, 99, 1));
     private final JSpinner util = new JSpinner(new SpinnerNumberModel(30, 5, 100, 5));
     private final JCheckBox dmAlert = new JCheckBox("New direct message", true);
+    private final JTextField webhook = new JTextField(meshconsole.tools.Notifier.webhook(), 28), poToken = new JTextField(meshconsole.tools.Notifier.pushoverToken(), 10), poUser = new JTextField(meshconsole.tools.Notifier.pushoverUser(), 10);
+    private final JCheckBox pushOut = new JCheckBox("Push alerts out (webhook / Pushover)", false);
     private TrayIcon trayIcon;
     private final Path logFile = meshconsole.DataDir.file("alerts.log");
 
@@ -53,7 +55,12 @@ class AlertsPanel extends JPanel {
         JPanel r2 = row(); r2.add(new JLabel("Node silent for more than")); r2.add(silentH); r2.add(new JLabel("hours,")); r2.add(favOnly);
         JPanel r3 = row(); r3.add(new JLabel("Battery below")); r3.add(batt); r3.add(new JLabel("%      Channel utilisation above")); r3.add(util); r3.add(new JLabel("%"));
         JPanel r4 = row(); r4.add(new JLabel("Always: radio reboot, public-key change of a known node, admin commands seen between other nodes, detection-sensor triggers, range-test packets. Alerts are also written to alerts.log."));
-        top.add(r1); top.add(r2); top.add(r3); top.add(r4);
+        JPanel r5 = row(); r5.add(pushOut); r5.add(new JLabel("Webhook URL (Discord/Slack):")); r5.add(webhook); r5.add(new JLabel("Pushover token:")); r5.add(poToken); r5.add(new JLabel("user:")); r5.add(poUser);
+        JButton saveN = new JButton("Save"), testN = new JButton("Test");
+        saveN.addActionListener(e -> meshconsole.tools.Notifier.set(webhook.getText(), poToken.getText(), poUser.getText()));
+        testN.addActionListener(e -> { meshconsole.tools.Notifier.set(webhook.getText(), poToken.getText(), poUser.getText()); new Thread(() -> { String r = meshconsole.tools.Notifier.send("Mesh Console test", "Notifications are working."); SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, r.isEmpty() ? "Sent." : "Failed: " + r)); }).start(); });
+        r5.add(saveN); r5.add(testN);
+        top.add(r1); top.add(r2); top.add(r3); top.add(r4); top.add(r5);
         add(top, BorderLayout.NORTH);
         table.setRowHeight(20);
         table.getColumnModel().getColumn(0).setPreferredWidth(110);
@@ -111,6 +118,7 @@ class AlertsPanel extends JPanel {
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (IOException ignored) { }
         if (kind.equals("RANGE_TEST")) return;   // too frequent for pop-ups
+        if (pushOut.isSelected() && !kind.equals("INFO")) new Thread(() -> meshconsole.tools.Notifier.send("Mesh " + kind, text), "notify").start();
         if (tray.isSelected() && trayIcon != null) trayIcon.displayMessage("Mesh Console – " + kind, text, kind.equals("MESSAGE") ? TrayIcon.MessageType.INFO : TrayIcon.MessageType.WARNING);
         if (beep.isSelected()) Toolkit.getDefaultToolkit().beep();
     }

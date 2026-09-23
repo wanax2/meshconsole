@@ -205,7 +205,24 @@ class StatusPanel extends JPanel {
                 state.nodeName(last.from()), last.rssi(), last.snr(), Fmt.ago(last.time())));
     }
 
+    private String firmwareNote = "";
+    private long firmwareChecked;
+
+    private void checkFirmware() {
+        if (System.currentTimeMillis() - firmwareChecked < 6 * 3600_000L || state.firmware().isEmpty()) return;
+        firmwareChecked = System.currentTimeMillis();
+        new Thread(() -> {
+            try {
+                meshconsole.tools.FirmwareCheck.Result r = meshconsole.tools.FirmwareCheck.latest();
+                int cmp = meshconsole.tools.FirmwareCheck.compare(state.firmware(), r.latest());
+                firmwareNote = cmp < 0 ? "  (latest stable " + r.latest() + " – update via https://flasher.meshtastic.org)" : cmp == 0 ? "  (latest stable)" : "  (newer than stable " + r.latest() + ")";
+            } catch (Exception e) { firmwareNote = ""; }
+            SwingUtilities.invokeLater(this::refreshInfo);
+        }, "firmware-check").start();
+    }
+
     void refreshInfo() {
+        checkFirmware();
         StringBuilder sb = new StringBuilder();
         NodeEntry me = state.myNode();
         if (state.myNodeNum() == 0) {
@@ -222,7 +239,7 @@ class StatusPanel extends JPanel {
                 sb.append("Channel util: ").append(String.format("%.1f %%   air-util TX %.2f %%", me.channelUtil, me.airUtilTx)).append('\n');
                 if (me.hasPosition) sb.append("Position:     ").append(String.format("%.5f, %.5f  alt %d m", me.lat, me.lon, me.altitude)).append('\n');
             }
-            sb.append("Firmware:     ").append(state.firmware()).append('\n');
+            sb.append("Firmware:     ").append(state.firmware()).append(firmwareNote).append('\n');
             Config.LoRaConfig lora = state.lora();
             if (lora != null) {
                 sb.append("LoRa:         ").append(lora.getRegion()).append("  ")

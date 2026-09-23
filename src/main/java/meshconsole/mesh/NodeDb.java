@@ -32,7 +32,7 @@ public class NodeDb {
               .append(kv("lastHeard", n.lastHeardMillis())).append(kv("firstSeen", n.firstSeen)).append(kv("packets", n.packetsSeen)).append(kv("direct", n.directPackets))
               .append(kv("rssiSum", n.rssiSum)).append(kv("rssiCount", n.rssiCount)).append(kv("snrSum", n.snrSum)).append(kv("snrCount", n.snrCount))
               .append(kv("hops", n.hopsAway)).append(kv("battery", n.battery)).append(kv("favorite", n.isFavorite)).append(kv("licensed", n.isLicensed))
-              .append(kv("sessions", n.sessionsSeen));
+              .append(kv("sessions", n.sessionsSeen)).append(kv("watched", n.watched));
             sb.setLength(sb.length() - 1);   // drop trailing comma
             sb.append("}");
         }
@@ -77,6 +77,7 @@ public class NodeDb {
                 n.isFavorite = Boolean.parseBoolean(m.getOrDefault("favorite", "false"));
                 n.isLicensed = Boolean.parseBoolean(m.getOrDefault("licensed", "false"));
                 n.sessionsSeen = Integer.parseInt(m.getOrDefault("sessions", "0"));
+                n.watched = Boolean.parseBoolean(m.getOrDefault("watched", "false"));
                 n.fromDb = true;
                 out.add(n);
             } catch (RuntimeException ignored) { }

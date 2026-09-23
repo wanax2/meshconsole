@@ -391,6 +391,16 @@ public class MeshClient implements MeshSerial.Listener {
         state.emitLog("Fixed position removed (radio will use GPS if it has one)");
     }
 
+    /** Marks/unmarks a node as favourite on the radio itself (matches the phone app's star). */
+    public void setFavoriteOnRadio(int node, boolean fav) throws IOException {
+        adminLog((fav ? "set_favorite_node " : "remove_favorite_node ") + String.format("!%08x", node), null, null);
+        ensureSessionKey();
+        sendAdmin(fav ? AdminMessage.newBuilder().setSetFavoriteNode(node) : AdminMessage.newBuilder().setRemoveFavoriteNode(node), false);
+        NodeEntry n = state.node(node); if (n != null) n.isFavorite = fav;
+        state.notifyNodesChanged();
+        state.emitLog((fav ? "Favourited " : "Unfavourited ") + state.nodeName(node) + " on the radio");
+    }
+
     public void reboot(int seconds) throws IOException {
         adminLog("reboot", null, null);
         ensureSessionKey();
@@ -424,6 +434,47 @@ public class MeshClient implements MeshSerial.Listener {
         if (me != null) u.setLongName(me.longName).setShortName(me.shortName);
         Data d = Data.newBuilder().setPortnum(PortNum.NODEINFO_APP).setPayload(u.build().toByteString()).setWantResponse(true).build();
         sendTo(to, d, true, "Node info request sent to " + state.nodeName(to));
+    }
+
+    /** Admin message to another node (needs our public key in its admin list, or the legacy admin channel). */
+    public void sendAdminTo(int node, AdminMessage.Builder msg, boolean wantResponse) throws IOException {
+        if (node == state.myNodeNum()) { sendAdmin(msg, wantResponse); return; }
+        com.google.protobuf.ByteString key = state.remotePasskey(node);
+        if (!key.isEmpty()) msg.setSessionPasskey(key);
+        Data d = Data.newBuilder().setPortnum(PortNum.ADMIN_APP).setPayload(msg.build().toByteString()).setWantResponse(wantResponse).build();
+        NodeEntry dest = state.node(node);
+        MeshSerial s = requireSerial();
+        MeshPacket.Builder pkt = MeshPacket.newBuilder().setTo(node).setChannel(0).setId(newPacketId()).setWantAck(true).setHopLimit(hopLimit()).setDecoded(d).setPriority(MeshPacket.Priority.RELIABLE);
+        if (dest != null && dest.publicKey.length > 0) pkt.setPkiEncrypted(true);
+        MeshPacket built = pkt.build();
+        sender.submit(() -> { try { s.send(ToRadio.newBuilder().setPacket(built).build()); } catch (IOException e) { state.emitLog("Remote admin send failed: " + e.getMessage()); } });
+        if (state.verbose()) state.emitLog("[tx] admin " + msg.getPayloadVariantCase() + " → " + state.nodeName(node));
+    }
+
+    /** Fetches one config section from a remote node (answer lands in state.remoteConfig). */
+    public void requestRemoteConfig(int node, AdminMessage.ConfigType type) throws IOException {
+        sendAdminTo(node, AdminMessage.newBuilder().setGetConfigRequest(type), true);
+    }
+    public void requestRemoteModuleConfig(int node, AdminMessage.ModuleConfigType type) throws IOException {
+        sendAdminTo(node, AdminMessage.newBuilder().setGetModuleConfigRequest(type), true);
+    }
+
+    /** Writes a config section to a remote node; needs a passkey from a previous get on that node. */
+    public void setRemoteConfig(int node, Config c) throws IOException {
+        if (state.remotePasskey(node).isEmpty()) throw new IOException("Read a section from " + state.nodeName(node) + " first (that returns the session key the node requires for writes)");
+        adminLog("remote " + String.format("!%08x", node) + " set_config " + c.getPayloadVariantCase().name().toLowerCase(), null, null);
+        sendAdminTo(node, AdminMessage.newBuilder().setBeginEditSettings(true), false);
+        sendAdminTo(node, AdminMessage.newBuilder().setSetConfig(c), false);
+        sendAdminTo(node, AdminMessage.newBuilder().setCommitEditSettings(true), false);
+        state.emitLog("Config " + c.getPayloadVariantCase() + " sent to " + state.nodeName(node) + " (it may reboot)");
+    }
+    public void setRemoteModuleConfig(int node, ModuleConfig c) throws IOException {
+        if (state.remotePasskey(node).isEmpty()) throw new IOException("Read a section from " + state.nodeName(node) + " first (that returns the session key the node requires for writes)");
+        adminLog("remote " + String.format("!%08x", node) + " set_module_config " + c.getPayloadVariantCase().name().toLowerCase(), null, null);
+        sendAdminTo(node, AdminMessage.newBuilder().setBeginEditSettings(true), false);
+        sendAdminTo(node, AdminMessage.newBuilder().setSetModuleConfig(c), false);
+        sendAdminTo(node, AdminMessage.newBuilder().setCommitEditSettings(true), false);
+        state.emitLog("Module config " + c.getPayloadVariantCase() + " sent to " + state.nodeName(node));
     }
 
     /** Asks a remote node for its metadata and LoRa config (it must trust us: admin key or shared admin channel). */

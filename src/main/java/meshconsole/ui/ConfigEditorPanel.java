@@ -26,6 +26,8 @@ class ConfigEditorPanel extends JPanel {
     private final MeshClient client;
     private final MeshState state;
     private final JComboBox<String> section = new JComboBox<>();
+    private final JComboBox<Object> target = new JComboBox<>();
+    record Target(int num, String label) { @Override public String toString() { return label; } }
     private final Model model = new Model();
     private final JTable table = new JTable(model);
     private final JLabel status = new JLabel(" ");
@@ -51,6 +53,15 @@ class ConfigEditorPanel extends JPanel {
         this.state = client.state();
         setLayout(new BorderLayout(6, 6));
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        top.add(new JLabel("Target:"));
+        target.addItem(new Target(0, "This radio"));
+        target.setPrototypeDisplayValue("A fairly long node name here");
+        target.addActionListener(e -> load());
+        top.add(target);
+        JButton fetch = new JButton("Read from remote");
+        fetch.setToolTipText("Ask the remote node for this section (it must trust this node: its admin key list, or the legacy admin channel)");
+        fetch.addActionListener(e -> fetchRemote());
+        top.add(fetch);
         top.add(new JLabel("Section:"));
         for (Config.PayloadVariantCase c : Config.PayloadVariantCase.values()) if (c != Config.PayloadVariantCase.PAYLOADVARIANT_NOT_SET) section.addItem("config." + c.name().toLowerCase());
         for (ModuleConfig.PayloadVariantCase c : ModuleConfig.PayloadVariantCase.values()) if (c != ModuleConfig.PayloadVariantCase.PAYLOADVARIANT_NOT_SET) section.addItem("module." + c.name().toLowerCase());
@@ -72,17 +83,42 @@ class ConfigEditorPanel extends JPanel {
         add(note, BorderLayout.SOUTH);
         state.addListener(new MeshState.Listener() {
             @Override public void onConfigChanged() { SwingUtilities.invokeLater(() -> { if (model.rows.isEmpty()) load(); }); }
+            @Override public void onStatusChanged() { if (state.configComplete()) SwingUtilities.invokeLater(ConfigEditorPanel.this::refreshTargets); }
+            @Override public void onRemoteAdminResponse(int from, org.meshtastic.proto.AdminProtos.AdminMessage m) { SwingUtilities.invokeLater(() -> { if (targetNum() == from) load(); }); }
         });
     }
 
+    private int targetNum() { Object t = target.getSelectedItem(); return t instanceof Target tt ? tt.num() : 0; }
+
+    void refreshTargets() {
+        Object sel = target.getSelectedItem();
+        target.removeAllItems();
+        target.addItem(new Target(0, "This radio"));
+        int me = state.myNodeNum();
+        for (meshconsole.mesh.NodeEntry n : state.nodes()) if (n.num != me && !n.fromDb) target.addItem(new Target(n.num, n.displayName() + "  " + n.idString()));
+        if (sel != null) target.setSelectedItem(sel);
+    }
+
+    private void fetchRemote() {
+        int node = targetNum();
+        String key = (String) section.getSelectedItem();
+        if (node == 0 || key == null) { status.setText("Pick a remote node first."); return; }
+        try {
+            if (key.startsWith("config.")) client.requestRemoteConfig(node, org.meshtastic.proto.AdminProtos.AdminMessage.ConfigType.valueOf(key.substring(7).toUpperCase() + "_CONFIG"));
+            else client.requestRemoteModuleConfig(node, org.meshtastic.proto.AdminProtos.AdminMessage.ModuleConfigType.valueOf(key.substring(7).toUpperCase() + "_CONFIG"));
+            status.setText("Requested " + key + " from " + state.nodeName(node) + " – can take up to a minute; press Reload when it arrives.");
+        } catch (IOException | IllegalArgumentException ex) { status.setText("Request failed: " + ex.getMessage()); }
+    }
+
     private Message sectionMessage(String key) {
+        int node = targetNum();
         if (key.startsWith("config.")) {
-            Config c = state.config(Config.PayloadVariantCase.valueOf(key.substring(7).toUpperCase()));
+            Config c = node == 0 ? state.config(Config.PayloadVariantCase.valueOf(key.substring(7).toUpperCase())) : state.remoteConfig(node, Config.PayloadVariantCase.valueOf(key.substring(7).toUpperCase()));
             if (c == null) return null;
             Descriptors.FieldDescriptor fd = c.getDescriptorForType().findFieldByName(key.substring(7));
             return fd == null ? null : (Message) c.getField(fd);
         }
-        ModuleConfig m = state.moduleConfig(ModuleConfig.PayloadVariantCase.valueOf(key.substring(7).toUpperCase()));
+        ModuleConfig m = node == 0 ? state.moduleConfig(ModuleConfig.PayloadVariantCase.valueOf(key.substring(7).toUpperCase())) : state.remoteModuleConfig(node, ModuleConfig.PayloadVariantCase.valueOf(key.substring(7).toUpperCase()));
         if (m == null) return null;
         Descriptors.FieldDescriptor fd = m.getDescriptorForType().findFieldByName(key.substring(7));
         return fd == null ? null : (Message) m.getField(fd);
@@ -94,7 +130,7 @@ class ConfigEditorPanel extends JPanel {
         isModule = key.startsWith("module.");
         current = sectionMessage(key);
         model.rows = new ArrayList<>();
-        if (current == null) { status.setText("Not received from the radio yet (connect, or the firmware does not have this section)."); model.fireTableDataChanged(); return; }
+        if (current == null) { status.setText(targetNum() == 0 ? "Not received from the radio yet (connect, or the firmware does not have this section)." : "Not read from the remote node yet – press 'Read from remote'."); model.fireTableDataChanged(); return; }
         addRows("", current);
         model.fireTableDataChanged();
         status.setText(model.rows.size() + " settings");
@@ -174,12 +210,14 @@ class ConfigEditorPanel extends JPanel {
                 ModuleConfig.Builder mc = ModuleConfig.newBuilder();
                 mc.setField(mc.getDescriptorForType().findFieldByName(field), built);
                 ModuleConfig mcb = mc.build();
-                new Thread(() -> { try { client.setModuleConfig(mcb); SwingUtilities.invokeLater(() -> status.setText("Written " + key)); } catch (IOException ex) { SwingUtilities.invokeLater(() -> status.setText("Failed: " + ex.getMessage())); } }).start();
+                final int node = targetNum();
+                new Thread(() -> { try { if (node == 0) client.setModuleConfig(mcb); else client.setRemoteModuleConfig(node, mcb); SwingUtilities.invokeLater(() -> status.setText("Written " + key)); } catch (IOException ex) { SwingUtilities.invokeLater(() -> status.setText("Failed: " + ex.getMessage())); } }).start();
             } else {
                 Config.Builder c = Config.newBuilder();
                 c.setField(c.getDescriptorForType().findFieldByName(field), built);
                 Config cb = c.build();
-                new Thread(() -> { try { client.setConfig(cb); SwingUtilities.invokeLater(() -> status.setText("Written " + key + " (radio may reboot)")); } catch (IOException ex) { SwingUtilities.invokeLater(() -> status.setText("Failed: " + ex.getMessage())); } }).start();
+                final int node = targetNum();
+                new Thread(() -> { try { if (node == 0) client.setConfig(cb); else client.setRemoteConfig(node, cb); SwingUtilities.invokeLater(() -> status.setText("Written " + key + " (radio may reboot)")); } catch (IOException ex) { SwingUtilities.invokeLater(() -> status.setText("Failed: " + ex.getMessage())); } }).start();
             }
         } catch (RuntimeException ex) {
             JOptionPane.showMessageDialog(this, "Check the values: " + ex.getMessage(), "Cannot write", JOptionPane.ERROR_MESSAGE);

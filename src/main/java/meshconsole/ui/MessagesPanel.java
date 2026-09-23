@@ -25,6 +25,8 @@ class MessagesPanel extends JPanel {
     private final JButton send = new JButton("Send");
     private final JButton resend = new JButton("Resend selected");
     private final JLabel hint = new JLabel(" ");
+    private final JTextField search = new JTextField(16);
+    private final JTextArea thread = new JTextArea(4, 40);
 
     record Dest(int num, String label) {
         @Override public String toString() { return label; }
@@ -113,7 +115,23 @@ class MessagesPanel extends JPanel {
             }
         });
         table.getSelectionModel().addListSelectionListener(e -> resend.setEnabled(selectedOutgoing() != null));
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        JPanel searchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        searchRow.add(new JLabel("Search:")); searchRow.add(search);
+        search.setToolTipText("Filter by text, node name or channel; empty shows all");
+        search.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { reload(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { reload(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { reload(); }
+        });
+        JCheckBox onlyDm = new JCheckBox("DMs only"); onlyDm.addActionListener(e -> { dmOnly = onlyDm.isSelected(); reload(); }); searchRow.add(onlyDm);
+        thread.setEditable(false); thread.setLineWrap(true); thread.setWrapStyleWord(true);
+        JScrollPane threadScroll = new JScrollPane(thread); threadScroll.setBorder(BorderFactory.createTitledBorder("Thread (replies and reactions to the selected message)"));
+        table.getSelectionModel().addListSelectionListener(e -> showThread());
+        JPanel center = new JPanel(new BorderLayout());
+        center.add(searchRow, BorderLayout.NORTH);
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(table), threadScroll); split.setResizeWeight(0.8);
+        center.add(split, BorderLayout.CENTER);
+        add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout(4, 4));
         JPanel line1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
@@ -245,10 +263,43 @@ class MessagesPanel extends JPanel {
         channel.setToolTipText(tip.toString());
     }
 
+    private boolean dmOnly;
+
+    private void showThread() {
+        int r = table.getSelectedRow();
+        if (r < 0 || r >= model.rows.size()) { thread.setText(""); return; }
+        ChatMessage root = model.rows.get(r);
+        // walk up to the root of the thread
+        List<ChatMessage> all = state.messages();
+        ChatMessage top = root;
+        for (int guard = 0; guard < 20 && top.replyId != 0; guard++) { ChatMessage parent = null; for (ChatMessage x : all) if (x.packetId == top.replyId) parent = x; if (parent == null) break; top = parent; }
+        StringBuilder sb = new StringBuilder();
+        appendThread(sb, top, all, 0);
+        thread.setText(sb.toString());
+        thread.setCaretPosition(0);
+    }
+
+    private void appendThread(StringBuilder sb, ChatMessage m, List<ChatMessage> all, int depth) {
+        sb.append("  ".repeat(depth)).append(Fmt.time(m.time)).append(' ').append(state.nodeName(m.from)).append(": ").append(m.emoji ? "(reaction) " : "").append(m.text).append('\n');
+        if (depth > 10) return;
+        for (ChatMessage x : all) if (x.replyId != 0 && x.replyId == m.packetId && x != m) appendThread(sb, x, all, depth + 1);
+    }
+
     void reload() {
         int sel = table.getSelectedRow();
         boolean atBottom = sel < 0 || sel == model.rows.size() - 1;
-        model.rows = state.messages();
+        List<ChatMessage> src = state.messages();
+        String q = search.getText().trim().toLowerCase();
+        if (!q.isEmpty() || dmOnly) {
+            List<ChatMessage> f = new java.util.ArrayList<>();
+            for (ChatMessage m : src) {
+                if (dmOnly && m.isBroadcast()) continue;
+                if (!q.isEmpty() && !(m.text.toLowerCase().contains(q) || state.nodeName(m.from).toLowerCase().contains(q) || state.nodeName(m.to).toLowerCase().contains(q) || String.valueOf(m.channel).equals(q))) continue;
+                f.add(m);
+            }
+            src = f;
+        }
+        model.rows = src;
         model.fireTableDataChanged();
         if (!model.rows.isEmpty() && atBottom) {
             int last = model.rows.size() - 1;

@@ -35,6 +35,12 @@ public class MainWindow extends JFrame {
     private AnalysisPanel analysisPanel;
     private WeatherPanel weatherPanel;
     private BbsPanel bbsPanel;
+    private WitnessPanel witnessPanel;
+    private SchedulePanel schedulePanel;
+    private meshconsole.tools.Scheduler scheduler;
+    private SecondRadioWindow second;
+    private meshconsole.tools.WebDashboard web;
+    private meshconsole.mesh.SignalHistory signalHistory;
     private SysopWindow sysop;
     private meshconsole.bbs.BbsEngine bbs;
     private final JToggleButton bbsToggle = new JToggleButton("BBS: OFF");
@@ -75,6 +81,17 @@ public class MainWindow extends JFrame {
         export.addActionListener(e -> exportLogs());
         file.add(dataDir); file.add(openDir); file.addSeparator(); file.add(export);
         menu.add(file);
+        JMenu tools = new JMenu("Tools");
+        JMenuItem secondRadio = new JMenuItem("Second radio window…");
+        secondRadio.addActionListener(e -> { if (second == null && signalHistory != null) second = new SecondRadioWindow(state, signalHistory); if (second != null) { second.setVisible(true); second.toFront(); } });
+        JCheckBoxMenuItem webItem = new JCheckBoxMenuItem("Web dashboard on port 8080");
+        webItem.addActionListener(e -> toggleWeb(webItem));
+        JMenuItem importUrl = new JMenuItem("Import channel URL / QR link…");
+        importUrl.addActionListener(e -> importChannelUrl());
+        JMenuItem exportUrl = new JMenuItem("Export channel URL…");
+        exportUrl.addActionListener(e -> exportChannelUrl());
+        tools.add(secondRadio); tools.add(webItem); tools.addSeparator(); tools.add(importUrl); tools.add(exportUrl);
+        menu.add(tools);
         JMenu view = new JMenu("View");
         JCheckBoxMenuItem showBbs = new JCheckBoxMenuItem("Show BBS features", java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).getBoolean("showBbs", false));
         showBbs.addActionListener(e -> { java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).putBoolean("showBbs", showBbs.isSelected()); applyBbsVisibility(showBbs.isSelected()); });
@@ -188,7 +205,50 @@ public class MainWindow extends JFrame {
 
     public void setSignalHistory(meshconsole.mesh.SignalHistory h) { statusPanel.setHistory(h); }
 
+    private void toggleWeb(JCheckBoxMenuItem item) {
+        try {
+            if (web != null) { web.close(); web = null; state.emitLog("Web dashboard stopped"); return; }
+            web = new meshconsole.tools.WebDashboard(state, 8080, () -> Report.html(state, signalHistory, analysisPanel == null ? null : analysisPanel.utilHistory(), weatherPanel == null ? null : weatherPanel.history(), null, meshconsole.DataDir.file("alerts.log")));
+            state.emitLog("Web dashboard at http://localhost:8080/ (and this PC's IP on the LAN)");
+            if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(java.net.URI.create("http://localhost:8080/"));
+        } catch (Exception ex) { item.setSelected(false); JOptionPane.showMessageDialog(this, ex.getMessage(), "Web dashboard", JOptionPane.ERROR_MESSAGE); }
+    }
+
+    private void importChannelUrl() {
+        String url = JOptionPane.showInputDialog(this, "Paste a meshtastic.org/e/#… channel link:");
+        if (url == null || url.isBlank()) return;
+        try {
+            org.meshtastic.proto.AppOnlyProtos.ChannelSet cs = meshconsole.tools.ChannelUrl.parse(url);
+            String desc = meshconsole.tools.ChannelUrl.describe(cs);
+            if (JOptionPane.showConfirmDialog(this, "<html>This link contains:<pre>" + desc + "</pre>Write these channels" + (cs.hasLoraConfig() ? " and LoRa settings" : "") + " to the radio? (replaces channels 0.." + (cs.getSettingsCount() - 1) + ")</html>", "Import channels", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+            new Thread(() -> {
+                try {
+                    for (int i = 0; i < cs.getSettingsCount(); i++) {
+                        org.meshtastic.proto.ChannelProtos.Channel ch = org.meshtastic.proto.ChannelProtos.Channel.newBuilder().setIndex(i).setRole(i == 0 ? org.meshtastic.proto.ChannelProtos.Channel.Role.PRIMARY : org.meshtastic.proto.ChannelProtos.Channel.Role.SECONDARY).setSettings(cs.getSettings(i)).build();
+                        client.setChannel(ch);
+                    }
+                    if (cs.hasLoraConfig()) {
+                        org.meshtastic.proto.ConfigProtos.Config base = state.config(org.meshtastic.proto.ConfigProtos.Config.PayloadVariantCase.LORA);
+                        org.meshtastic.proto.ConfigProtos.Config.LoRaConfig.Builder b = base == null ? org.meshtastic.proto.ConfigProtos.Config.LoRaConfig.newBuilder() : base.getLora().toBuilder();
+                        org.meshtastic.proto.ConfigProtos.Config.LoRaConfig l = cs.getLoraConfig();
+                        b.setUsePreset(l.getUsePreset()).setModemPreset(l.getModemPreset()).setRegion(l.getRegion() == org.meshtastic.proto.ConfigProtos.Config.LoRaConfig.RegionCode.UNSET ? b.getRegion() : l.getRegion()).setChannelNum(l.getChannelNum()).setHopLimit(l.getHopLimit() == 0 ? b.getHopLimit() : l.getHopLimit());
+                        if (!l.getUsePreset()) b.setBandwidth(l.getBandwidth()).setSpreadFactor(l.getSpreadFactor()).setCodingRate(l.getCodingRate());
+                        client.setConfig(org.meshtastic.proto.ConfigProtos.Config.newBuilder().setLora(b).build());
+                    }
+                    state.emitLog("Channel URL imported");
+                } catch (Exception ex) { SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, ex.getMessage(), "Import failed", JOptionPane.ERROR_MESSAGE)); }
+            }, "import-url").start();
+        } catch (Exception ex) { JOptionPane.showMessageDialog(this, "Not a valid channel link: " + ex.getMessage(), "Import", JOptionPane.ERROR_MESSAGE); }
+    }
+
+    private void exportChannelUrl() {
+        String url = meshconsole.tools.ChannelUrl.build(state.allChannels(), state.lora());
+        JTextArea a = new JTextArea(url, 4, 60); a.setLineWrap(true); a.setEditable(false);
+        JOptionPane.showMessageDialog(this, new JScrollPane(a), "Channel URL (paste into the phone app, or share it – it contains your channel keys)", JOptionPane.PLAIN_MESSAGE);
+    }
+
     public void setHistories(meshconsole.mesh.SignalHistory sig, meshconsole.analysis.UtilHistory util) {
+        signalHistory = sig;
         statusPanel.setHistory(sig);
         analysisPanel = new AnalysisPanel(state, sig, util);
         weatherPanel = new WeatherPanel(state, sig);
@@ -200,6 +260,13 @@ public class MainWindow extends JFrame {
         bbs.setWeather(weatherPanel.history());
         bbsPanel = new BbsPanel(bbs, state);
         tabs.insertTab("BBS", null, bbsPanel, null, tabs.indexOfComponent(alertsPanel));
+        witnessPanel = new WitnessPanel(state);
+        tabs.insertTab("MQTT witness", null, witnessPanel, null, tabs.indexOfComponent(alertsPanel));
+        scheduler = new meshconsole.tools.Scheduler(client, () -> Report.html(state, signalHistory, util, weatherPanel.history(), null, meshconsole.DataDir.file("alerts.log")));
+        schedulePanel = new SchedulePanel(scheduler);
+        tabs.insertTab("Schedule", null, schedulePanel, null, tabs.indexOfComponent(alertsPanel));
+        new Timer(60_000, e -> scheduler.tick()).start();
+        java.util.List<Integer> mine = new java.util.ArrayList<>(); for (meshconsole.analysis.RadioDb.Radio r : analysisPanel.radioDb().all()) mine.add(r.num); witnessPanel.addMyNodes(mine);
         sysop = new SysopWindow(bbs, state);
         applyBbsVisibility(java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).getBoolean("showBbs", false));
         Runnable syncToggle = () -> { bbsToggle.setSelected(bbs.store().enabled); bbsToggle.setText(bbs.store().enabled ? "BBS: ON" : "BBS: OFF"); bbsToggle.setBackground(bbs.store().enabled ? new Color(40, 120, 70) : null); bbsToggle.setForeground(bbs.store().enabled ? Color.WHITE : null); bbsToggle.setOpaque(bbs.store().enabled); };

@@ -19,13 +19,14 @@ public final class Headless {
     private Headless() { }
 
     public static void run(String[] args) throws Exception {
-        String port = null, tcp = null; boolean bbs = false;
+        String port = null, tcp = null; boolean bbs = false; int webPort = 0;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--port" -> port = args[++i];
                 case "--tcp" -> tcp = args[++i];
                 case "--data" -> DataDir.set(Path.of(args[++i]));
                 case "--bbs" -> bbs = true;
+                case "--web" -> webPort = Integer.parseInt(args[++i]);
                 default -> { }
             }
         }
@@ -51,6 +52,8 @@ public final class Headless {
         state.emitLog("BBS " + (store.enabled ? "enabled as '" + store.name + "'" : "disabled (use --bbs or enable in bbs.json)"));
         engine.setWeather(new meshconsole.analysis.WeatherHistory(DataDir.file("weather_history.csv")));
 
+        meshconsole.tools.Scheduler scheduler = new meshconsole.tools.Scheduler(client, () -> "<html><body>Report generation is available in the GUI.</body></html>");
+        if (webPort > 0) { new meshconsole.tools.WebDashboard(state, webPort, () -> "<html><body>Use the GUI for the full report.</body></html>"); state.emitLog("Web dashboard on port " + webPort); }
         final String fPort = port, fTcp = tcp;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> { client.disconnect(); client.saveDbQuietly(); }));
         long lastSave = System.currentTimeMillis(), lastAlert = lastSave;
@@ -75,7 +78,7 @@ public final class Headless {
             }
             Thread.sleep(5000);
             long now = System.currentTimeMillis();
-            if (now - lastAlert > 60_000) { alerts.check(); lastAlert = now; }
+            if (now - lastAlert > 60_000) { alerts.check(); scheduler.tick(); lastAlert = now; }
             if (now - lastSave > 5 * 60_000) { client.saveDbQuietly(); lastSave = now; }
         }
     }
