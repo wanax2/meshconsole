@@ -34,6 +34,7 @@ public class MainWindow extends JFrame {
     private final meshconsole.mesh.AlertEngine alerts;
     private AnalysisPanel analysisPanel;
     private WeatherPanel weatherPanel;
+    private BbsPanel bbsPanel;
     private long connectedSince; private int connectedNum; private boolean registered;
 
     record PortItem(SerialPort port) {
@@ -169,6 +170,10 @@ public class MainWindow extends JFrame {
         swrPanel.setAntennaDb(() -> analysisPanel.antennaDb());
         tabs.insertTab("Analysis", null, analysisPanel, null, tabs.indexOfComponent(alertsPanel));
         tabs.insertTab("Weather", null, weatherPanel, null, tabs.indexOfComponent(alertsPanel));
+        meshconsole.bbs.BbsEngine bbs = new meshconsole.bbs.BbsEngine(client, new meshconsole.bbs.BbsStore(meshconsole.DataDir.file("bbs.json")));
+        bbs.setWeather(weatherPanel.history());
+        bbsPanel = new BbsPanel(bbs, state);
+        tabs.insertTab("BBS", null, bbsPanel, null, tabs.indexOfComponent(alertsPanel));
     }
 
     private void refreshStatusLine() {

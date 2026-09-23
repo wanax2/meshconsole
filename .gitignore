@@ -23,3 +23,4 @@ config_log.csv
 antennas.json
 radios.json
 setup_log.csv
+bbs.json

@@ -12,6 +12,15 @@ import java.util.List;
 /** util_history.csv — own-node utilisation samples plus duplicate/rx counters, kept 90 days. */
 public class UtilHistory {
     public record DupeSample(long time, long rx, long dupe, int online) { }
+    public record NoiseSample(long time, int noiseFloorDbm) { }
+    private final List<NoiseSample> noise = new ArrayList<>();
+    public synchronized void addNoise(int dbm) {
+        if (dbm == 0) return;
+        NoiseSample n = new NoiseSample(System.currentTimeMillis(), dbm);
+        if (!noise.isEmpty() && noise.get(noise.size() - 1).time() > n.time() - 60_000L) return;
+        noise.add(n); append("N," + n.time() + "," + dbm);
+    }
+    public synchronized List<NoiseSample> noise() { return new ArrayList<>(noise); }
     private final Path file;
     private final List<UtilSample> util = new ArrayList<>();
     private final List<DupeSample> dupes = new ArrayList<>();
@@ -29,6 +38,7 @@ public class UtilHistory {
                     if (t < cutoff) continue;
                     if (f[0].equals("U") && f.length >= 5) util.add(new UtilSample(t, Float.parseFloat(f[2]), Float.parseFloat(f[3]), Integer.parseInt(f[4])));
                     else if (f[0].equals("D") && f.length >= 5) dupes.add(new DupeSample(t, Long.parseLong(f[2]), Long.parseLong(f[3]), Integer.parseInt(f[4])));
+                    else if (f[0].equals("N") && f.length >= 3) noise.add(new NoiseSample(t, Integer.parseInt(f[2])));
                 } catch (RuntimeException ignored) { }
             }
         } catch (IOException ignored) { }

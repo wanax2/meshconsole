@@ -566,7 +566,7 @@ public class MeshState {
                     }
                     if (t.hasLocalStats() && fromMe) {
                         synchronized (lock) { localStats = t.getLocalStats(); }
-                        if (utilHistoryFile != null) utilHistoryFile.addDupe(t.getLocalStats().getNumPacketsRx(), t.getLocalStats().getNumRxDupe(), t.getLocalStats().getNumOnlineNodes());
+                        if (utilHistoryFile != null) { utilHistoryFile.addDupe(t.getLocalStats().getNumPacketsRx(), t.getLocalStats().getNumRxDupe(), t.getLocalStats().getNumOnlineNodes()); utilHistoryFile.addNoise(t.getLocalStats().getNoiseFloor()); }
                         fire(Listener::onStatusChanged);
                     }
                 }

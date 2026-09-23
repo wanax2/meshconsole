@@ -10,8 +10,9 @@ import javax.swing.*;
 import java.nio.file.Path;
 
 public class Main {
-    public static void main(String[] args) {
-        if (args.length > 0) DataDir.set(Path.of(args[0]));
+    public static void main(String[] args) throws Exception {
+        for (String a : args) if (a.equals("--headless")) { Headless.run(args); return; }
+        if (args.length > 0 && !args[0].startsWith("--")) DataDir.set(Path.of(args[0]));
         Path logFile = DataDir.file("messages.log");
         String upgradeNote = DataDir.checkVersion();
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) { }

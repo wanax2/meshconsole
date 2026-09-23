@@ -17,6 +17,7 @@ plugged into a Windows or Linux PC over USB. Same code runs on both; no OS switc
 | Traffic | Airtime by node, app and channel from packet size × modem preset; share of elapsed time; last relay node. |
 | Analysis | Link-quality heat map and link margin per node, mesh graph with critical relays and relay share, churn, utilisation by hour, air-time budget, delivery by hops/distance/time, antenna A/B, one-click HTML report. |
 | Weather | METARs from NOAA aviationweather.gov (KDCA by default, nearest-station lookup), fetched every 30 min; correlation of each node's signal with temperature, humidity, wind, pressure and rain. |
+| BBS | A bulletin-board bot answering DMs to this node (bulletins, mail, node list, signal report, weather). See the tab for the command list. |
 | Alerts | Silent node, low battery, high utilisation, reboot, key change, admin audit, detection sensor, new DM — with tray notifications and `alerts.log`. |
 | Stats & export | Delivery statistics per destination (success %, attempts, time to ack) and CSV export of nodes, signal samples, telemetry, messages, coverage points and neighbour links. |
 | Antenna SWR | Sweeps a **NanoVNA** on a second USB port and plots SWR vs frequency with band presets (US 915, EU 868, 433, …). |
@@ -168,3 +169,33 @@ Tested against the fake radio over TCP; the Windows serial path is written but w
 ## License
 
 MIT — see `LICENSE`. The Meshtastic protobuf definitions are fetched from the upstream repository at build time and remain under their own (GPL-3.0) license; they are not redistributed here.
+
+## Headless (Raspberry Pi)
+
+The same build runs without a display — useful for a Pi sitting next to the radio:
+
+```
+sudo apt install -y openjdk-17-jre unzip && sudo usermod -aG dialout $USER   # log out/in once
+./meshconsole.sh --headless --port /dev/ttyACM0 --data /home/pi/meshdata --bbs
+```
+
+It connects (and reconnects after unplugs/reboots), writes the same log and history files as the GUI, runs the alerts and the BBS, and saves the node DB every 5 minutes. As a service:
+
+```
+sudo tee /etc/systemd/system/meshconsole.service > /dev/null << 'EOF'
+[Unit]
+Description=Mesh Console headless
+After=network.target
+[Service]
+User=pi
+WorkingDirectory=/home/pi/meshconsole
+ExecStart=/home/pi/meshconsole/meshconsole.sh --headless --port /dev/ttyACM0 --data /home/pi/meshdata --bbs
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl enable --now meshconsole
+```
+
+Point the desktop GUI's data folder at a copy (or a share) of the Pi's folder to analyse it.

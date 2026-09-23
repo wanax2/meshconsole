@@ -86,6 +86,11 @@ final class Report {
         h.append("<h2>Channel utilisation by hour</h2><table><tr>"); for (int i = 0; i < 24; i++) h.append("<th>").append(i).append("</th>"); h.append("</tr><tr>");
         for (int i = 0; i < 24; i++) { double v = byHour[i]; h.append("<td").append(!Double.isNaN(v) && v >= 25 ? " class='bad'" : "").append(">").append(Double.isNaN(v) ? "–" : String.valueOf((int) Math.round(v))).append("</td>"); }
         h.append("</tr></table><div class='muted'>average % per hour of day; ≥25 % is congested</div>");
+        if (utilHistory != null && !utilHistory.noise().isEmpty()) {
+            List<UtilHistory.NoiseSample> ns = utilHistory.noise();
+            int best = 0, worst = -200; for (UtilHistory.NoiseSample n : ns) { best = Math.min(best, n.noiseFloorDbm()); worst = Math.max(worst, n.noiseFloorDbm()); }
+            h.append("<p><b>Noise floor:</b> now ").append(ns.get(ns.size() - 1).noiseFloorDbm()).append(" dBm, best ").append(best).append(", worst ").append(worst).append(" (healthy ≈ −110 to −115).</p>");
+        }
 
         // delivery
         h.append("<h2>Direct-message delivery</h2><table><tr><th>Group</th><th>Bucket</th><th>Sent</th><th>Delivered</th><th>Success</th></tr>");
