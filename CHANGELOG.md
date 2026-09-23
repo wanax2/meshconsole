@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.9 — 2026-09-22
+
+- **Setup log** (`setup_log.csv`): record the physical setup of the connected radio — antenna, antenna placement (indoor desk / window / attic / balcony / outdoor wall / roof / mast / vehicle / handheld), height above ground in metres, radio location, notes. Each recording starts a new test period; signal samples are attributed to the setup in force for the receiving radio. **By setup** table on the My radios tab compares samples, average RSSI/SNR, nodes heard and direct % per setup, best first.
+
+
 ## 1.3.8 — 2026-09-22
 
 - **My radios** (Analysis tab): every node you connect is registered automatically (`radios.json`) with ID, hardware, firmware, tx power, role; you add a name, the antenna fitted (from the antenna library), location and notes. Per radio: hours connected, samples heard, average RSSI/SNR, distinct nodes heard, direct %, DMs sent and delivered — so a RAK, a Heltec and a Station G2 can be compared as receivers and senders. Signal samples now record which radio received them (7th column in `signal_history.csv`).

@@ -208,6 +208,29 @@ public final class Analysis {
         return out;
     }
 
+    public record SetupResult(SetupLog.Setup setup, int samples, double avgRssi, double avgSnr, int nodes, double directPct, long hours) { }
+
+    /** Compares physical setups: each sample goes to the setup in force for its receiving radio at that time. */
+    public static List<SetupResult> bySetup(SetupLog setups, List<SignalSample> samples) {
+        Map<SetupLog.Setup, double[]> acc = new LinkedHashMap<>();
+        Map<SetupLog.Setup, Set<Integer>> nodes = new HashMap<>();
+        for (SignalSample s : samples) {
+            if (s.hops() == -1 || s.rxNode() == 0) continue;
+            SetupLog.Setup st = setups.at(s.rxNode(), s.time());
+            if (st == null) continue;
+            double[] a = acc.computeIfAbsent(st, k -> new double[]{0, 0, 0, 0, Double.MAX_VALUE, 0});
+            a[0]++; a[1] += s.rssi(); a[2] += s.snr(); if (s.hops() == 0) a[3]++; a[4] = Math.min(a[4], s.time()); a[5] = Math.max(a[5], s.time());
+            nodes.computeIfAbsent(st, k -> new HashSet<>()).add(s.from());
+        }
+        List<SetupResult> out = new ArrayList<>();
+        for (Map.Entry<SetupLog.Setup, double[]> e : acc.entrySet()) {
+            double[] a = e.getValue();
+            out.add(new SetupResult(e.getKey(), (int) a[0], a[1] / a[0], a[2] / a[0], nodes.get(e.getKey()).size(), 100.0 * a[3] / a[0], Math.round((a[5] - a[4]) / 3600_000.0)));
+        }
+        out.sort((x, y) -> Double.compare(y.avgRssi(), x.avgRssi()));
+        return out;
+    }
+
     // ---- 12. coverage grid -------------------------------------------------------------------------
     public record Cell(double lat, double lon, double medianRssi, int n) { }
 

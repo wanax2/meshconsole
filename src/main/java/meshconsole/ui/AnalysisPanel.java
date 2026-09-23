@@ -39,7 +39,14 @@ class AnalysisPanel extends JPanel {
     // antenna
     private final AntennaDb antennaDb = new AntennaDb(meshconsole.DataDir.file("antennas.json"));
     private final RadioDb radioDb = new RadioDb(meshconsole.DataDir.file("radios.json"));
-    private final SimpleModel radios = new SimpleModel(new String[]{"Radio", "ID", "Hardware", "Firmware", "TX dBm", "Role", "Antenna", "Location", "Hours connected", "Samples heard", "Avg RSSI", "Avg SNR", "Nodes heard", "Direct %", "DMs sent", "Delivered", "Last connected", "Notes"});
+    private final SimpleModel radios = new SimpleModel(new String[]{"Radio", "ID", "Hardware", "Firmware", "TX dBm", "Role", "Current antenna", "Antenna placement", "Height m", "Radio location", "Hours connected", "Samples heard", "Avg RSSI", "Avg SNR", "Nodes heard", "Direct %", "DMs sent", "Delivered", "Last connected", "Notes"});
+    private final SetupLog setupLog = new SetupLog(meshconsole.DataDir.file("setup_log.csv"));
+    private final SimpleModel setups = new SimpleModel(new String[]{"Radio", "Antenna", "Antenna placement", "Height m", "Radio location", "Since", "Hours", "Samples", "Avg RSSI", "Avg SNR", "Nodes heard", "Direct %", "Notes"});
+    private final JComboBox<String> setupAntenna = new JComboBox<>();
+    private final JComboBox<String> setupPlacement = new JComboBox<>(SetupLog.PLACEMENTS);
+    private final JSpinner setupHeight = new JSpinner(new SpinnerNumberModel(2.0, 0.0, 300.0, 0.5));
+    private final JTextField setupRadioLoc = new JTextField(14), setupNotes = new JTextField(14);
+    private final JLabel setupCurrent = new JLabel(" ");
     private final JTable radiosTable = table(radios);
     private final JComboBox<String> antennaPick = new JComboBox<>();
     private final JLabel antennaCurrent = new JLabel(" ");
@@ -166,13 +173,36 @@ class AnalysisPanel extends JPanel {
             try { radioDb.remove(num); refreshRadios(); } catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
         });
         rdTop.add(rdEdit); rdTop.add(rdDel);
-        rdTop.add(new JLabel("Every node you connect to the app is registered here automatically. Performance columns are what that radio heard while it was the one connected, and what it delivered."));
-        rd.add(rdTop, BorderLayout.NORTH);
+        rdTop.add(new JLabel("Every node you connect is registered automatically. Performance columns: what that radio heard while connected, and what it delivered."));
+        JPanel setupBox = new JPanel(); setupBox.setLayout(new BoxLayout(setupBox, BoxLayout.Y_AXIS)); setupBox.setAlignmentX(LEFT_ALIGNMENT);
+        setupBox.setBorder(BorderFactory.createTitledBorder("Record the physical setup of the connected radio (each change starts a new test period)"));
+        JPanel setupRow = row();
+        setupRow.add(new JLabel("Antenna:")); setupAntenna.setEditable(true); setupRow.add(setupAntenna);
+        setupRow.add(new JLabel("placed:")); setupRow.add(setupPlacement);
+        setupRow.add(new JLabel("height above ground m:")); setupRow.add(setupHeight);
+        setupRow.add(new JLabel("radio location:")); setupRow.add(setupRadioLoc);
+        JPanel setupRow2 = row();
+        setupRow2.add(new JLabel("notes:")); setupRow2.add(setupNotes);
+        JButton recordSetup = new JButton("Record setup now");
+        recordSetup.addActionListener(e -> recordSetup());
+        setupRow2.add(recordSetup); setupRow2.add(setupCurrent);
+        setupBox.add(setupRow); setupBox.add(setupRow2);
+        JPanel rdNorth = new JPanel(); rdNorth.setLayout(new BoxLayout(rdNorth, BoxLayout.Y_AXIS)); rdNorth.add(rdTop); rdNorth.add(setupBox);
+        rd.add(rdNorth, BorderLayout.NORTH);
         radiosTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         int[] rw = {150, 90, 130, 110, 55, 90, 130, 130, 90, 90, 70, 60, 80, 60, 60, 70, 110, 240};
         for (int i = 0; i < rw.length; i++) radiosTable.getColumnModel().getColumn(i).setPreferredWidth(rw[i]);
-        rd.add(new JScrollPane(radiosTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER);
-        JLabel rdNote = new JLabel("  Fair comparison: same antenna, same spot, similar hours, similar time of day. Swap the radio, keep everything else — the 'Nodes heard' and 'Avg RSSI' columns then compare receivers directly.");
+        JScrollPane rdT = new JScrollPane(radiosTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        rdT.setBorder(BorderFactory.createTitledBorder("Radios"));
+        JTable setupTable = table(setups);
+        setupTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        int[] sw = {150, 130, 120, 60, 130, 110, 50, 70, 70, 60, 80, 60, 200};
+        for (int i = 0; i < sw.length; i++) setupTable.getColumnModel().getColumn(i).setPreferredWidth(sw[i]);
+        JScrollPane setupT = new JScrollPane(setupTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        setupT.setBorder(BorderFactory.createTitledBorder("By setup — one row per recorded combination of radio, antenna, placement and height (best average RSSI first)"));
+        JSplitPane rdSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, rdT, setupT); rdSplit.setResizeWeight(0.45);
+        rd.add(rdSplit, BorderLayout.CENTER);
+        JLabel rdNote = new JLabel("  To test one variable, change only it and press 'Record setup now': same radio + antenna at 2 m vs 6 m tests height; same everything with another radio tests the receiver. Give each setup a few hours at a similar time of day.");
         rdNote.setFont(rdNote.getFont().deriveFont(11f));
         rd.add(rdNote, BorderLayout.SOUTH);
         tabs.addTab("My radios", rd);
@@ -394,14 +424,56 @@ class AnalysisPanel extends JPanel {
 
     void addConnectedTime(int num, long ms) { try { radioDb.addConnectedTime(num, ms); } catch (IOException ignored) { } }
 
+    private void recordSetup() {
+        if (!state.configComplete() || state.myNodeNum() == 0) { JOptionPane.showMessageDialog(this, "Connect to the radio first – the setup is recorded for the connected node."); return; }
+        String ant = String.valueOf(setupAntenna.getSelectedItem()).trim();
+        if (ant.isEmpty() || ant.equals("null")) { JOptionPane.showMessageDialog(this, "Choose or type the antenna in use."); return; }
+        try {
+            SetupLog.Setup st = new SetupLog.Setup(System.currentTimeMillis(), state.myNodeNum(), ant, String.valueOf(setupPlacement.getSelectedItem()),
+                    ((Number) setupHeight.getValue()).doubleValue(), setupRadioLoc.getText().trim(), setupNotes.getText().trim());
+            setupLog.add(st);
+            // keep the antenna log in step so the antenna A/B stays consistent
+            if (!ant.equalsIgnoreCase(antennaLog.current())) antennaLog.set(ant);
+            RadioDb.Radio r = radioDb.get(state.myNodeNum());
+            if (r != null) { r.antenna = ant; r.location = st.radioLocation(); radioDb.put(r); }
+            state.emitLog("Setup recorded for " + state.nodeName(state.myNodeNum()) + ": " + st.label());
+            refreshAntennaPick(); antennaPick.setSelectedItem(ant);
+            refreshAntenna();
+        } catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+    }
+
+    private void refreshSetupControls() {
+        Object sel = setupAntenna.getSelectedItem();
+        setupAntenna.removeAllItems();
+        for (AntennaDb.Antenna a : antennaDb.all()) setupAntenna.addItem(a.name);
+        if (sel != null) setupAntenna.setSelectedItem(sel);
+        SetupLog.Setup cur = state.myNodeNum() == 0 ? null : setupLog.current(state.myNodeNum());
+        if (cur != null) {
+            setupCurrent.setText("Current: " + cur.label() + " since " + Fmt.time(cur.time()));
+            if (sel == null) { setupAntenna.setSelectedItem(cur.antenna()); setupPlacement.setSelectedItem(cur.placement()); if (!Double.isNaN(cur.heightM())) setupHeight.setValue(cur.heightM()); setupRadioLoc.setText(cur.radioLocation()); }
+        } else setupCurrent.setText(state.myNodeNum() == 0 ? "(connect a radio)" : "No setup recorded yet for this radio");
+    }
+
     private void refreshRadios() {
+        refreshSetupControls();
+        List<Object[]> srows = new ArrayList<>();
+        if (history != null)
+            for (Analysis.SetupResult r : Analysis.bySetup(setupLog, history.since(System.currentTimeMillis() - 365L * 86400_000L))) {
+                RadioDb.Radio rd = radioDb.get(r.setup().radio());
+                srows.add(new Object[]{rd == null || rd.name.isEmpty() ? String.format("!%08x", r.setup().radio()) : rd.name, r.setup().antenna(), r.setup().placement(),
+                        Double.isNaN(r.setup().heightM()) ? "" : String.format("%.1f", r.setup().heightM()), r.setup().radioLocation(), Fmt.time(r.setup().time()), r.hours(),
+                        r.samples(), String.format("%.1f", r.avgRssi()), String.format("%.1f", r.avgSnr()), r.nodes(), String.format("%.0f%%", r.directPct()), r.setup().notes()});
+            }
+        setups.set(srows);
         Map<Integer, double[]> heard = history == null ? Map.of() : Analysis.byRadio(history.since(System.currentTimeMillis() - 365L * 86400_000L));
         Map<Integer, int[]> del = Analysis.deliveryByRadio(state.messages());
         List<Object[]> rows = new ArrayList<>();
         for (RadioDb.Radio r : radioDb.all()) {
             double[] h = heard.get(r.num); int[] d = del.get(r.num);
             long ms = r.connectedMs;
-            rows.add(new Object[]{r.name, r.idString(), r.hardware, r.firmware, r.txPower == 0 ? "" : String.valueOf(r.txPower), r.role, r.antenna, r.location,
+            SetupLog.Setup cur = setupLog.current(r.num);
+            rows.add(new Object[]{r.name, r.idString(), r.hardware, r.firmware, r.txPower == 0 ? "" : String.valueOf(r.txPower), r.role,
+                    cur != null ? cur.antenna() : r.antenna, cur == null ? "" : cur.placement(), cur == null || Double.isNaN(cur.heightM()) ? "" : String.format("%.1f", cur.heightM()), cur != null ? cur.radioLocation() : r.location,
                     String.format("%.1f", ms / 3600_000.0), h == null ? "" : String.valueOf((int) h[0]), h == null ? "" : String.format("%.1f", h[1]), h == null ? "" : String.format("%.1f", h[2]),
                     h == null ? "" : String.valueOf((int) h[3]), h == null ? "" : String.format("%.0f%%", h[4]),
                     d == null ? "" : String.valueOf(d[0]), d == null || d[0] == 0 ? "" : Math.round(100.0 * d[1] / d[0]) + "%", r.lastConnected == 0 ? "" : Fmt.time(r.lastConnected), r.notes});
