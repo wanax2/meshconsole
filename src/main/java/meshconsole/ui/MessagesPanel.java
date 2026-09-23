@@ -30,7 +30,7 @@ class MessagesPanel extends JPanel {
         @Override public String toString() { return label; }
     }
 
-    private static final String[] COLS = {"Time", "Dir", "From", "To", "Ch", "Message", "Status", "RSSI", "SNR", "Hops"};
+    private static final String[] COLS = {"Time", "Dir", "From", "To", "Ch", "Message", "Status", "RSSI", "SNR", "Hops", "Air ms"};
 
     private class Model extends AbstractTableModel {
         List<ChatMessage> rows = new ArrayList<>();
@@ -50,6 +50,7 @@ class MessagesPanel extends JPanel {
                 case 7 -> m.rssi == 0 ? "" : m.rssi + " dBm";
                 case 8 -> m.outgoing || (m.rssi == 0 && m.snr == 0) ? "" : String.format("%.1f", m.snr);
                 case 9 -> m.hops < 0 ? "" : String.valueOf(m.hops);
+                case 10 -> m.airtimeMs == 0 ? "" : String.valueOf(m.airtimeMs);
                 default -> "";
             };
         }
@@ -94,7 +95,7 @@ class MessagesPanel extends JPanel {
         table.setAutoCreateRowSorter(false);
         table.setFillsViewportHeight(true);
         table.setRowHeight(20);
-        int[] widths = {100, 30, 120, 120, 30, 420, 200, 60, 50, 40};
+        int[] widths = {100, 30, 120, 120, 30, 400, 200, 60, 50, 40, 50};
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         table.getColumnModel().getColumn(6).setCellRenderer(new DefaultTableCellRenderer() {
             @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {

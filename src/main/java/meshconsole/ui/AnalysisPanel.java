@@ -36,6 +36,8 @@ class AnalysisPanel extends JPanel {
     private final JLabel dupeSummary = new JLabel(" ");
     private final JLabel noiseSummary = new JLabel(" ");
     private final BarChart noiseChart = new BarChart();
+    private final BarChart countChart = new BarChart();
+    private final JLabel countSummary = new JLabel(" ");
     // delivery
     private final SimpleModel delivery = new SimpleModel(new String[]{"Group", "Bucket", "Sent", "Delivered", "Success"});
     // antenna
@@ -112,9 +114,11 @@ class AnalysisPanel extends JPanel {
         noiseChart.setPreferredSize(new Dimension(600, 120));
         JPanel nc = new JPanel(new BorderLayout()); nc.setBorder(BorderFactory.createTitledBorder("Noise floor reported by this radio, last 48 samples (bar height = dB above -130; healthy ≈ -110 to -115 dBm, -100 means ~10-15 dB of local interference)")); nc.add(noiseChart);
         JPanel chTop = new JPanel(new BorderLayout());
-        JPanel charts = new JPanel(new GridLayout(2, 1)); charts.add(uc); charts.add(nc);
+        countChart.setPreferredSize(new Dimension(600, 110));
+        JPanel cc2 = new JPanel(new BorderLayout()); cc2.setBorder(BorderFactory.createTitledBorder("Nodes heard in the last hour (blue) and online per the radio (orange), one bar per 15 min, up to 30 days")); cc2.add(countChart);
+        JPanel charts = new JPanel(new GridLayout(3, 1)); charts.add(uc); charts.add(nc); charts.add(cc2);
         chTop.add(charts, BorderLayout.CENTER);
-        JPanel d = new JPanel(); d.setLayout(new BoxLayout(d, BoxLayout.Y_AXIS)); JPanel d1 = row(); d1.add(dupeSummary); JPanel d2 = row(); d2.add(noiseSummary); d.add(d1); d.add(d2);
+        JPanel d = new JPanel(); d.setLayout(new BoxLayout(d, BoxLayout.Y_AXIS)); JPanel d1 = row(); d1.add(dupeSummary); JPanel d2 = row(); d2.add(noiseSummary); JPanel d3 = row(); d3.add(countSummary); d.add(d1); d.add(d2); d.add(d3);
         chTop.add(d, BorderLayout.SOUTH);
         JScrollPane bt = new JScrollPane(table(budget)); bt.setBorder(BorderFactory.createTitledBorder("Air-time budget per node since counters were reset (Meshtastic guideline: keep each node under 10 %)"));
         JSplitPane chSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, chTop, bt); chSplit.setResizeWeight(0.45);
@@ -334,6 +338,17 @@ class AnalysisPanel extends JPanel {
             Collections.sort(last24);
             noiseSummary.setText(String.format("Noise floor: now %d dBm, 24 h median %s, best ever %d, worst ever %d (%d samples). Move the radio/antenna and watch this: lower is better.",
                     ns.get(ns.size() - 1).noiseFloorDbm(), last24.isEmpty() ? "–" : last24.get(last24.size() / 2) + " dBm", best, worst, ns.size()));
+        }
+        List<UtilHistory.CountSample> cs = utilHistory != null ? utilHistory.counts() : List.of();
+        if (cs.isEmpty()) { countSummary.setText("Node counts: waiting for the radio's local statistics."); countChart.set(new int[0], null); }
+        else {
+            List<UtilHistory.CountSample> recent = cs.subList(Math.max(0, cs.size() - 96 * 30), cs.size());
+            int[] heard = new int[recent.size()], online = new int[recent.size()];
+            for (int i = 0; i < heard.length; i++) { heard[i] = recent.get(i).heardLastHour(); online[i] = recent.get(i).online(); }
+            countChart.set(heard, online);
+            int maxH = 0; for (int v : heard) maxH = Math.max(maxH, v);
+            UtilHistory.CountSample last = cs.get(cs.size() - 1);
+            countSummary.setText(String.format("Node counts: now %d heard in the last hour, %d online per the radio, %d known; peak heard/hour %d (%d samples since %s).", last.heardLastHour(), last.online(), last.total(), maxH, cs.size(), Fmt.time(cs.get(0).time())));
         }
         List<UtilHistory.DupeSample> ds = utilHistory != null ? utilHistory.dupes() : List.of();
         if (ds.size() >= 2) {

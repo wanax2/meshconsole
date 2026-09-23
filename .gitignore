@@ -25,3 +25,6 @@ radios.json
 setup_log.csv
 bbs.json
 bbs.log
+traceroute_log.csv
+mqtt_log.csv
+admin_log.txt

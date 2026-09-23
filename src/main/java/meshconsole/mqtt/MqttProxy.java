@@ -20,6 +20,9 @@ public class MqttProxy implements AutoCloseable {
     private final Consumer<String> status;
     private MqttClient mqtt;
     private long published, received;
+    private void trafficLog(String dir, String topic, int bytes) {
+        try { java.nio.file.Files.writeString(meshconsole.DataDir.file("mqtt_log.csv"), System.currentTimeMillis() + "," + dir + "," + topic.replace(",", " ") + "," + bytes + "\n", java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (java.io.IOException ignored) { }
+    }
     private final MeshState.Listener radioListener = new MeshState.Listener() {
         @Override public void onMqttProxyMessage(MqttClientProxyMessage m) { fromRadio(m); }
     };
@@ -83,6 +86,7 @@ public class MqttProxy implements AutoCloseable {
                     : m.getData().toByteArray();
             c.publish(m.getTopic(), payload, m.getRetained(), 0);
             published++;
+            trafficLog("up", m.getTopic(), payload.length);
             if (state.verbose()) state.emitLog("[mqtt] ↑ " + m.getTopic() + " (" + payload.length + " B" + (m.getRetained() ? ", retained" : "") + ")");
             status.accept(String.format("Running  ·  published %d  received %d  ·  last ↑ %s", published, received, m.getTopic()));
         } catch (IOException e) {
@@ -95,6 +99,7 @@ public class MqttProxy implements AutoCloseable {
             client.sendMqttProxy(MqttClientProxyMessage.newBuilder()
                     .setTopic(topic).setData(ByteString.copyFrom(payload)).setRetained(retained).build());
             received++;
+            trafficLog("down", topic, payload.length);
             if (state.verbose()) state.emitLog("[mqtt] ↓ " + topic + " (" + payload.length + " B)");
             status.accept(String.format("Running  ·  published %d  received %d  ·  last ↓ %s", published, received, topic));
         } catch (IOException e) {

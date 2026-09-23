@@ -27,7 +27,7 @@ public class MessageLog {
                 + Integer.toUnsignedString(m.from) + "\t" + Integer.toUnsignedString(m.to) + "\t"
                 + m.channel + "\t" + Integer.toUnsignedString(m.packetId) + "\t"
                 + m.status + "\t" + esc(m.statusDetail) + "\t"
-                + m.rssi + "\t" + m.snr + "\t" + m.hops + "\t" + esc(m.text) + "\n";
+                + m.rssi + "\t" + m.snr + "\t" + m.hops + "\t" + esc(m.text) + "\t" + m.airtimeMs + "\n";
         try {
             Files.writeString(file, line, StandardCharsets.UTF_8,
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
@@ -58,6 +58,7 @@ public class MessageLog {
                     m.snr = Float.parseFloat(f[9]);
                     m.hops = Integer.parseInt(f[10]);
                     m.text = unesc(f[11]);
+                    if (f.length > 12) try { m.airtimeMs = Integer.parseInt(f[12]); } catch (NumberFormatException ignored) { }
                     // Anything still "in flight" at load time can't be resolved anymore.
                     if (m.status == ChatMessage.Status.QUEUED) {
                         m.status = ChatMessage.Status.HISTORY;

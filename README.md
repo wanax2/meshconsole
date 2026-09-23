@@ -112,7 +112,7 @@ By default everything goes in the folder the app is started from; **File → Dat
 * `nodes.json` — persistent node database (identity, first/last seen, counters). Reset from the Nodes tab.
 * `signal_history.csv` — every RSSI/SNR sample for one year (pruned at startup). The chart keeps 7 days at full resolution and hourly per-node averages beyond that; in a busy mesh expect the file to grow by a few MB per day.
 * `sessions.log`, `alerts.log` — one line per connection / alert.
-* `weather_history.csv`, `util_history.csv`, `antenna_log.csv`, `mesh_report.html` — analysis inputs and output.
+* `weather_history.csv`, `util_history.csv` (utilisation, duplicates, noise floor, power, node counts), `antenna_log.csv`, `antennas.json`, `radios.json`, `setup_log.csv`, `config_log.csv`, `traceroute_log.csv`, `mqtt_log.csv`, `admin_log.txt`, `bbs.json`, `bbs.log`, `mesh_report.html` — analysis inputs and output.
 * `*.mcap` — packet captures (Status tab → Record packets).
 * `meshconsole.log` — app/device log when "Write meshconsole.log" is ticked.
 * `messages.log` — tab-separated message history (time, direction, from, to, channel, packet id, status, RSSI, SNR, hops, text). Pass a path as the first command-line argument to use a different file.

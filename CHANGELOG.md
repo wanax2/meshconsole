@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.2 — 2026-09-23
+
+More logging:
+- **Node-count history** — every 15 min: nodes heard in the last hour, nodes online per the radio, nodes known (`util_history.csv` C rows); charted on Analysis → Channel health (the mesh's growth/activity curve).
+- **Traceroute log** (`traceroute_log.csv`) — every traceroute result with route, per-hop SNR, and the return path, so route changes over weeks are visible.
+- **MQTT proxy traffic log** (`mqtt_log.csv`) — direction, topic, bytes for every message relayed.
+- **Per-message airtime** — estimated time-on-air for every message (new column in the Messages table and in `messages.log`).
+- **Admin log** (`admin_log.txt`) — every setting changed from the app, with old → new values per field, plus owner/position/channel/reboot commands.
+
+
 ## 1.4.1 — 2026-09-23
 
 - **All settings editor** (Settings → "All settings" sub-tab): every field of every Config and ModuleConfig section (device, position, power, network, display, lora, bluetooth, security; mqtt, serial, external notification, store & forward, range test, telemetry, canned messages, audio, remote hardware, neighbor info, ambient lighting, detection sensor, paxcounter…), generated from the protobuf definitions so new firmware fields appear automatically. Enums and booleans get drop-downs, lists are comma-separated, keys are base64. Writes the whole section back, preserving untouched fields.

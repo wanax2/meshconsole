@@ -196,6 +196,7 @@ public class MeshClient implements MeshSerial.Listener {
         m.packetId = newPacketId();
         m.status = ChatMessage.Status.QUEUED;
         m.statusDetail = "queued";
+        m.airtimeMs = (int) Math.round(Airtime.millis(16 + text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length + 6, state.lora()));
         state.addOutgoing(m);
         requireSerial();
         sender.submit(() -> {
@@ -312,13 +313,30 @@ public class MeshClient implements MeshSerial.Listener {
     }
 
     public void setOwner(String longName, String shortName) throws IOException {
+        adminLog("set_owner " + longName + " / " + shortName, null, null);
         ensureSessionKey();
         User u = User.newBuilder().setLongName(longName).setShortName(shortName).build();
         sendAdmin(AdminMessage.newBuilder().setSetOwner(u), false);
         state.emitLog("Owner set to " + longName + " / " + shortName);
     }
 
+    private void adminLog(String what, com.google.protobuf.Message before, com.google.protobuf.Message after) {
+        StringBuilder diff = new StringBuilder();
+        if (before != null && after != null) {
+            for (com.google.protobuf.Descriptors.FieldDescriptor fd : after.getDescriptorForType().getFields()) {
+                Object a = before.getField(fd), b = after.getField(fd);
+                if (!String.valueOf(a).equals(String.valueOf(b))) diff.append(fd.getName()).append(": ").append(a).append(" -> ").append(b).append("; ");
+            }
+        }
+        String line = java.time.ZonedDateTime.now().format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "  " + String.format("!%08x", state.myNodeNum()) + "  " + what + (diff.length() == 0 ? "" : "  " + diff.toString().trim().replace("\n", " ")) + "\n";
+        try { java.nio.file.Files.writeString(meshconsole.DataDir.file("admin_log.txt"), line, java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (IOException ignored) { }
+        if (diff.length() > 0) state.emitLog("Changed " + what + ": " + diff.toString().trim());
+    }
+
     public void setConfig(Config c) throws IOException {
+        Config before = state.config(c.getPayloadVariantCase());
+        com.google.protobuf.Descriptors.FieldDescriptor fd = c.getDescriptorForType().findFieldByName(c.getPayloadVariantCase().name().toLowerCase());
+        adminLog("set_config " + c.getPayloadVariantCase().name().toLowerCase(), before == null || fd == null ? null : (com.google.protobuf.Message) before.getField(fd), fd == null ? null : (com.google.protobuf.Message) c.getField(fd));
         ensureSessionKey();
         sendAdmin(AdminMessage.newBuilder().setBeginEditSettings(true), false);
         sendAdmin(AdminMessage.newBuilder().setSetConfig(c), false);
@@ -328,6 +346,9 @@ public class MeshClient implements MeshSerial.Listener {
     }
 
     public void setModuleConfig(ModuleConfig c) throws IOException {
+        ModuleConfig before = state.moduleConfig(c.getPayloadVariantCase());
+        com.google.protobuf.Descriptors.FieldDescriptor fd = c.getDescriptorForType().findFieldByName(c.getPayloadVariantCase().name().toLowerCase());
+        adminLog("set_module_config " + c.getPayloadVariantCase().name().toLowerCase(), before == null || fd == null ? null : (com.google.protobuf.Message) before.getField(fd), fd == null ? null : (com.google.protobuf.Message) c.getField(fd));
         ensureSessionKey();
         sendAdmin(AdminMessage.newBuilder().setBeginEditSettings(true), false);
         sendAdmin(AdminMessage.newBuilder().setSetModuleConfig(c), false);
@@ -337,6 +358,9 @@ public class MeshClient implements MeshSerial.Listener {
     }
 
     public void setChannel(Channel c) throws IOException {
+        Channel before = null;
+        for (Channel x : state.allChannels()) if (x.getIndex() == c.getIndex()) before = x;
+        adminLog("set_channel " + c.getIndex(), before, c);
         ensureSessionKey();
         sendAdmin(AdminMessage.newBuilder().setBeginEditSettings(true), false);
         sendAdmin(AdminMessage.newBuilder().setSetChannel(c), false);
@@ -347,6 +371,7 @@ public class MeshClient implements MeshSerial.Listener {
 
     /** Stores a fixed position on the radio (also enables position.fixed_position). */
     public void setFixedPosition(double lat, double lon, int altitudeM) throws IOException {
+        adminLog(String.format("set_fixed_position %.5f %.5f %d", lat, lon, altitudeM), null, null);
         ensureSessionKey();
         Position pos = Position.newBuilder()
                 .setLatitudeI((int) Math.round(lat * 1e7)).setLongitudeI((int) Math.round(lon * 1e7))
@@ -360,12 +385,14 @@ public class MeshClient implements MeshSerial.Listener {
     }
 
     public void removeFixedPosition() throws IOException {
+        adminLog("remove_fixed_position", null, null);
         ensureSessionKey();
         sendAdmin(AdminMessage.newBuilder().setRemoveFixedPosition(true), false);
         state.emitLog("Fixed position removed (radio will use GPS if it has one)");
     }
 
     public void reboot(int seconds) throws IOException {
+        adminLog("reboot", null, null);
         ensureSessionKey();
         sendAdmin(AdminMessage.newBuilder().setRebootSeconds(seconds), false);
         state.emitLog("Reboot requested in " + seconds + " s");

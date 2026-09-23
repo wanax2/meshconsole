@@ -525,6 +525,7 @@ public class MeshState {
                     m.hops = hops;
                     m.replyId = d.getReplyId();
                     m.emoji = d.getEmoji() != 0;
+                    m.airtimeMs = (int) Math.round(Airtime.millis(16 + d.getSerializedSize() + 4, lora));
                     synchronized (lock) { messages.add(m); }
                     log.append(m);
                     fire(l -> l.onMessage(m, true));
@@ -566,7 +567,13 @@ public class MeshState {
                     }
                     if (t.hasLocalStats() && fromMe) {
                         synchronized (lock) { localStats = t.getLocalStats(); }
-                        if (utilHistoryFile != null) { utilHistoryFile.addDupe(t.getLocalStats().getNumPacketsRx(), t.getLocalStats().getNumRxDupe(), t.getLocalStats().getNumOnlineNodes()); utilHistoryFile.addNoise(t.getLocalStats().getNoiseFloor()); }
+                        if (utilHistoryFile != null) {
+                            utilHistoryFile.addDupe(t.getLocalStats().getNumPacketsRx(), t.getLocalStats().getNumRxDupe(), t.getLocalStats().getNumOnlineNodes());
+                            utilHistoryFile.addNoise(t.getLocalStats().getNoiseFloor());
+                            int heard = 0, total = 0; long cutoff = System.currentTimeMillis() - 3600_000L;
+                            synchronized (lock) { for (NodeEntry x : nodes.values()) { if (x.num == myNodeNum) continue; total++; if (x.lastHeardMillis() > cutoff) heard++; } }
+                            utilHistoryFile.addCount(t.getLocalStats().getNumOnlineNodes(), heard, total);
+                        }
                         fire(Listener::onStatusChanged);
                     }
                 }
@@ -781,6 +788,19 @@ public class MeshState {
         }
         String s = sb.toString();
         emitLog(s);
+        try {
+            StringBuilder csv = new StringBuilder();
+            csv.append(System.currentTimeMillis()).append(',').append(String.format("!%08x", p.getFrom())).append(',').append(nodeName(p.getFrom()).replace(",", " ")).append(',').append(route.size() + 1).append(',');
+            for (int i = 0; i < route.size(); i++) csv.append(i > 0 ? " " : "").append(String.format("!%08x", route.get(i)));
+            csv.append(',');
+            for (int i = 0; i < snrs.size(); i++) csv.append(i > 0 ? " " : "").append(snrs.get(i) == -128 ? "?" : String.format("%.2f", snrs.get(i) / 4.0));
+            csv.append(',');
+            for (int i = 0; i < rd.getRouteBackCount(); i++) csv.append(i > 0 ? " " : "").append(String.format("!%08x", rd.getRouteBack(i)));
+            csv.append(',');
+            for (int i = 0; i < rd.getSnrBackCount(); i++) csv.append(i > 0 ? " " : "").append(rd.getSnrBack(i) == -128 ? "?" : String.format("%.2f", rd.getSnrBack(i) / 4.0));
+            csv.append('\n');
+            java.nio.file.Files.writeString(meshconsole.DataDir.file("traceroute_log.csv"), csv.toString(), java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (java.io.IOException ignored) { }
         fire(l -> l.onTraceroute(s));
     }
 

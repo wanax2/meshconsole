@@ -22,6 +22,7 @@ public class ChatMessage {
     public boolean emoji;        // true = this is a reaction (text is the emoji) to replyId
     public long ackTime;         // millis when DELIVERED/FAILED arrived (0 = pending)
     public boolean fromStoreForward;
+    public int airtimeMs;        // estimated time on air for this packet
 
     public boolean isBroadcast() {
         return to == BROADCAST;

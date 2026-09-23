@@ -18,7 +18,7 @@ public final class DataDir {
 
     /** Data files the app owns; used for backups and moves. */
     public static final List<String> FILES = List.of("messages.log", "nodes.json", "signal_history.csv", "weather_history.csv", "util_history.csv",
-            "antenna_log.csv", "antennas.json", "radios.json", "setup_log.csv", "bbs.json", "bbs.log", "config_log.csv", "alerts.log", "sessions.log", "meshconsole.log", "mesh_report.html", "data_version.txt");
+            "antenna_log.csv", "antennas.json", "radios.json", "setup_log.csv", "bbs.json", "bbs.log", "traceroute_log.csv", "mqtt_log.csv", "admin_log.txt", "config_log.csv", "alerts.log", "sessions.log", "meshconsole.log", "mesh_report.html", "data_version.txt");
 
     private DataDir() { }
 

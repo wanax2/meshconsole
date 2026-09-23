@@ -14,6 +14,14 @@ public class UtilHistory {
     public record DupeSample(long time, long rx, long dupe, int online) { }
     public record NoiseSample(long time, int noiseFloorDbm) { }
     public record PowerSample(long time, int battery, float voltage) { }
+    public record CountSample(long time, int online, int heardLastHour, int total) { }
+    private final List<CountSample> counts = new ArrayList<>();
+    public synchronized void addCount(int online, int heardLastHour, int total) {
+        CountSample c = new CountSample(System.currentTimeMillis(), online, heardLastHour, total);
+        if (!counts.isEmpty() && counts.get(counts.size() - 1).time() > c.time() - 15 * 60_000L) return;   // every 15 min
+        counts.add(c); append("C," + c.time() + "," + online + "," + heardLastHour + "," + total);
+    }
+    public synchronized List<CountSample> counts() { return new ArrayList<>(counts); }
     private final List<PowerSample> power = new ArrayList<>();
     public synchronized void addPower(int battery, float voltage) {
         PowerSample p = new PowerSample(System.currentTimeMillis(), battery, voltage);
@@ -48,6 +56,7 @@ public class UtilHistory {
                     else if (f[0].equals("D") && f.length >= 5) dupes.add(new DupeSample(t, Long.parseLong(f[2]), Long.parseLong(f[3]), Integer.parseInt(f[4])));
                     else if (f[0].equals("N") && f.length >= 3) noise.add(new NoiseSample(t, Integer.parseInt(f[2])));
                     else if (f[0].equals("P") && f.length >= 4) power.add(new PowerSample(t, Integer.parseInt(f[2]), Float.parseFloat(f[3])));
+                    else if (f[0].equals("C") && f.length >= 5) counts.add(new CountSample(t, Integer.parseInt(f[2]), Integer.parseInt(f[3]), Integer.parseInt(f[4])));
                 } catch (RuntimeException ignored) { }
             }
         } catch (IOException ignored) { }
