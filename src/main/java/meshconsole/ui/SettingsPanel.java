@@ -216,7 +216,10 @@ class SettingsPanel extends JPanel {
         box.add(chScroll);
         box.add(Box.createVerticalGlue());
 
-        add(new JScrollPane(box), BorderLayout.CENTER);
+        JTabbedPane sub = new JTabbedPane();
+        sub.addTab("Common", new JScrollPane(box));
+        sub.addTab("All settings", new ConfigEditorPanel(client));
+        add(sub, BorderLayout.CENTER);
 
         state.addListener(new MeshState.Listener() {
             @Override public void onStatusChanged() {

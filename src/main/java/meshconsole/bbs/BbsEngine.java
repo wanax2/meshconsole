@@ -46,6 +46,7 @@ public class BbsEngine {
         synchronized (activity) { activity.addLast(line); while (activity.size() > 500) activity.removeFirst(); }
         listener.onActivity(line);
         state.emitLog("[bbs] " + s);
+        try { java.nio.file.Files.writeString(meshconsole.DataDir.file("bbs.log"), line + "\n", StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND); } catch (IOException ignored) { }
     }
 
     // ---- incoming -----------------------------------------------------------

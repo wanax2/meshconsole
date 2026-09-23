@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1 — 2026-09-23
+
+- **All settings editor** (Settings → "All settings" sub-tab): every field of every Config and ModuleConfig section (device, position, power, network, display, lora, bluetooth, security; mqtt, serial, external notification, store & forward, range test, telemetry, canned messages, audio, remote hardware, neighbor info, ambient lighting, detection sensor, paxcounter…), generated from the protobuf definitions so new firmware fields appear automatically. Enums and booleans get drop-downs, lists are comma-separated, keys are base64. Writes the whole section back, preserving untouched fields.
+- BBS defaults to "Lyon's Den" (Lyon Village, Arlington VA); BBS activity also logged to `bbs.log`.
+- Own-node battery/voltage history (`util_history.csv`, P rows).
+
+
 ## 1.4.0 — 2026-09-23
 
 - **BBS tab** — a bulletin-board bot that answers direct messages to this node: `?` menu, `B` bulletins (paged), `R n` read, `P text` post, `D n` delete own, `M` read mail, `M name text` leave mail for a node (delivered when it is next heard), `N` nodes heard in the last hour, `S` the sender's signal as seen here, `W` weather (from the METAR feed), `I` info, `PING`. Sysop tools: name and welcome text, post as sysop, delete, ban, per-node cooldown, optional single trigger word on the public channel (off by default). Replies never exceed 200 bytes. Stored in `bbs.json`.

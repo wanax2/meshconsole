@@ -13,6 +13,14 @@ import java.util.List;
 public class UtilHistory {
     public record DupeSample(long time, long rx, long dupe, int online) { }
     public record NoiseSample(long time, int noiseFloorDbm) { }
+    public record PowerSample(long time, int battery, float voltage) { }
+    private final List<PowerSample> power = new ArrayList<>();
+    public synchronized void addPower(int battery, float voltage) {
+        PowerSample p = new PowerSample(System.currentTimeMillis(), battery, voltage);
+        if (!power.isEmpty() && power.get(power.size() - 1).time() > p.time() - 5 * 60_000L) return;
+        power.add(p); append("P," + p.time() + "," + battery + "," + voltage);
+    }
+    public synchronized List<PowerSample> power() { return new ArrayList<>(power); }
     private final List<NoiseSample> noise = new ArrayList<>();
     public synchronized void addNoise(int dbm) {
         if (dbm == 0) return;
@@ -39,6 +47,7 @@ public class UtilHistory {
                     if (f[0].equals("U") && f.length >= 5) util.add(new UtilSample(t, Float.parseFloat(f[2]), Float.parseFloat(f[3]), Integer.parseInt(f[4])));
                     else if (f[0].equals("D") && f.length >= 5) dupes.add(new DupeSample(t, Long.parseLong(f[2]), Long.parseLong(f[3]), Integer.parseInt(f[4])));
                     else if (f[0].equals("N") && f.length >= 3) noise.add(new NoiseSample(t, Integer.parseInt(f[2])));
+                    else if (f[0].equals("P") && f.length >= 4) power.add(new PowerSample(t, Integer.parseInt(f[2]), Float.parseFloat(f[3])));
                 } catch (RuntimeException ignored) { }
             }
         } catch (IOException ignored) { }

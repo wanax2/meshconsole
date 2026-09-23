@@ -550,7 +550,7 @@ public class MeshState {
                                 UtilSample us = new UtilSample(System.currentTimeMillis(), n.channelUtil, n.airUtilTx, queueFree);
                                 util.addLast(us);
                                 while (util.size() > 2000) util.removeFirst();
-                                if (utilHistoryFile != null) utilHistoryFile.addUtil(us);
+                                if (utilHistoryFile != null) { utilHistoryFile.addUtil(us); if (n.battery >= 0) utilHistoryFile.addPower(n.battery, n.voltage); }
                             }
                         }
                         fire(Listener::onNodesChanged);

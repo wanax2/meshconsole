@@ -13,7 +13,7 @@ public class BbsStore {
     public static class Post { public int id; public long time; public int author; public String authorName = "", text = ""; }
     public static class Mail { public int id; public long time, delivered; public int from, to; public String fromName = "", text = ""; }
 
-    public String name = "Mesh BBS", welcome = "Send ? for commands.";
+    public String name = "Lyon's Den", welcome = "The Lyon's Den – Lyon Village, Arlington VA 22201. Leave a bulletin or mail; send ? for commands. 73";
     public boolean enabled = false, channelTrigger = false;
     public String triggerWord = "bbs?";
     public int maxPosts = 200, cooldownSec = 20;
