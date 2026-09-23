@@ -17,3 +17,5 @@ weather_history.csv
 util_history.csv
 antenna_log.csv
 mesh_report.html
+data_version.txt
+backup/

@@ -18,7 +18,7 @@ import java.util.prefs.Preferences;
 class WeatherPanel extends JPanel {
     private final MeshState state;
     private final SignalHistory history;
-    private final WeatherHistory weather = new WeatherHistory(Path.of("weather_history.csv"));
+    private final WeatherHistory weather = new WeatherHistory(meshconsole.DataDir.file("weather_history.csv"));
     private final Preferences prefs = Preferences.userNodeForPackage(WeatherPanel.class);
     private final JTextField station = new JTextField(prefs.get("station", "KDCA"), 6);
     private final JCheckBox auto = new JCheckBox("Auto: nearest to my node", prefs.getBoolean("auto", false));

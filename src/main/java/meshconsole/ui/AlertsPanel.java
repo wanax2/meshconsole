@@ -29,7 +29,7 @@ class AlertsPanel extends JPanel {
     private final JSpinner util = new JSpinner(new SpinnerNumberModel(30, 5, 100, 5));
     private final JCheckBox dmAlert = new JCheckBox("New direct message", true);
     private TrayIcon trayIcon;
-    private final Path logFile = Path.of("alerts.log");
+    private final Path logFile = meshconsole.DataDir.file("alerts.log");
 
     private static final String[] COLS = {"Time", "Kind", "Alert"};
 

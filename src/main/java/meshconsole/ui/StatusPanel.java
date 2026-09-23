@@ -113,7 +113,7 @@ class StatusPanel extends JPanel {
         if (client == null) return;
         if (client.isCapturing()) { client.stopCapture(); captureBtn.setText("● Record packets"); captureInfo.setText(" "); return; }
         JFileChooser fc = new JFileChooser();
-        fc.setSelectedFile(new java.io.File("capture-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".mcap"));
+        fc.setSelectedFile(meshconsole.DataDir.file("capture-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".mcap").toFile());
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
         try {
             client.startCapture(fc.getSelectedFile().toPath());
@@ -149,7 +149,7 @@ class StatusPanel extends JPanel {
         String stamped = Fmt.time(System.currentTimeMillis()) + "  " + line;
         if (toFile.isSelected()) {
             try {
-                if (logFile == null) logFile = new java.io.PrintWriter(new java.io.FileWriter("meshconsole.log", true), true);
+                if (logFile == null) logFile = new java.io.PrintWriter(new java.io.FileWriter(meshconsole.DataDir.file("meshconsole.log").toFile(), true), true);
                 logFile.println(stamped);
             } catch (java.io.IOException ignored) { }
         }

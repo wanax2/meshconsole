@@ -87,7 +87,7 @@ public class MeshClient implements MeshSerial.Listener {
 
     private volatile boolean traceFrames;
     private volatile Capture capture;
-    private final java.nio.file.Path sessionLog = java.nio.file.Path.of("sessions.log");
+    private final java.nio.file.Path sessionLog = meshconsole.DataDir.file("sessions.log");
     private long connectedAt;
 
     public void startCapture(java.nio.file.Path p) throws IOException { stopCapture(); capture = new Capture(p); state.emitLog("Recording packets to " + p); }

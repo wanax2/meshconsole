@@ -3,7 +3,7 @@ package meshconsole;
 /** Product identity shown in the title bar, About box and CLI. Edit the holder to your name. */
 public final class Version {
     public static final String NAME = "Mesh Console";
-    public static final String VERSION = "1.3.2";
+    public static final String VERSION = "1.3.3";
     public static final String COPYRIGHT_HOLDER = "Mesh Console contributors";   // <- put your name here
     public static final String YEAR = "2026";
     public static final String COPYRIGHT = "Copyright © " + YEAR + " " + COPYRIGHT_HOLDER;

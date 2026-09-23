@@ -120,7 +120,7 @@ class MapPanel extends JPanel {
     private static final Map<String, BufferedImage> tiles = new HashMap<>();
     private static final Set<String> loading = new HashSet<>();
     private static final ExecutorService pool = Executors.newFixedThreadPool(4, r -> { Thread t = new Thread(r, "tile-fetch"); t.setDaemon(true); return t; });
-    private static final Path cacheDir = Path.of("tilecache");
+    private static final Path cacheDir = meshconsole.DataDir.file("tilecache");
     private static volatile boolean online = true;
 
     private BufferedImage tile(int z, int x, int y) {

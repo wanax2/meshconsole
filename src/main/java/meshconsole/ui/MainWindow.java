@@ -49,6 +49,13 @@ public class MainWindow extends JFrame {
         });
 
         JMenuBar menu = new JMenuBar();
+        JMenu file = new JMenu("File");
+        JMenuItem dataDir = new JMenuItem("Data folder…");
+        dataDir.addActionListener(e -> chooseDataFolder());
+        JMenuItem openDir = new JMenuItem("Open data folder");
+        openDir.addActionListener(e -> { try { Desktop.getDesktop().open(meshconsole.DataDir.get().toFile()); } catch (Exception ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); } });
+        file.add(dataDir); file.add(openDir);
+        menu.add(file);
         JMenu help = new JMenu("Help");
         JMenuItem about = new JMenuItem("About " + meshconsole.Version.NAME + "…");
         about.addActionListener(e -> showAbout());
@@ -209,6 +216,27 @@ public class MainWindow extends JFrame {
             status.setText("Disconnected – waiting for " + want + " to come back (" + left + " s)");
         });
         reconnectTimer.start();
+    }
+
+    private void chooseDataFolder() {
+        JFileChooser fc = new JFileChooser(meshconsole.DataDir.get().toFile());
+        fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        fc.setDialogTitle("Folder for logs, node database and history (current: " + meshconsole.DataDir.get() + ")");
+        if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        java.nio.file.Path chosen = fc.getSelectedFile().toPath().toAbsolutePath();
+        if (chosen.equals(meshconsole.DataDir.get())) return;
+        Object[] opts = {"Copy existing data there", "Start empty there", "Cancel"};
+        int r = JOptionPane.showOptionDialog(this, "<html>Use <b>" + chosen + "</b> for all data files from the next start?<br><br>"
+                + "Copy the current files there so history continues, or start with an empty folder (current files stay where they are).</html>",
+                "Data folder", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opts, opts[0]);
+        if (r == 2 || r < 0) return;
+        try {
+            if (r == 0) { int n = meshconsole.DataDir.copyData(chosen, false); state.emitLog("Copied " + n + " data files to " + chosen); }
+            meshconsole.DataDir.set(chosen);
+            JOptionPane.showMessageDialog(this, "Data folder set to " + chosen + ".\nRestart Mesh Console for it to take effect.", "Data folder", JOptionPane.INFORMATION_MESSAGE);
+        } catch (java.io.IOException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Data folder", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void showAbout() {

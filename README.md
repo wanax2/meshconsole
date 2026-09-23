@@ -106,6 +106,8 @@ pasting into a bug report. The radio only streams its *own* debug output to a co
 
 ## Files it writes
 
+By default everything goes in the folder the app is started from; **File → Data folder…** moves that anywhere (a synced drive, a second disk), and `meshconsole.bat D:\meshdata` does the same from the command line. Formats are plain text and append-only; a newer version keeps writing to the same files, and before its first write it copies them to `backup/<old-version>-<date>/`.
+
 * `nodes.json` — persistent node database (identity, first/last seen, counters). Reset from the Nodes tab.
 * `signal_history.csv` — every RSSI/SNR sample for one year (pruned at startup). The chart keeps 7 days at full resolution and hourly per-node averages beyond that; in a busy mesh expect the file to grow by a few MB per day.
 * `sessions.log`, `alerts.log` — one line per connection / alert.

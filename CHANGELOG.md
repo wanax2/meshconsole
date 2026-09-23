@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.3 — 2026-09-22
+
+- **File → Data folder…**: choose where all logs, the node database and history files live (remembered per user; takes effect on restart), with the option to copy existing data over. **File → Open data folder** opens it in Explorer/Finder. A folder can also be given as the first command-line argument.
+- **Version-safe upgrades**: on the first start of a new version, existing data files are copied to `backup/<old-version>-<date>/` before being opened, and `data_version.txt` records who wrote the data. File formats are append-only and forward/backward tolerant, so newer and older versions can share a folder.
+
+
 ## 1.3.2 — 2026-09-22
 
 - Fix: nodes with unknown battery/hops were written to `nodes.json` as 4294967295 and silently dropped on reload. Existing files are read correctly now.

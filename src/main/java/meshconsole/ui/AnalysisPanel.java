@@ -18,7 +18,7 @@ class AnalysisPanel extends JPanel {
     private final MeshState state;
     private final SignalHistory history;
     private final UtilHistory utilHistory;
-    private final AntennaLog antennaLog = new AntennaLog(Path.of("antenna_log.csv"));
+    private final AntennaLog antennaLog = new AntennaLog(meshconsole.DataDir.file("antenna_log.csv"));
     private WeatherPanel weatherPanel;
 
     // link quality
@@ -258,8 +258,8 @@ class AnalysisPanel extends JPanel {
     private void generateReport() {
         refreshAll();
         try {
-            Path p = Path.of("mesh_report.html");
-            Files.writeString(p, Report.html(state, history, utilHistory, weatherPanel == null ? null : weatherPanel.history(), antennaLog, Path.of("alerts.log")), StandardCharsets.UTF_8);
+            Path p = meshconsole.DataDir.file("mesh_report.html");
+            Files.writeString(p, Report.html(state, history, utilHistory, weatherPanel == null ? null : weatherPanel.history(), antennaLog, meshconsole.DataDir.file("alerts.log")), StandardCharsets.UTF_8);
             state.emitLog("Report written to " + p.toAbsolutePath());
             if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(p.toAbsolutePath().toUri());
         } catch (Exception ex) {
