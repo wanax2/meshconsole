@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.6 — 2026-09-22
+
+- **LoRa config changes are tracked**: every change (region, preset, frequency slot, hop limit, tx power) is logged, written to `config_log.csv`, raised as an INFO alert, and included in `sessions.log`. Signal samples now carry the frequency slot they were heard on (new 6th column in `signal_history.csv`; older rows read as slot 0). Analysis → "Antenna / slot A/B" adds a per-slot comparison (samples, avg RSSI/SNR, distinct nodes, time span).
+
+
 ## 1.3.5 — 2026-09-22
 
 - Settings → LoRa: **frequency slot** (`channel_num`), **OK to MQTT** and **Ignore MQTT** — enough to join a regional mesh on a non-default slot (e.g. NoVa-Mesh: LongFast, slot 9, hop limit 7) from the PC.

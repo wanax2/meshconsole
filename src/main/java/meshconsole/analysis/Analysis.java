@@ -167,6 +167,20 @@ public final class Analysis {
         return out;
     }
 
+    /** Per-slot signal summary: slot → {samples, avgRssi, avgSnr, distinct nodes, first, last}. */
+    public static Map<Integer, double[]> bySlot(List<SignalSample> samples) {
+        Map<Integer, double[]> m = new TreeMap<>();
+        Map<Integer, Set<Integer>> nodes = new HashMap<>();
+        for (SignalSample s : samples) {
+            if (s.hops() == -1) continue;   // hourly averages carry no slot
+            double[] a = m.computeIfAbsent(s.slot(), k -> new double[]{0, 0, 0, 0, Double.MAX_VALUE, 0});
+            a[0]++; a[1] += s.rssi(); a[2] += s.snr(); a[4] = Math.min(a[4], s.time()); a[5] = Math.max(a[5], s.time());
+            nodes.computeIfAbsent(s.slot(), k -> new HashSet<>()).add(s.from());
+        }
+        for (Map.Entry<Integer, double[]> e : m.entrySet()) { double[] a = e.getValue(); a[1] /= a[0]; a[2] /= a[0]; a[3] = nodes.get(e.getKey()).size(); }
+        return m;
+    }
+
     // ---- 12. coverage grid -------------------------------------------------------------------------
     public record Cell(double lat, double lon, double medianRssi, int n) { }
 

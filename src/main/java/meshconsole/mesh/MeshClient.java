@@ -324,7 +324,7 @@ public class MeshClient implements MeshSerial.Listener {
         sendAdmin(AdminMessage.newBuilder().setSetConfig(c), false);
         sendAdmin(AdminMessage.newBuilder().setCommitEditSettings(true), false);
         state.storeConfig(c);
-        state.emitLog("Config " + c.getPayloadVariantCase() + " written (radio may reboot to apply it)");
+        state.emitLog("Config " + c.getPayloadVariantCase() + " written (radio may reboot to apply it)" + (c.hasLora() ? ": " + MeshState.loraSummary(c.getLora()) : ""));
     }
 
     public void setModuleConfig(ModuleConfig c) throws IOException {
@@ -446,7 +446,7 @@ public class MeshClient implements MeshSerial.Listener {
     public void onFromRadio(FromRadio fr) {
         Capture c = capture;
         if (c != null) c.write(fr);
-        if (fr.hasConfigCompleteId()) session("config complete: node " + String.format("!%08x", state.myNodeNum()) + " " + state.nodeName(state.myNodeNum()) + ", firmware " + state.firmware() + ", " + state.nodes().size() + " nodes");
+        if (fr.hasConfigCompleteId()) session("config complete: node " + String.format("!%08x", state.myNodeNum()) + " " + state.nodeName(state.myNodeNum()) + ", firmware " + state.firmware() + ", " + state.nodes().size() + " nodes, lora " + MeshState.loraSummary(state.lora()));
         state.handle(fr);
     }
 

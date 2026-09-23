@@ -181,11 +181,41 @@ public class MeshState {
         fire(Listener::onStatusChanged);
     }
 
+    /** One-line summary of the LoRa config, e.g. "US LONG_FAST slot 9 hops 7 tx 30 dBm". */
+    public static String loraSummary(Config.LoRaConfig l) {
+        if (l == null) return "unknown";
+        String modem = l.getUsePreset() ? l.getModemPreset().name() : "BW" + l.getBandwidth() + "/SF" + l.getSpreadFactor() + "/CR" + l.getCodingRate();
+        return l.getRegion() + " " + modem + " slot " + (l.getChannelNum() == 0 ? "default" : String.valueOf(l.getChannelNum()))
+                + " hops " + l.getHopLimit() + " tx " + l.getTxPower() + " dBm" + (l.getOverrideFrequency() != 0 ? " override " + l.getOverrideFrequency() + " MHz" : "")
+                + (l.getTxEnabled() ? "" : " TX-DISABLED");
+    }
+
+    /** Current slot number for tagging samples (0 = preset default). */
+    public int currentSlot() { synchronized (lock) { return lora == null ? 0 : lora.getChannelNum(); } }
+
+    private String lastLoraSummary = "";
+
     public void storeConfig(Config c) {
         if (c.getPayloadVariantCase() == Config.PayloadVariantCase.PAYLOADVARIANT_NOT_SET) return;
+        boolean loraChanged = false;
         synchronized (lock) {
             configs.put(c.getPayloadVariantCase(), c);
-            if (c.hasLora()) lora = c.getLora();
+            if (c.hasLora()) {
+                lora = c.getLora();
+                String sum = loraSummary(lora);
+                if (!sum.equals(lastLoraSummary)) { lastLoraSummary = sum; loraChanged = true; }
+            }
+        }
+        if (loraChanged) {
+            String sum = loraSummary(c.getLora());
+            emitLog("LoRa config: " + sum);
+            try {
+                java.nio.file.Files.writeString(meshconsole.DataDir.file("config_log.csv"),
+                        System.currentTimeMillis() + "," + String.format("!%08x", myNodeNum) + "," + c.getLora().getRegion() + "," + (c.getLora().getUsePreset() ? c.getLora().getModemPreset().name() : "custom")
+                        + "," + c.getLora().getChannelNum() + "," + c.getLora().getHopLimit() + "," + c.getLora().getTxPower() + "," + sum.replace(",", " ") + "\n",
+                        java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            } catch (java.io.IOException ignored) { }
+            fire(l -> l.onAlert("INFO", "LoRa config now " + sum));
         }
         fire(Listener::onConfigChanged);
         fire(Listener::onStatusChanged);
@@ -448,7 +478,7 @@ public class MeshState {
                 if (hops >= 0) n.hopsAway = hops;
                 n.viaMqtt = p.getViaMqtt();
                 if (p.hasRxRssi() && p.getRxRssi() != 0 && !p.getViaMqtt()) {
-                    SignalSample sample = new SignalSample(now, from, p.getRxRssi(), p.getRxSnr(), hops);
+                    SignalSample sample = new SignalSample(now, from, p.getRxRssi(), p.getRxSnr(), hops, lora == null ? 0 : lora.getChannelNum());
                     signal.addLast(sample);
                     while (signal.size() > SIGNAL_HISTORY) signal.removeFirst();
                     if (signalHistoryFile != null) signalHistoryFile.add(sample);

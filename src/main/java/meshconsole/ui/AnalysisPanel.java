@@ -39,6 +39,7 @@ class AnalysisPanel extends JPanel {
     // antenna
     private final JTextField antennaName = new JTextField(14);
     private final JLabel antennaCurrent = new JLabel(" ");
+    private final SimpleModel slots = new SimpleModel(new String[]{"Frequency slot", "Samples", "Avg RSSI", "Avg SNR", "Distinct nodes", "From", "To"});
     private final SimpleModel antenna = new SimpleModel(new String[]{"Antenna", "Samples", "Avg RSSI (all)", "Avg SNR (all)", "Nodes", "Avg RSSI (common nodes)", "Avg SNR (common)", "Common nodes"});
 
     record NodeItem(int num, String label) { @Override public String toString() { return label; } }
@@ -120,9 +121,12 @@ class AnalysisPanel extends JPanel {
         JPanel a2 = row(); a2.add(new JLabel("Every signal sample from now on is attributed to that antenna. Compare on 'common nodes' (heard under every antenna) for a fair A/B; give each antenna at least a few hours."));
         anTop.add(a1); anTop.add(a2);
         an.add(anTop, BorderLayout.NORTH);
-        an.add(new JScrollPane(table(antenna)), BorderLayout.CENTER);
+        JScrollPane antT = new JScrollPane(table(antenna)); antT.setBorder(BorderFactory.createTitledBorder("By antenna"));
+        JScrollPane slotT = new JScrollPane(table(slots)); slotT.setBorder(BorderFactory.createTitledBorder("By frequency slot (0 = preset default, e.g. LongFast 20; NoVa-Mesh = 9) – from signal history, last 7 days at full resolution"));
+        JSplitPane anSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, antT, slotT); anSplit.setResizeWeight(0.5);
+        an.add(anSplit, BorderLayout.CENTER);
         if (!antennaLog.current().isEmpty()) { antennaName.setText(antennaLog.current()); antennaCurrent.setText("Current: " + antennaLog.current() + " since " + Fmt.time(antennaLog.starts.get(antennaLog.starts.size() - 1)[0])); }
-        tabs.addTab("Antenna A/B", an);
+        tabs.addTab("Antenna / slot A/B", an);
 
         // ---- report
         JPanel rp = new JPanel(new BorderLayout(6, 6));
@@ -247,6 +251,14 @@ class AnalysisPanel extends JPanel {
     }
 
     private void refreshAntenna() {
+        if (history != null) {
+            List<Object[]> sr = new ArrayList<>();
+            for (Map.Entry<Integer, double[]> e : Analysis.bySlot(history.since(System.currentTimeMillis() - 7L * 86400_000L)).entrySet()) {
+                double[] a = e.getValue();
+                sr.add(new Object[]{e.getKey() == 0 ? "default" : String.valueOf(e.getKey()), (int) a[0], String.format("%.1f", a[1]), String.format("%.1f", a[2]), (int) a[3], Fmt.time((long) a[4]), Fmt.time((long) a[5])});
+            }
+            slots.set(sr);
+        }
         if (history == null || antennaLog.labels.isEmpty()) { antenna.set(List.of()); return; }
         List<Object[]> rows = new ArrayList<>();
         for (Analysis.AntennaResult r : Analysis.antennaAB(antennaLog.starts, antennaLog.labels, history.since(System.currentTimeMillis() - 365L * 86400_000L)))
