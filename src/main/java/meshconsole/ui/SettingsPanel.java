@@ -33,6 +33,8 @@ class SettingsPanel extends JPanel {
     private final JSpinner txPower = new JSpinner(new SpinnerNumberModel(0, 0, 40, 1));
     private final JTextField overrideFreq = new JTextField(7);
     private final JCheckBox txEnabled = new JCheckBox("TX enabled");
+    private final JSpinner freqSlot = new JSpinner(new SpinnerNumberModel(0, 0, 255, 1));
+    private final JCheckBox okToMqtt = new JCheckBox("OK to MQTT"), ignoreMqtt = new JCheckBox("Ignore MQTT");
     // device
     private final JComboBox<Config.DeviceConfig.Role> role = new JComboBox<>();
     private final JTextField posLat = new JTextField(10), posLon = new JTextField(10), posAlt = new JTextField(5);
@@ -89,6 +91,9 @@ class SettingsPanel extends JPanel {
         lora.add(new JLabel("Region:")); lora.add(region);
         lora.add(new JLabel("Preset:")); lora.add(preset);
         lora.add(new JLabel("Hop limit:")); lora.add(hopLimit);
+        lora.add(new JLabel("Frequency slot (0 = preset default):")); lora.add(freqSlot);
+        freqSlot.setToolTipText("LoRa channel number. 0 = the default slot for the preset (LongFast US = slot 20). Regional meshes may use another slot, e.g. NoVa-Mesh = 9. Nodes on different slots cannot hear each other.");
+        lora.add(okToMqtt); lora.add(ignoreMqtt);
         JPanel lora2 = section(null);
         lora2.add(new JLabel("TX power dBm (0=max):")); lora2.add(txPower);
         lora2.add(new JLabel("Override MHz (0=off):")); lora2.add(overrideFreq);
@@ -100,6 +105,9 @@ class SettingsPanel extends JPanel {
              .setRegion((Config.LoRaConfig.RegionCode) region.getSelectedItem())
              .setModemPreset((Config.LoRaConfig.ModemPreset) preset.getSelectedItem())
              .setHopLimit((Integer) hopLimit.getValue())
+             .setChannelNum((Integer) freqSlot.getValue())
+             .setConfigOkToMqtt(okToMqtt.isSelected())
+             .setIgnoreMqtt(ignoreMqtt.isSelected())
              .setTxPower((Integer) txPower.getValue())
              .setTxEnabled(txEnabled.isSelected());
             try { b.setOverrideFrequency(Float.parseFloat(overrideFreq.getText().trim())); } catch (NumberFormatException e) { b.setOverrideFrequency(0); }
@@ -241,6 +249,9 @@ class SettingsPanel extends JPanel {
             txPower.setValue(Math.max(0, Math.min(40, l.getTxPower())));
             overrideFreq.setText(l.getOverrideFrequency() == 0 ? "0" : String.valueOf(l.getOverrideFrequency()));
             txEnabled.setSelected(l.getTxEnabled());
+            freqSlot.setValue(l.getChannelNum());
+            okToMqtt.setSelected(l.getConfigOkToMqtt());
+            ignoreMqtt.setSelected(l.getIgnoreMqtt());
         }
         Config dc = state.config(Config.PayloadVariantCase.DEVICE);
         if (dc != null) role.setSelectedItem(dc.getDevice().getRole());

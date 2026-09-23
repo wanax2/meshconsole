@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.5 — 2026-09-22
+
+- Settings → LoRa: **frequency slot** (`channel_num`), **OK to MQTT** and **Ignore MQTT** — enough to join a regional mesh on a non-default slot (e.g. NoVa-Mesh: LongFast, slot 9, hop limit 7) from the PC.
+
+
 ## 1.3.4 — 2026-09-22
 
 - **File → Export all logs as zip…**: bundles every data file (message log, node DB, signal/weather/utilisation history, alerts, sessions, app log, report; optionally packet captures) into `meshconsole-data-YYYYMMDD-HHmmss.zip` with an `export_info.txt` stamp, in a folder you choose.
