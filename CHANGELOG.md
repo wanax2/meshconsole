@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.4 — 2026-09-23
+
+- **View → Show BBS features** (off by default): hides the BBS tab, toolbar toggle and sysop button. The BBS code stays isolated in its own package and does nothing while disabled.
+
+
 ## 1.4.3 — 2026-09-23
 
 - **Sysop screen** — a separate window in the style of a classic BBS sysop console: status line (online/offline, uptime, calls today, callers, posts, mail), "waiting for caller" line showing the current caller and command, caller list with last command and ban status, live activity, and function keys: F1 BBS on/off, F2 chat with the selected caller (sent as a DM tagged [sysop]), F3 post bulletin, F4 ban/unban, F5 clear, F6 mail list, F9 save, Esc close.

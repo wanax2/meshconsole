@@ -17,7 +17,7 @@ plugged into a Windows or Linux PC over USB. Same code runs on both; no OS switc
 | Traffic | Airtime by node, app and channel from packet size × modem preset; share of elapsed time; last relay node. |
 | Analysis | Link-quality heat map and link margin per node, mesh graph with critical relays and relay share, churn, utilisation by hour, air-time budget, delivery by hops/distance/time, antenna A/B, one-click HTML report. |
 | Weather | METARs from NOAA aviationweather.gov (KDCA by default, nearest-station lookup), fetched every 30 min; correlation of each node's signal with temperature, humidity, wind, pressure and rain. |
-| BBS | A bulletin-board bot answering DMs to this node (bulletins, mail, node list, signal report, weather). See the tab for the command list. |
+| BBS | Optional (View → Show BBS features): a bulletin-board bot answering DMs to this node (bulletins, mail, node list, signal report, weather), with a classic sysop screen. Lives in `bbs/` + `ui/BbsPanel`, `ui/SysopWindow`; delete those to remove it. |
 | Alerts | Silent node, low battery, high utilisation, reboot, key change, admin audit, detection sensor, new DM — with tray notifications and `alerts.log`. |
 | Stats & export | Delivery statistics per destination (success %, attempts, time to ack) and CSV export of nodes, signal samples, telemetry, messages, coverage points and neighbour links. |
 | Antenna SWR | Sweeps a **NanoVNA** on a second USB port and plots SWR vs frequency with band presets (US 915, EU 868, 433, …). |

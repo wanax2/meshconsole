@@ -38,6 +38,18 @@ public class MainWindow extends JFrame {
     private SysopWindow sysop;
     private meshconsole.bbs.BbsEngine bbs;
     private final JToggleButton bbsToggle = new JToggleButton("BBS: OFF");
+    private JButton sysopBtn;
+
+    private void applyBbsVisibility(boolean show) {
+        bbsToggle.setVisible(show);
+        if (sysopBtn != null) sysopBtn.setVisible(show);
+        if (bbsPanel != null) {
+            int idx = tabs.indexOfComponent(bbsPanel);
+            if (show && idx < 0) tabs.insertTab("BBS", null, bbsPanel, null, tabs.indexOfComponent(alertsPanel));
+            if (!show && idx >= 0) tabs.removeTabAt(idx);
+        }
+        if (!show && bbs != null && bbs.store().enabled) bbs.setEnabled(false);
+    }
     private long connectedSince; private int connectedNum; private boolean registered;
 
     record PortItem(SerialPort port) {
@@ -63,6 +75,11 @@ public class MainWindow extends JFrame {
         export.addActionListener(e -> exportLogs());
         file.add(dataDir); file.add(openDir); file.addSeparator(); file.add(export);
         menu.add(file);
+        JMenu view = new JMenu("View");
+        JCheckBoxMenuItem showBbs = new JCheckBoxMenuItem("Show BBS features", java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).getBoolean("showBbs", false));
+        showBbs.addActionListener(e -> { java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).putBoolean("showBbs", showBbs.isSelected()); applyBbsVisibility(showBbs.isSelected()); });
+        view.add(showBbs);
+        menu.add(view);
         JMenu help = new JMenu("Help");
         JMenuItem about = new JMenuItem("About " + meshconsole.Version.NAME + "…");
         about.addActionListener(e -> showAbout());
@@ -98,7 +115,7 @@ public class MainWindow extends JFrame {
         bar.addSeparator();
         bbsToggle.setToolTipText("Turn the bulletin-board bot on or off");
         bbsToggle.addActionListener(e -> { if (bbs != null) bbs.setEnabled(bbsToggle.isSelected()); });
-        JButton sysopBtn = new JButton("Sysop screen");
+        sysopBtn = new JButton("Sysop screen");
         sysopBtn.addActionListener(e -> { if (sysop != null) { sysop.setVisible(true); sysop.toFront(); } });
         bar.add(bbsToggle); bar.add(sysopBtn);
         bar.addSeparator();
@@ -184,6 +201,7 @@ public class MainWindow extends JFrame {
         bbsPanel = new BbsPanel(bbs, state);
         tabs.insertTab("BBS", null, bbsPanel, null, tabs.indexOfComponent(alertsPanel));
         sysop = new SysopWindow(bbs, state);
+        applyBbsVisibility(java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).getBoolean("showBbs", false));
         Runnable syncToggle = () -> { bbsToggle.setSelected(bbs.store().enabled); bbsToggle.setText(bbs.store().enabled ? "BBS: ON" : "BBS: OFF"); bbsToggle.setBackground(bbs.store().enabled ? new Color(40, 120, 70) : null); bbsToggle.setForeground(bbs.store().enabled ? Color.WHITE : null); bbsToggle.setOpaque(bbs.store().enabled); };
         syncToggle.run();
         bbs.addListener(new meshconsole.bbs.BbsEngine.Listener() {
