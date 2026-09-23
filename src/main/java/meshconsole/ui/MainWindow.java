@@ -34,6 +34,7 @@ public class MainWindow extends JFrame {
     private final meshconsole.mesh.AlertEngine alerts;
     private AnalysisPanel analysisPanel;
     private WeatherPanel weatherPanel;
+    private long connectedSince; private int connectedNum; private boolean registered;
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
@@ -133,10 +134,13 @@ public class MainWindow extends JFrame {
             connect.setBackground(c ? new Color(160, 60, 50) : new Color(40, 120, 70));
             ports.setEnabled(!c);
             if (!c) {
+                if (connectedSince > 0 && connectedNum != 0 && analysisPanel != null) analysisPanel.addConnectedTime(connectedNum, System.currentTimeMillis() - connectedSince);
+                connectedSince = 0; connectedNum = 0; registered = false;
                 status.setText(d.isEmpty() ? "Not connected" : "Disconnected: " + d);
                 settingsPanel.onDisconnected();
                 if (!d.isEmpty() && autoReconnect.isSelected() && lastPortName != null) startReconnectWatch();
             } else {
+                connectedSince = System.currentTimeMillis(); registered = false;
                 status.setText("Connected on " + d + " – loading config…");
                 if (reconnectTimer != null) { reconnectTimer.stop(); reconnectTimer = null; }
             }
@@ -169,6 +173,10 @@ public class MainWindow extends JFrame {
 
     private void refreshStatusLine() {
         if (!client.isConnected()) return;
+        if (state.configComplete() && !registered && state.myNodeNum() != 0 && analysisPanel != null) {
+            registered = true; connectedNum = state.myNodeNum();
+            analysisPanel.registerConnectedRadio();
+        }
         NodeEntry me = state.myNode();
         StringBuilder sb = new StringBuilder("Connected");
         if (me != null) sb.append(" as ").append(me.displayName()).append(" ").append(me.idString());

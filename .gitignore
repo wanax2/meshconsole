@@ -21,3 +21,4 @@ data_version.txt
 backup/
 config_log.csv
 antennas.json
+radios.json

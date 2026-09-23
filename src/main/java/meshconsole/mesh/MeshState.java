@@ -478,7 +478,7 @@ public class MeshState {
                 if (hops >= 0) n.hopsAway = hops;
                 n.viaMqtt = p.getViaMqtt();
                 if (p.hasRxRssi() && p.getRxRssi() != 0 && !p.getViaMqtt()) {
-                    SignalSample sample = new SignalSample(now, from, p.getRxRssi(), p.getRxSnr(), hops, lora == null ? 0 : lora.getChannelNum());
+                    SignalSample sample = new SignalSample(now, from, p.getRxRssi(), p.getRxSnr(), hops, lora == null ? 0 : lora.getChannelNum(), myNodeNum);
                     signal.addLast(sample);
                     while (signal.size() > SIGNAL_HISTORY) signal.removeFirst();
                     if (signalHistoryFile != null) signalHistoryFile.add(sample);

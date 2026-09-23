@@ -181,6 +181,33 @@ public final class Analysis {
         return m;
     }
 
+    /** Per receiving radio: rxNode → {samples, avgRssi, avgSnr, distinct nodes, direct %, first, last}. */
+    public static Map<Integer, double[]> byRadio(List<SignalSample> samples) {
+        Map<Integer, double[]> m = new LinkedHashMap<>();
+        Map<Integer, Set<Integer>> nodes = new HashMap<>();
+        for (SignalSample s : samples) {
+            if (s.hops() == -1 || s.rxNode() == 0) continue;
+            double[] a = m.computeIfAbsent(s.rxNode(), k -> new double[]{0, 0, 0, 0, 0, Double.MAX_VALUE, 0});
+            a[0]++; a[1] += s.rssi(); a[2] += s.snr(); if (s.hops() == 0) a[4]++; a[5] = Math.min(a[5], s.time()); a[6] = Math.max(a[6], s.time());
+            nodes.computeIfAbsent(s.rxNode(), k -> new HashSet<>()).add(s.from());
+        }
+        for (Map.Entry<Integer, double[]> e : m.entrySet()) { double[] a = e.getValue(); a[1] /= a[0]; a[2] /= a[0]; a[4] = 100.0 * a[4] / a[0]; a[3] = nodes.get(e.getKey()).size(); }
+        return m;
+    }
+
+    /** Direct-message delivery per sending radio: from → {logical sent, delivered}. */
+    public static Map<Integer, int[]> deliveryByRadio(List<ChatMessage> messages) {
+        Map<String, List<ChatMessage>> logical = new LinkedHashMap<>();
+        for (ChatMessage m : messages) if (m.outgoing && !m.isBroadcast()) logical.computeIfAbsent(m.from + "|" + m.to + "|" + m.text + "|" + m.time / 3_600_000, k -> new ArrayList<>()).add(m);
+        Map<Integer, int[]> out = new LinkedHashMap<>();
+        for (List<ChatMessage> g : logical.values()) {
+            int[] a = out.computeIfAbsent(g.get(0).from, k -> new int[2]);
+            a[0]++;
+            if (g.stream().anyMatch(x -> x.status == ChatMessage.Status.DELIVERED)) a[1]++;
+        }
+        return out;
+    }
+
     // ---- 12. coverage grid -------------------------------------------------------------------------
     public record Cell(double lat, double lon, double medianRssi, int n) { }
 

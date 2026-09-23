@@ -38,6 +38,9 @@ class AnalysisPanel extends JPanel {
     private final SimpleModel delivery = new SimpleModel(new String[]{"Group", "Bucket", "Sent", "Delivered", "Success"});
     // antenna
     private final AntennaDb antennaDb = new AntennaDb(meshconsole.DataDir.file("antennas.json"));
+    private final RadioDb radioDb = new RadioDb(meshconsole.DataDir.file("radios.json"));
+    private final SimpleModel radios = new SimpleModel(new String[]{"Radio", "ID", "Hardware", "Firmware", "TX dBm", "Role", "Antenna", "Location", "Hours connected", "Samples heard", "Avg RSSI", "Avg SNR", "Nodes heard", "Direct %", "DMs sent", "Delivered", "Last connected", "Notes"});
+    private final JTable radiosTable = table(radios);
     private final JComboBox<String> antennaPick = new JComboBox<>();
     private final JLabel antennaCurrent = new JLabel(" ");
     private final SimpleModel library = new SimpleModel(new String[]{"Antenna", "Type", "Gain dBi", "Band", "Connector", "Mounting", "Best SWR", "@ MHz", "SWR worst", "Sweep date", "Hours used", "Avg RSSI", "Avg SNR", "Nodes", "Notes"});
@@ -150,6 +153,29 @@ class AnalysisPanel extends JPanel {
         refreshAntennaPick();
         if (!antennaLog.current().isEmpty()) { antennaPick.setSelectedItem(antennaLog.current()); antennaCurrent.setText("Current: " + antennaLog.current() + " since " + Fmt.time(antennaLog.starts.get(antennaLog.starts.size() - 1)[0])); }
         tabs.addTab("Antenna / slot A/B", an);
+
+        // ---- my radios
+        JPanel rd = new JPanel(new BorderLayout(6, 6));
+        JPanel rdTop = row();
+        JButton rdEdit = new JButton("Edit selected…"), rdDel = new JButton("Remove");
+        rdEdit.addActionListener(e -> { int r = radiosTable.getSelectedRow(); if (r >= 0) editRadio(radioDb.get(parseId((String) radios.rows.get(radiosTable.convertRowIndexToModel(r))[1]))); });
+        rdDel.addActionListener(e -> {
+            int r = radiosTable.getSelectedRow(); if (r < 0) return;
+            int num = parseId((String) radios.rows.get(radiosTable.convertRowIndexToModel(r))[1]);
+            if (JOptionPane.showConfirmDialog(this, "Remove this radio from the library? It is re-added automatically next time you connect to it.", "Remove radio", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+            try { radioDb.remove(num); refreshRadios(); } catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+        });
+        rdTop.add(rdEdit); rdTop.add(rdDel);
+        rdTop.add(new JLabel("Every node you connect to the app is registered here automatically. Performance columns are what that radio heard while it was the one connected, and what it delivered."));
+        rd.add(rdTop, BorderLayout.NORTH);
+        radiosTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        int[] rw = {150, 90, 130, 110, 55, 90, 130, 130, 90, 90, 70, 60, 80, 60, 60, 70, 110, 240};
+        for (int i = 0; i < rw.length; i++) radiosTable.getColumnModel().getColumn(i).setPreferredWidth(rw[i]);
+        rd.add(new JScrollPane(radiosTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER);
+        JLabel rdNote = new JLabel("  Fair comparison: same antenna, same spot, similar hours, similar time of day. Swap the radio, keep everything else — the 'Nodes heard' and 'Avg RSSI' columns then compare receivers directly.");
+        rdNote.setFont(rdNote.getFont().deriveFont(11f));
+        rd.add(rdNote, BorderLayout.SOUTH);
+        tabs.addTab("My radios", rd);
 
         // ---- report
         JPanel rp = new JPanel(new BorderLayout(6, 6));
@@ -333,8 +359,59 @@ class AnalysisPanel extends JPanel {
         library.set(rows);
     }
 
+    RadioDb radioDb() { return radioDb; }
+
+    private static int parseId(String id) { return (int) Long.parseLong(id.replace("!", ""), 16); }
+
+    private void editRadio(RadioDb.Radio r) {
+        if (r == null) return;
+        JTextField name = new JTextField(r.name, 18), location = new JTextField(r.location, 18);
+        JComboBox<String> antennaBox = new JComboBox<>();
+        antennaBox.addItem("");
+        for (AntennaDb.Antenna a : antennaDb.all()) antennaBox.addItem(a.name);
+        antennaBox.setEditable(true); antennaBox.setSelectedItem(r.antenna);
+        JTextArea notes = new JTextArea(r.notes, 3, 30);
+        JPanel form = new JPanel(new GridLayout(0, 2, 4, 4));
+        form.add(new JLabel("Name:")); form.add(name);
+        form.add(new JLabel("Node ID / hardware:")); form.add(new JLabel(r.idString() + "  " + r.hardware + "  " + r.firmware));
+        form.add(new JLabel("Antenna fitted:")); form.add(antennaBox);
+        form.add(new JLabel("Location / height:")); form.add(location);
+        form.add(new JLabel("Notes:")); form.add(new JScrollPane(notes));
+        if (JOptionPane.showConfirmDialog(this, form, "Edit radio", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        r.name = name.getText().trim(); r.location = location.getText().trim(); r.antenna = String.valueOf(antennaBox.getSelectedItem()).trim(); r.notes = notes.getText().trim();
+        try { radioDb.put(r); refreshRadios(); } catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+    }
+
+    /** Called when a radio finishes its config dump: register / refresh it. */
+    void registerConnectedRadio() {
+        NodeEntry me = state.myNode();
+        if (me == null || state.myNodeNum() == 0) return;
+        try {
+            radioDb.touch(state.myNodeNum(), me.displayName(), me.hwModel, state.firmware(), state.lora() == null ? 0 : state.lora().getTxPower(), me.role);
+            refreshRadios();
+        } catch (IOException ignored) { }
+    }
+
+    void addConnectedTime(int num, long ms) { try { radioDb.addConnectedTime(num, ms); } catch (IOException ignored) { } }
+
+    private void refreshRadios() {
+        Map<Integer, double[]> heard = history == null ? Map.of() : Analysis.byRadio(history.since(System.currentTimeMillis() - 365L * 86400_000L));
+        Map<Integer, int[]> del = Analysis.deliveryByRadio(state.messages());
+        List<Object[]> rows = new ArrayList<>();
+        for (RadioDb.Radio r : radioDb.all()) {
+            double[] h = heard.get(r.num); int[] d = del.get(r.num);
+            long ms = r.connectedMs;
+            rows.add(new Object[]{r.name, r.idString(), r.hardware, r.firmware, r.txPower == 0 ? "" : String.valueOf(r.txPower), r.role, r.antenna, r.location,
+                    String.format("%.1f", ms / 3600_000.0), h == null ? "" : String.valueOf((int) h[0]), h == null ? "" : String.format("%.1f", h[1]), h == null ? "" : String.format("%.1f", h[2]),
+                    h == null ? "" : String.valueOf((int) h[3]), h == null ? "" : String.format("%.0f%%", h[4]),
+                    d == null ? "" : String.valueOf(d[0]), d == null || d[0] == 0 ? "" : Math.round(100.0 * d[1] / d[0]) + "%", r.lastConnected == 0 ? "" : Fmt.time(r.lastConnected), r.notes});
+        }
+        radios.set(rows);
+    }
+
     private void refreshAntenna() {
         refreshLibrary();
+        refreshRadios();
         if (history != null) {
             List<Object[]> sr = new ArrayList<>();
             for (Map.Entry<Integer, double[]> e : Analysis.bySlot(history.since(System.currentTimeMillis() - 7L * 86400_000L)).entrySet()) {

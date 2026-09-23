@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.8 — 2026-09-22
+
+- **My radios** (Analysis tab): every node you connect is registered automatically (`radios.json`) with ID, hardware, firmware, tx power, role; you add a name, the antenna fitted (from the antenna library), location and notes. Per radio: hours connected, samples heard, average RSSI/SNR, distinct nodes heard, direct %, DMs sent and delivered — so a RAK, a Heltec and a Station G2 can be compared as receivers and senders. Signal samples now record which radio received them (7th column in `signal_history.csv`).
+
+
 ## 1.3.7 — 2026-09-22
 
 - **Antenna library** (`antennas.json`): add, edit and remove the antennas you own — type, advertised gain, length, band, connector, mounting/location, notes. Pick the one in use from a drop-down; the library table shows each antenna's measured SWR (best, at what frequency, worst, sweep date), hours used, and on-air average RSSI/SNR and node count from the A/B comparison. Antenna SWR tab: **Save sweep to antenna…** attaches a NanoVNA sweep to a library entry.

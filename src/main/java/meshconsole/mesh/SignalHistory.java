@@ -36,7 +36,7 @@ public class SignalHistory {
                 try {
                     long t = Long.parseLong(f[0]);
                     if (t < now - KEEP_MS) { needsPrune = true; continue; }
-                    SignalSample s = new SignalSample(t, Integer.parseUnsignedInt(f[1]), Integer.parseInt(f[2]), Float.parseFloat(f[3]), Integer.parseInt(f[4]), f.length > 5 ? Integer.parseInt(f[5]) : 0);
+                    SignalSample s = new SignalSample(t, Integer.parseUnsignedInt(f[1]), Integer.parseInt(f[2]), Float.parseFloat(f[3]), Integer.parseInt(f[4]), f.length > 5 ? Integer.parseInt(f[5]) : 0, f.length > 6 ? Integer.parseUnsignedInt(f[6]) : 0);
                     total++;
                     bucket(s);
                     if (t >= now - RAW_MS) raw.add(s);
@@ -75,7 +75,7 @@ public class SignalHistory {
         total++;
         try {
             if (out == null) out = new PrintWriter(new BufferedWriter(new FileWriter(file.toFile(), true)));
-            out.println(s.time() + "," + Integer.toUnsignedString(s.from()) + "," + s.rssi() + "," + s.snr() + "," + s.hops() + "," + s.slot());
+            out.println(s.time() + "," + Integer.toUnsignedString(s.from()) + "," + s.rssi() + "," + s.snr() + "," + s.hops() + "," + s.slot() + "," + Integer.toUnsignedString(s.rxNode()));
             if (raw.size() % 20 == 0) out.flush();
         } catch (IOException ignored) { }
         if (raw.size() % 5000 == 0) {
@@ -98,7 +98,7 @@ public class SignalHistory {
                 long hourStart = (e.getKey() / 4294967296L) * HOUR;
                 if (hourStart < sinceMillis || hourStart >= rawCutoff) continue;
                 double[] b = e.getValue();
-                l.add(new SignalSample(hourStart, (int) (e.getKey() % 4294967296L), (int) Math.round(b[1] / b[0]), (float) (b[2] / b[0]), -1));
+                l.add(new SignalSample(hourStart, (int) (e.getKey() % 4294967296L), (int) Math.round(b[1] / b[0]), (float) (b[2] / b[0]), -1, 0, 0));
             }
             l.sort(Comparator.comparingLong(SignalSample::time));
         }
