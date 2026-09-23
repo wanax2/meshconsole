@@ -28,6 +28,32 @@ class SwrPanel extends JPanel {
     private final SwrChart chart = new SwrChart();
     private NanoVna vna;
     private volatile boolean sweeping;
+    private NanoVna.Sweep lastSweep;
+    private long lastSweepTime;
+    private java.util.function.Supplier<meshconsole.analysis.AntennaDb> antennaDb = () -> null;
+    private final JButton saveToAntenna = new JButton("Save sweep to antenna…");
+
+    void setAntennaDb(java.util.function.Supplier<meshconsole.analysis.AntennaDb> db) { antennaDb = db; }
+
+    private void saveSweep() {
+        meshconsole.analysis.AntennaDb db = antennaDb.get();
+        if (db == null || lastSweep == null) return;
+        java.util.List<meshconsole.analysis.AntennaDb.Antenna> all = db.all();
+        if (all.isEmpty()) { JOptionPane.showMessageDialog(this, "Add an antenna first (Analysis → Antenna / slot A/B → Add antenna…)."); return; }
+        JComboBox<String> pick = new JComboBox<>();
+        for (meshconsole.analysis.AntennaDb.Antenna a : all) pick.addItem(a.name);
+        if (JOptionPane.showConfirmDialog(this, pick, "Attach this SWR sweep to which antenna?", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        meshconsole.analysis.AntennaDb.Antenna a = db.get((String) pick.getSelectedItem());
+        if (a == null) return;
+        int mi = lastSweep.minIndex();
+        double mid = (lastSweep.freqHz()[0] + lastSweep.freqHz()[lastSweep.freqHz().length - 1]) / 2;
+        int ci = 0; for (int i = 1; i < lastSweep.freqHz().length; i++) if (Math.abs(lastSweep.freqHz()[i] - mid) < Math.abs(lastSweep.freqHz()[ci] - mid)) ci = i;
+        double worst = 0; for (double x : lastSweep.swr()) worst = Math.max(worst, x);
+        a.swrBest = lastSweep.swr()[mi]; a.swrBestMhz = lastSweep.freqHz()[mi] / 1e6; a.swrAtCentre = lastSweep.swr()[ci]; a.swrWorst = worst;
+        a.sweepStartMhz = lastSweep.freqHz()[0] / 1e6; a.sweepStopMhz = lastSweep.freqHz()[lastSweep.freqHz().length - 1] / 1e6; a.lastSwrTime = lastSweepTime;
+        try { db.put(a); result.setText(result.getText() + "   ·   saved to " + a.name); state.emitLog(String.format("SWR sweep saved to antenna '%s': best %.2f @ %.3f MHz, worst %.2f", a.name, a.swrBest, a.swrBestMhz, a.swrWorst)); }
+        catch (java.io.IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+    }
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
@@ -56,6 +82,9 @@ class SwrPanel extends JPanel {
         row2.add(points);
         row2.add(sweep);
         row2.add(continuous);
+        saveToAntenna.setEnabled(false);
+        saveToAntenna.addActionListener(e -> saveSweep());
+        row2.add(saveToAntenna);
         top.add(row1);
         top.add(row2);
         add(top, BorderLayout.NORTH);
@@ -131,7 +160,8 @@ class SwrPanel extends JPanel {
                     final String txt = String.format("Best SWR %.2f at %.3f MHz   ·   nearest centre %.3f MHz: SWR %.2f (RL %.1f dB)   ·   worst measured %.2f",
                             s.swr()[mi], s.freqHz()[mi] / 1e6, s.freqHz()[ci] / 1e6, s.swr()[ci], s.returnLossDb()[ci], maxSwr)
                             + (s.note().isEmpty() ? "" : "   ·   " + s.note());
-                    SwingUtilities.invokeLater(() -> { chart.setSweep(s); result.setText(txt); });
+                    lastSweep = s; lastSweepTime = System.currentTimeMillis();
+                    SwingUtilities.invokeLater(() -> { chart.setSweep(s); result.setText(txt); saveToAntenna.setEnabled(true); });
                 } while (sweeping && continuous.isSelected());
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> result.setText("Sweep failed: " + e.getMessage()));

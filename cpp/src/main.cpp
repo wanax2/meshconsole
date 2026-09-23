@@ -54,7 +54,7 @@ uint32_t random_id() {
     return id;
 }
 
-constexpr const char* VERSION = "1.3.6";
+constexpr const char* VERSION = "1.3.7";
 constexpr const char* COPYRIGHT = "Copyright (c) 2026 Mesh Console contributors. MIT License.";   // <- put your name here
 
 void usage() {

@@ -162,6 +162,7 @@ public class MainWindow extends JFrame {
         analysisPanel = new AnalysisPanel(state, sig, util);
         weatherPanel = new WeatherPanel(state, sig);
         analysisPanel.setWeatherPanel(weatherPanel);
+        swrPanel.setAntennaDb(() -> analysisPanel.antennaDb());
         tabs.insertTab("Analysis", null, analysisPanel, null, tabs.indexOfComponent(alertsPanel));
         tabs.insertTab("Weather", null, weatherPanel, null, tabs.indexOfComponent(alertsPanel));
     }

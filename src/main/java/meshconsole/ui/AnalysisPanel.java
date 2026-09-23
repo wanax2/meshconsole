@@ -37,8 +37,11 @@ class AnalysisPanel extends JPanel {
     // delivery
     private final SimpleModel delivery = new SimpleModel(new String[]{"Group", "Bucket", "Sent", "Delivered", "Success"});
     // antenna
-    private final JTextField antennaName = new JTextField(14);
+    private final AntennaDb antennaDb = new AntennaDb(meshconsole.DataDir.file("antennas.json"));
+    private final JComboBox<String> antennaPick = new JComboBox<>();
     private final JLabel antennaCurrent = new JLabel(" ");
+    private final SimpleModel library = new SimpleModel(new String[]{"Antenna", "Type", "Gain dBi", "Band", "Connector", "Mounting", "Best SWR", "@ MHz", "SWR worst", "Sweep date", "Hours used", "Avg RSSI", "Avg SNR", "Nodes", "Notes"});
+    private final JTable libraryTable = table(library);
     private final SimpleModel slots = new SimpleModel(new String[]{"Frequency slot", "Samples", "Avg RSSI", "Avg SNR", "Distinct nodes", "From", "To"});
     private final SimpleModel antenna = new SimpleModel(new String[]{"Antenna", "Samples", "Avg RSSI (all)", "Avg SNR (all)", "Nodes", "Avg RSSI (common nodes)", "Avg SNR (common)", "Common nodes"});
 
@@ -109,23 +112,43 @@ class AnalysisPanel extends JPanel {
         // ---- antenna
         JPanel an = new JPanel(new BorderLayout(6, 6));
         JPanel anTop = new JPanel(); anTop.setLayout(new BoxLayout(anTop, BoxLayout.Y_AXIS));
-        JPanel a1 = row(); a1.add(new JLabel("Antenna now in use:")); a1.add(antennaName);
+        JPanel a1 = row(); a1.add(new JLabel("Antenna now in use:"));
+        antennaPick.setPrototypeDisplayValue("A fairly long antenna name here");
+        a1.add(antennaPick);
         JButton setAnt = new JButton("Start using this antenna");
         setAnt.addActionListener(e -> {
-            String n = antennaName.getText().trim();
-            if (n.isEmpty()) return;
+            String n = (String) antennaPick.getSelectedItem();
+            if (n == null || n.isBlank()) return;
             try { antennaLog.set(n); antennaCurrent.setText("Current: " + n + " since " + Fmt.time(System.currentTimeMillis())); refreshAntenna(); }
             catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
         });
         a1.add(setAnt); a1.add(antennaCurrent);
-        JPanel a2 = row(); a2.add(new JLabel("Every signal sample from now on is attributed to that antenna. Compare on 'common nodes' (heard under every antenna) for a fair A/B; give each antenna at least a few hours."));
+        JPanel a2 = row();
+        JButton addAnt = new JButton("Add antenna…"), editAnt = new JButton("Edit…"), delAnt = new JButton("Remove");
+        addAnt.addActionListener(e -> editAntenna(null));
+        editAnt.addActionListener(e -> { int r = libraryTable.getSelectedRow(); if (r >= 0) editAntenna(antennaDb.get((String) library.rows.get(libraryTable.convertRowIndexToModel(r))[0])); });
+        delAnt.addActionListener(e -> {
+            int r = libraryTable.getSelectedRow(); if (r < 0) return;
+            String n = (String) library.rows.get(libraryTable.convertRowIndexToModel(r))[0];
+            if (JOptionPane.showConfirmDialog(this, "Remove '" + n + "' from the library? (Its history in antenna_log.csv is kept.)", "Remove antenna", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+            try { antennaDb.remove(n); refreshAntenna(); } catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+        });
+        a2.add(addAnt); a2.add(editAnt); a2.add(delAnt);
+        a2.add(new JLabel("Every signal sample is attributed to the antenna in use; SWR sweeps on the Antenna SWR tab can be saved to an antenna. Compare on 'common nodes' for a fair A/B."));
         anTop.add(a1); anTop.add(a2);
         an.add(anTop, BorderLayout.NORTH);
-        JScrollPane antT = new JScrollPane(table(antenna)); antT.setBorder(BorderFactory.createTitledBorder("By antenna"));
+        libraryTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        int[] lw = {160, 90, 60, 90, 70, 120, 60, 60, 60, 100, 70, 70, 60, 50, 240};
+        for (int i = 0; i < lw.length; i++) libraryTable.getColumnModel().getColumn(i).setPreferredWidth(lw[i]);
+        JScrollPane libT = new JScrollPane(libraryTable, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        libT.setBorder(BorderFactory.createTitledBorder("Antenna library (antennas.json) with measured SWR and on-air results"));
+        JScrollPane antT = new JScrollPane(table(antenna)); antT.setBorder(BorderFactory.createTitledBorder("On-air A/B by antenna (all samples vs. nodes heard under every antenna)"));
+        JSplitPane libSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, libT, antT); libSplit.setResizeWeight(0.5);
         JScrollPane slotT = new JScrollPane(table(slots)); slotT.setBorder(BorderFactory.createTitledBorder("By frequency slot (0 = preset default, e.g. LongFast 20; NoVa-Mesh = 9) – from signal history, last 7 days at full resolution"));
-        JSplitPane anSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, antT, slotT); anSplit.setResizeWeight(0.5);
+        JSplitPane anSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, libSplit, slotT); anSplit.setResizeWeight(0.7);
         an.add(anSplit, BorderLayout.CENTER);
-        if (!antennaLog.current().isEmpty()) { antennaName.setText(antennaLog.current()); antennaCurrent.setText("Current: " + antennaLog.current() + " since " + Fmt.time(antennaLog.starts.get(antennaLog.starts.size() - 1)[0])); }
+        refreshAntennaPick();
+        if (!antennaLog.current().isEmpty()) { antennaPick.setSelectedItem(antennaLog.current()); antennaCurrent.setText("Current: " + antennaLog.current() + " since " + Fmt.time(antennaLog.starts.get(antennaLog.starts.size() - 1)[0])); }
         tabs.addTab("Antenna / slot A/B", an);
 
         // ---- report
@@ -250,7 +273,68 @@ class AnalysisPanel extends JPanel {
         delivery.set(rows);
     }
 
+    AntennaDb antennaDb() { return antennaDb; }
+
+    private void refreshAntennaPick() {
+        Object sel = antennaPick.getSelectedItem();
+        antennaPick.removeAllItems();
+        for (AntennaDb.Antenna a : antennaDb.all()) antennaPick.addItem(a.name);
+        // antennas that only exist in the usage log (from older versions) are still selectable
+        for (String l : new LinkedHashSet<>(antennaLog.labels)) if (antennaDb.get(l) == null) antennaPick.addItem(l);
+        if (sel != null) antennaPick.setSelectedItem(sel);
+    }
+
+    private void editAntenna(AntennaDb.Antenna existing) {
+        AntennaDb.Antenna a = existing == null ? new AntennaDb.Antenna() : existing;
+        JTextField name = new JTextField(a.name, 18), connector = new JTextField(a.connector, 8), band = new JTextField(a.band.isEmpty() && existing == null ? "902–928 MHz" : a.band, 12), mounting = new JTextField(a.mounting, 18);
+        JComboBox<String> type = new JComboBox<>(new String[]{"stock whip", "rubber duck", "dipole", "half-wave whip", "collinear / fiberglass", "ground plane", "yagi", "patch / panel", "other"});
+        if (!a.type.isEmpty()) type.setSelectedItem(a.type); type.setEditable(true);
+        JTextField gain = new JTextField(Double.isNaN(a.gainDbi) ? "" : String.valueOf(a.gainDbi), 5), length = new JTextField(Double.isNaN(a.lengthCm) ? "" : String.valueOf(a.lengthCm), 5);
+        JTextArea notes = new JTextArea(a.notes, 3, 30);
+        JPanel form = new JPanel(new GridLayout(0, 2, 4, 4));
+        form.add(new JLabel("Name:")); form.add(name);
+        form.add(new JLabel("Type:")); form.add(type);
+        form.add(new JLabel("Gain (dBi, as advertised):")); form.add(gain);
+        form.add(new JLabel("Length (cm):")); form.add(length);
+        form.add(new JLabel("Band:")); form.add(band);
+        form.add(new JLabel("Connector (SMA / RP-SMA / N…):")); form.add(connector);
+        form.add(new JLabel("Mounting / height / location:")); form.add(mounting);
+        form.add(new JLabel("Notes:")); form.add(new JScrollPane(notes));
+        if (existing != null) name.setEditable(false);
+        if (JOptionPane.showConfirmDialog(this, form, existing == null ? "Add antenna" : "Edit antenna", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        if (name.getText().isBlank()) return;
+        a.name = name.getText().trim(); a.type = String.valueOf(type.getSelectedItem()); a.connector = connector.getText().trim(); a.band = band.getText().trim(); a.mounting = mounting.getText().trim(); a.notes = notes.getText().trim();
+        try { a.gainDbi = gain.getText().isBlank() ? Double.NaN : Double.parseDouble(gain.getText().trim()); } catch (NumberFormatException e) { a.gainDbi = Double.NaN; }
+        try { a.lengthCm = length.getText().isBlank() ? Double.NaN : Double.parseDouble(length.getText().trim()); } catch (NumberFormatException e) { a.lengthCm = Double.NaN; }
+        try { antennaDb.put(a); refreshAntennaPick(); antennaPick.setSelectedItem(a.name); refreshAntenna(); }
+        catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); }
+    }
+
+    private void refreshLibrary() {
+        // usage hours and on-air averages per antenna from the log + history
+        Map<String, double[]> onAir = new HashMap<>();
+        if (history != null && !antennaLog.labels.isEmpty())
+            for (Analysis.AntennaResult r : Analysis.antennaAB(antennaLog.starts, antennaLog.labels, history.since(System.currentTimeMillis() - 365L * 86400_000L)))
+                onAir.put(r.label().toLowerCase(), new double[]{r.avgRssi(), r.avgSnr(), r.nodes()});
+        Map<String, Long> hours = new HashMap<>();
+        for (int i = 0; i < antennaLog.starts.size(); i++) {
+            long start = antennaLog.starts.get(i)[0], end = i + 1 < antennaLog.starts.size() ? antennaLog.starts.get(i + 1)[0] : System.currentTimeMillis();
+            hours.merge(antennaLog.labels.get(i).toLowerCase(), end - start, Long::sum);
+        }
+        List<Object[]> rows = new ArrayList<>();
+        for (AntennaDb.Antenna a : antennaDb.all()) {
+            double[] o = onAir.get(a.name.toLowerCase());
+            rows.add(new Object[]{a.name, a.type, Double.isNaN(a.gainDbi) ? "" : String.valueOf(a.gainDbi), a.band, a.connector, a.mounting,
+                    Double.isNaN(a.swrBest) ? "" : String.format("%.2f", a.swrBest), Double.isNaN(a.swrBestMhz) ? "" : String.format("%.1f", a.swrBestMhz),
+                    Double.isNaN(a.swrWorst) ? "" : String.format("%.2f", a.swrWorst), a.lastSwrTime == 0 ? "" : Fmt.time(a.lastSwrTime),
+                    hours.containsKey(a.name.toLowerCase()) ? String.format("%.1f", hours.get(a.name.toLowerCase()) / 3600_000.0) : "",
+                    o == null ? "" : String.format("%.1f", o[0]), o == null ? "" : String.format("%.1f", o[1]), o == null ? "" : String.valueOf((int) o[2]), a.notes});
+        }
+        library.set(rows);
+    }
+
     private void refreshAntenna() {
+        refreshLibrary();
         if (history != null) {
             List<Object[]> sr = new ArrayList<>();
             for (Map.Entry<Integer, double[]> e : Analysis.bySlot(history.since(System.currentTimeMillis() - 7L * 86400_000L)).entrySet()) {
