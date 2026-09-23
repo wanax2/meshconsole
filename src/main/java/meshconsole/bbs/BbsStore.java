@@ -11,6 +11,9 @@ import java.util.*;
 /** bbs.json — posts, mail, settings and a few counters. */
 public class BbsStore {
     public static class Post { public int id; public long time; public int author; public String authorName = "", text = ""; }
+    public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; }
+    public final Map<Integer, Caller> callers = new LinkedHashMap<>();
+    public long callsToday; public String callsDay = "";
     public static class Mail { public int id; public long time, delivered; public int from, to; public String fromName = "", text = ""; }
 
     public String name = "Lyon's Den", welcome = "The Lyon's Den – Lyon Village, Arlington VA 22201. Leave a bulletin or mail; send ? for commands. 73";
@@ -42,6 +45,11 @@ public class BbsStore {
                 Post x = new Post(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.author = (int) (long) Json.num(p.get("author"), 0);
                 x.authorName = Json.str(p.get("authorName")); x.text = Json.str(p.get("text")); posts.add(x);
             }
+            callsToday = (long) Json.num(m.get("callsToday"), 0); callsDay = Json.str(m.get("callsDay"));
+            if (m.get("callers") instanceof List<?> cs) for (Object o : cs) if (o instanceof Map<?, ?> p) {
+                Caller x = new Caller(); x.num = (int) (long) Json.num(p.get("num"), 0); x.name = Json.str(p.get("name")); x.first = (long) Json.num(p.get("first"), 0); x.last = (long) Json.num(p.get("last"), 0);
+                x.commands = (int) Json.num(p.get("commands"), 0); x.lastCommand = Json.str(p.get("lastCommand")); if (x.num != 0) callers.put(x.num, x);
+            }
             if (m.get("mail") instanceof List<?> ms) for (Object o : ms) if (o instanceof Map<?, ?> p) {
                 Mail x = new Mail(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.delivered = (long) Json.num(p.get("delivered"), 0);
                 x.from = (int) (long) Json.num(p.get("from"), 0); x.to = (int) (long) Json.num(p.get("to"), 0); x.fromName = Json.str(p.get("fromName")); x.text = Json.str(p.get("text")); mail.add(x);
@@ -54,12 +62,15 @@ public class BbsStore {
     public synchronized void save() {
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
-          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId));
+          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay));
         sb.append("\"banned\":[");
         boolean f = true; for (int b : banned) { if (!f) sb.append(','); f = false; sb.append(Integer.toUnsignedLong(b)); }
         sb.append("],\n\"posts\":[\n");
         f = true;
         for (Post p : posts) { if (!f) sb.append(",\n"); f = false; sb.append("  {").append(kv("id", p.id)).append(kv("time", p.time)).append("\"author\":").append(Integer.toUnsignedLong(p.author)).append(',').append(kv("authorName", p.authorName)).append(kv("text", p.text)); sb.setLength(sb.length() - 1); sb.append('}'); }
+        sb.append("\n],\n\"callers\":[\n");
+        f = true;
+        for (Caller c : callers.values()) { if (!f) sb.append(",\n"); f = false; sb.append("  {\"num\":").append(Integer.toUnsignedLong(c.num)).append(',').append(kv("name", c.name)).append(kv("first", c.first)).append(kv("last", c.last)).append(kv("commands", c.commands)).append(kv("lastCommand", c.lastCommand)); sb.setLength(sb.length() - 1); sb.append('}'); }
         sb.append("\n],\n\"mail\":[\n");
         f = true;
         for (Mail m : mail) { if (!f) sb.append(",\n"); f = false; sb.append("  {").append(kv("id", m.id)).append(kv("time", m.time)).append(kv("delivered", m.delivered)).append("\"from\":").append(Integer.toUnsignedLong(m.from)).append(",\"to\":").append(Integer.toUnsignedLong(m.to)).append(',').append(kv("fromName", m.fromName)).append(kv("text", m.text)); sb.setLength(sb.length() - 1); sb.append('}'); }

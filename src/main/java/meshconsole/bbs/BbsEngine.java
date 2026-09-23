@@ -13,7 +13,7 @@ import java.util.*;
  * Commands (case-insensitive, send "?" for the menu): B [page], R n, P text, D n, M, M !id|name text, N, S, W, I, PING.
  */
 public class BbsEngine {
-    public interface Listener { void onActivity(String line); }
+    public interface Listener { void onActivity(String line); default void onCaller(int num, String command) { } default void onStateChanged() { } }
 
     private static final int MAX_BYTES = 200;
     private final MeshClient client;
@@ -22,7 +22,12 @@ public class BbsEngine {
     private final Map<Integer, Long> lastReply = new HashMap<>();
     private final Deque<String> activity = new ArrayDeque<>();
     private WeatherHistory weather;
-    private Listener listener = l -> { };
+    private final List<Listener> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final Listener listener = new Listener() {
+        @Override public void onActivity(String line) { for (Listener l : listeners) l.onActivity(line); }
+        @Override public void onCaller(int num, String command) { for (Listener l : listeners) l.onCaller(num, command); }
+        @Override public void onStateChanged() { for (Listener l : listeners) l.onStateChanged(); }
+    };
     private long lastMailSweep;
 
     public BbsEngine(MeshClient client, BbsStore store) {
@@ -37,8 +42,27 @@ public class BbsEngine {
     }
 
     public BbsStore store() { return store; }
+
+    public void setEnabled(boolean on) {
+        store.enabled = on; store.save();
+        log(on ? "BBS ON – waiting for callers" : "BBS OFF");
+        listener.onStateChanged();
+    }
+
+    /** Sysop-initiated DM to a caller (bypasses cooldown; counts as a reply). */
+    public void sysopChat(int to, String text) {
+        send(to, "[sysop] " + text);
+        store.save();
+    }
+
+    public String stateLine() {
+        long up = (System.currentTimeMillis() - store.started) / 60000;
+        return String.format("%s  |  %s  |  up %dh%02dm  |  calls today %d  |  callers %d  |  posts %d  |  mail %d  |  cmds %d",
+                store.name, store.enabled ? "ONLINE" : "OFFLINE", up / 60, up % 60, store.callsToday, store.callers.size(), store.posts.size(), store.mail.size(), store.commandsServed);
+    }
     public void setWeather(WeatherHistory w) { weather = w; }
-    public void setListener(Listener l) { listener = l; }
+    public void setListener(Listener l) { listeners.add(l); }
+    public void addListener(Listener l) { listeners.add(l); }
     public List<String> activity() { synchronized (activity) { return new ArrayList<>(activity); } }
 
     private void log(String s) {
@@ -65,6 +89,14 @@ public class BbsEngine {
         long now = System.currentTimeMillis();
         Long last = lastReply.get(m.from);
         if (last != null && now - last < store.cooldownSec * 1000L) { log("rate-limited " + state.nodeName(m.from)); return; }
+        // caller bookkeeping
+        BbsStore.Caller cl = store.callers.computeIfAbsent(m.from, k -> { BbsStore.Caller x = new BbsStore.Caller(); x.num = k; x.first = now; return x; });
+        cl.name = state.nodeName(m.from); cl.last = now; cl.commands++; cl.lastCommand = text.length() > 40 ? text.substring(0, 40) : text;
+        String today = java.time.LocalDate.now().toString();
+        if (!today.equals(store.callsDay)) { store.callsDay = today; store.callsToday = 0; }
+        store.callsToday++;
+        log("← " + cl.name + ": " + text);
+        listener.onCaller(m.from, text);
         String reply;
         try { reply = dm ? command(m.from, text) : store.name + " here – DM me ? for commands"; }
         catch (RuntimeException e) { reply = "error: " + e.getMessage(); }

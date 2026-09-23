@@ -35,6 +35,9 @@ public class MainWindow extends JFrame {
     private AnalysisPanel analysisPanel;
     private WeatherPanel weatherPanel;
     private BbsPanel bbsPanel;
+    private SysopWindow sysop;
+    private meshconsole.bbs.BbsEngine bbs;
+    private final JToggleButton bbsToggle = new JToggleButton("BBS: OFF");
     private long connectedSince; private int connectedNum; private boolean registered;
 
     record PortItem(SerialPort port) {
@@ -92,6 +95,12 @@ public class MainWindow extends JFrame {
         bar.add(tcp);
         autoReconnect.setToolTipText("ESP32 boards (T-Deck, Heltec, Station G2…) drop their USB port whenever they reboot, e.g. after saving settings. Reconnect automatically when it comes back.");
         bar.add(autoReconnect);
+        bar.addSeparator();
+        bbsToggle.setToolTipText("Turn the bulletin-board bot on or off");
+        bbsToggle.addActionListener(e -> { if (bbs != null) bbs.setEnabled(bbsToggle.isSelected()); });
+        JButton sysopBtn = new JButton("Sysop screen");
+        sysopBtn.addActionListener(e -> { if (sysop != null) { sysop.setVisible(true); sysop.toFront(); } });
+        bar.add(bbsToggle); bar.add(sysopBtn);
         bar.addSeparator();
         bar.add(status);
         add(bar, BorderLayout.NORTH);
@@ -170,10 +179,17 @@ public class MainWindow extends JFrame {
         swrPanel.setAntennaDb(() -> analysisPanel.antennaDb());
         tabs.insertTab("Analysis", null, analysisPanel, null, tabs.indexOfComponent(alertsPanel));
         tabs.insertTab("Weather", null, weatherPanel, null, tabs.indexOfComponent(alertsPanel));
-        meshconsole.bbs.BbsEngine bbs = new meshconsole.bbs.BbsEngine(client, new meshconsole.bbs.BbsStore(meshconsole.DataDir.file("bbs.json")));
+        bbs = new meshconsole.bbs.BbsEngine(client, new meshconsole.bbs.BbsStore(meshconsole.DataDir.file("bbs.json")));
         bbs.setWeather(weatherPanel.history());
         bbsPanel = new BbsPanel(bbs, state);
         tabs.insertTab("BBS", null, bbsPanel, null, tabs.indexOfComponent(alertsPanel));
+        sysop = new SysopWindow(bbs, state);
+        Runnable syncToggle = () -> { bbsToggle.setSelected(bbs.store().enabled); bbsToggle.setText(bbs.store().enabled ? "BBS: ON" : "BBS: OFF"); bbsToggle.setBackground(bbs.store().enabled ? new Color(40, 120, 70) : null); bbsToggle.setForeground(bbs.store().enabled ? Color.WHITE : null); bbsToggle.setOpaque(bbs.store().enabled); };
+        syncToggle.run();
+        bbs.addListener(new meshconsole.bbs.BbsEngine.Listener() {
+            @Override public void onActivity(String line) { }
+            @Override public void onStateChanged() { SwingUtilities.invokeLater(() -> { syncToggle.run(); bbsPanel.reload(); }); }
+        });
     }
 
     private void refreshStatusLine() {

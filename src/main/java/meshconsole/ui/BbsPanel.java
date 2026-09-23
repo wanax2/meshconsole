@@ -91,7 +91,7 @@ class BbsPanel extends JPanel {
 
         enabled.setSelected(store.enabled); name.setText(store.name); welcome.setText(store.welcome); channelTrigger.setSelected(store.channelTrigger);
         trigger.setText(store.triggerWord); cooldown.setValue(store.cooldownSec); maxPosts.setValue(store.maxPosts);
-        enabled.addActionListener(e -> applySettings());
+        enabled.addActionListener(e -> { applySettings(); engine.setEnabled(enabled.isSelected()); });
         for (String l : engine.activity()) activity.append(l + "\n");
         engine.setListener(l -> SwingUtilities.invokeLater(() -> { activity.append(l + "\n"); activity.setCaretPosition(activity.getDocument().getLength()); reload(); }));
         reload();
@@ -106,6 +106,7 @@ class BbsPanel extends JPanel {
     }
 
     void reload() {
+        enabled.setSelected(store.enabled);
         posts.rows = new ArrayList<>(store.posts); posts.fireTableDataChanged();
         mail.rows = new ArrayList<>(store.mail); mail.fireTableDataChanged();
         stats.setText((store.enabled ? "Running" : "Stopped") + "  ·  " + store.posts.size() + " posts, " + store.mail.size() + " mail, " + store.commandsServed + " commands served, " + store.repliesSent + " replies, " + store.banned.size() + " banned");

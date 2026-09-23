@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3 — 2026-09-23
+
+- **Sysop screen** — a separate window in the style of a classic BBS sysop console: status line (online/offline, uptime, calls today, callers, posts, mail), "waiting for caller" line showing the current caller and command, caller list with last command and ban status, live activity, and function keys: F1 BBS on/off, F2 chat with the selected caller (sent as a DM tagged [sysop]), F3 post bulletin, F4 ban/unban, F5 clear, F6 mail list, F9 save, Esc close.
+- **BBS: ON/OFF** toggle and **Sysop screen** button in the main toolbar. Callers are tracked (first/last seen, command count) in `bbs.json`; all BBS activity continues to go to `bbs.log`.
+
+
 ## 1.4.2 — 2026-09-23
 
 More logging:
