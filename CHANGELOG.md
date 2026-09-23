@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 — 2026-09-23
+
+- **BBS tab** — a bulletin-board bot that answers direct messages to this node: `?` menu, `B` bulletins (paged), `R n` read, `P text` post, `D n` delete own, `M` read mail, `M name text` leave mail for a node (delivered when it is next heard), `N` nodes heard in the last hour, `S` the sender's signal as seen here, `W` weather (from the METAR feed), `I` info, `PING`. Sysop tools: name and welcome text, post as sysop, delete, ban, per-node cooldown, optional single trigger word on the public channel (off by default). Replies never exceed 200 bytes. Stored in `bbs.json`.
+- **Headless mode** for a Raspberry Pi or server: `meshconsole.sh --headless --port /dev/ttyACM0 [--data <folder>] [--bbs]` (or `--tcp host`). Logs, node DB, signal/utilisation history, alerts and the BBS all run without a display; reconnects forever.
+- **Noise floor history**: the radio's reported noise floor is logged (`util_history.csv`), charted on Analysis → Channel health with a 24 h median and best/worst, and included in the report.
+
+
 ## 1.3.9 — 2026-09-22
 
 - **Setup log** (`setup_log.csv`): record the physical setup of the connected radio — antenna, antenna placement (indoor desk / window / attic / balcony / outdoor wall / roof / mast / vehicle / handheld), height above ground in metres, radio location, notes. Each recording starts a new test period; signal samples are attributed to the setup in force for the receiving radio. **By setup** table on the My radios tab compares samples, average RSSI/SNR, nodes heard and direct % per setup, best first.
