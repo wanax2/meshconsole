@@ -61,6 +61,41 @@ public final class DataDir {
     }
 
     /**
+     * Zips every data file (plus tile-cache-free extras such as captures in the folder) into
+     * <name>.zip in the target directory. Name defaults to meshconsole-data-YYYYMMDD-HHmmss.
+     */
+    public static Path exportZip(Path targetDir, boolean includeCaptures) throws IOException {
+        Files.createDirectories(targetDir);
+        String name = "meshconsole-data-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".zip";
+        Path zip = targetDir.resolve(name);
+        try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(Files.newOutputStream(zip))) {
+            for (String f : FILES) {
+                Path src = file(f);
+                if (Files.exists(src)) addEntry(out, src, f);
+            }
+            if (includeCaptures) {
+                try (var list = Files.list(get())) {
+                    for (Path p : (Iterable<Path>) list::iterator)
+                        if (p.getFileName().toString().endsWith(".mcap")) addEntry(out, p, p.getFileName().toString());
+                }
+            }
+            String info = Version.NAME + " " + Version.VERSION + "\nexported " + java.time.ZonedDateTime.now() + "\nfrom " + get() + "\n";
+            out.putNextEntry(new java.util.zip.ZipEntry("export_info.txt"));
+            out.write(info.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+        return zip;
+    }
+
+    private static void addEntry(java.util.zip.ZipOutputStream out, Path src, String name) throws IOException {
+        java.util.zip.ZipEntry e = new java.util.zip.ZipEntry(name);
+        e.setTime(Files.getLastModifiedTime(src).toMillis());
+        out.putNextEntry(e);
+        Files.copy(src, out);
+        out.closeEntry();
+    }
+
+    /**
      * Called once at startup. If the data was last written by a different app version, back it up to
      * backup/<oldversion>-<date>/ before this version touches it, then record the current version.
      * Returns a description of what happened, or null if nothing was needed.

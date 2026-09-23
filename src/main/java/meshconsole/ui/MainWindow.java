@@ -54,7 +54,9 @@ public class MainWindow extends JFrame {
         dataDir.addActionListener(e -> chooseDataFolder());
         JMenuItem openDir = new JMenuItem("Open data folder");
         openDir.addActionListener(e -> { try { Desktop.getDesktop().open(meshconsole.DataDir.get().toFile()); } catch (Exception ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); } });
-        file.add(dataDir); file.add(openDir);
+        JMenuItem export = new JMenuItem("Export all logs as zip…");
+        export.addActionListener(e -> exportLogs());
+        file.add(dataDir); file.add(openDir); file.addSeparator(); file.add(export);
         menu.add(file);
         JMenu help = new JMenu("Help");
         JMenuItem about = new JMenuItem("About " + meshconsole.Version.NAME + "…");
@@ -216,6 +218,26 @@ public class MainWindow extends JFrame {
             status.setText("Disconnected – waiting for " + want + " to come back (" + left + " s)");
         });
         reconnectTimer.start();
+    }
+
+    private void exportLogs() {
+        JFileChooser fc = new JFileChooser(meshconsole.DataDir.get().toFile());
+        fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        fc.setDialogTitle("Folder to save the export zip in");
+        fc.setApproveButtonText("Export here");
+        JCheckBox caps = new JCheckBox("Include packet captures (*.mcap)", false);
+        fc.setAccessory(caps);
+        if (fc.showDialog(this, "Export here") != JFileChooser.APPROVE_OPTION) return;
+        try {
+            statusPanel.flushLog();
+            java.nio.file.Path zip = meshconsole.DataDir.exportZip(fc.getSelectedFile().toPath(), caps.isSelected());
+            state.emitLog("Exported logs to " + zip);
+            int r = JOptionPane.showOptionDialog(this, "Saved " + zip.getFileName() + " (" + java.nio.file.Files.size(zip) / 1024 + " KB)", "Export",
+                    JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, new Object[]{"Show in folder", "OK"}, "OK");
+            if (r == 0 && Desktop.isDesktopSupported()) Desktop.getDesktop().open(zip.getParent().toFile());
+        } catch (java.io.IOException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Export failed", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void chooseDataFolder() {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.4 — 2026-09-22
+
+- **File → Export all logs as zip…**: bundles every data file (message log, node DB, signal/weather/utilisation history, alerts, sessions, app log, report; optionally packet captures) into `meshconsole-data-YYYYMMDD-HHmmss.zip` with an `export_info.txt` stamp, in a folder you choose.
+
+
 ## 1.3.3 — 2026-09-22
 
 - **File → Data folder…**: choose where all logs, the node database and history files live (remembered per user; takes effect on restart), with the option to copy existing data over. **File → Open data folder** opens it in Explorer/Finder. A folder can also be given as the first command-line argument.

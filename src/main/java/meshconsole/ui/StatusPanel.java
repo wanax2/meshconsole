@@ -141,6 +141,8 @@ class StatusPanel extends JPanel {
         }, "replay").start();
     }
 
+    void flushLog() { if (logFile != null) logFile.flush(); }
+
     void tickCapture() {
         if (client != null && client.isCapturing()) captureInfo.setText("recording: " + client.captureFrames() + " frames");
     }
