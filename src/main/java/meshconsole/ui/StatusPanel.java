@@ -30,6 +30,7 @@ class StatusPanel extends JPanel {
     private final JCheckBox trace = new JCheckBox("Trace frames");
     private final JCheckBox toFile = new JCheckBox("Write meshconsole.log", true);
     private java.io.PrintWriter logFile;
+    private long logLines;
     private meshconsole.mesh.MeshClient client;
 
     record NodeChoice(int num, String label) {
@@ -151,7 +152,13 @@ class StatusPanel extends JPanel {
         String stamped = Fmt.time(System.currentTimeMillis()) + "  " + line;
         if (toFile.isSelected()) {
             try {
-                if (logFile == null) logFile = new java.io.PrintWriter(new java.io.FileWriter(meshconsole.DataDir.file("meshconsole.log").toFile(), true), true);
+                java.nio.file.Path lf = meshconsole.DataDir.file("meshconsole.log");
+                if (++logLines % 2000 == 0 && java.nio.file.Files.exists(lf) && java.nio.file.Files.size(lf) > 50L * 1024 * 1024) {
+                    // rotate: .2 -> .3, .1 -> .2, current -> .1
+                    if (logFile != null) { logFile.close(); logFile = null; }
+                    for (int i = 3; i >= 1; i--) { java.nio.file.Path from = i == 1 ? lf : meshconsole.DataDir.file("meshconsole.log." + (i - 1)), to = meshconsole.DataDir.file("meshconsole.log." + i); if (java.nio.file.Files.exists(from)) java.nio.file.Files.move(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
+                }
+                if (logFile == null) logFile = new java.io.PrintWriter(new java.io.FileWriter(lf.toFile(), true), true);
                 logFile.println(stamped);
             } catch (java.io.IOException ignored) { }
         }

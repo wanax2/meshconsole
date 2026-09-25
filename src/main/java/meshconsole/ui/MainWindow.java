@@ -343,16 +343,31 @@ public class MainWindow extends JFrame {
         JCheckBox caps = new JCheckBox("Include packet captures (*.mcap)", false);
         fc.setAccessory(caps);
         if (fc.showDialog(this, "Export here") != JFileChooser.APPROVE_OPTION) return;
-        try {
-            statusPanel.flushLog();
-            java.nio.file.Path zip = meshconsole.DataDir.exportZip(fc.getSelectedFile().toPath(), caps.isSelected());
-            state.emitLog("Exported logs to " + zip);
-            int r = JOptionPane.showOptionDialog(this, "Saved " + zip.getFileName() + " (" + java.nio.file.Files.size(zip) / 1024 + " KB)", "Export",
-                    JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, new Object[]{"Show in folder", "OK"}, "OK");
-            if (r == 0 && Desktop.isDesktopSupported()) Desktop.getDesktop().open(zip.getParent().toFile());
-        } catch (java.io.IOException ex) {
-            JOptionPane.showMessageDialog(this, ex.getMessage(), "Export failed", JOptionPane.ERROR_MESSAGE);
-        }
+        statusPanel.flushLog();
+        final java.nio.file.Path target = fc.getSelectedFile().toPath();
+        final boolean withCaps = caps.isSelected();
+        long total = 0;
+        for (String f : meshconsole.DataDir.FILES) { java.nio.file.Path pth = meshconsole.DataDir.file(f); try { if (java.nio.file.Files.exists(pth)) total += java.nio.file.Files.size(pth); } catch (java.io.IOException ignored) { } }
+        JDialog progress = new JDialog(this, "Exporting…", false);
+        JLabel pl = new JLabel("Compressing " + (total / 1_048_576) + " MB of logs – the app stays usable meanwhile.  ");
+        pl.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        progress.add(pl); progress.pack(); progress.setLocationRelativeTo(this); progress.setVisible(true);
+        new Thread(() -> {
+            try {
+                java.nio.file.Path zip = meshconsole.DataDir.exportZip(target, withCaps);
+                state.emitLog("Exported logs to " + zip);
+                SwingUtilities.invokeLater(() -> {
+                    progress.dispose();
+                    try {
+                        int r = JOptionPane.showOptionDialog(this, "Saved " + zip.getFileName() + " (" + java.nio.file.Files.size(zip) / 1024 + " KB)", "Export",
+                                JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, new Object[]{"Show in folder", "OK"}, "OK");
+                        if (r == 0 && Desktop.isDesktopSupported()) Desktop.getDesktop().open(zip.getParent().toFile());
+                    } catch (java.io.IOException ignored) { }
+                });
+            } catch (java.io.IOException ex) {
+                SwingUtilities.invokeLater(() -> { progress.dispose(); JOptionPane.showMessageDialog(this, ex.getMessage(), "Export failed", JOptionPane.ERROR_MESSAGE); });
+            }
+        }, "export").start();
     }
 
     private void chooseDataFolder() {

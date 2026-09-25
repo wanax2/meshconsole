@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 — 2026-09-24
+
+- Fix: "Export all logs as zip" ran on the UI thread and froze the window for the duration of a large export. It now runs in the background with a progress dialog.
+- `meshconsole.log` rotates at 50 MB (keeps .1, .2, .3) so the firmware debug stream can't grow without limit.
+
+
 ## 1.5.0 — 2026-09-23
 
 - **MQTT witness** tab — read-only subscription to a public Meshtastic broker; decodes gateway envelopes (default key and your radio's channel keys) and lists **your node's packets as heard by gateways**: an independent "does the mesh hear me?" check. Gateway table, feed view, `mqtt_witness.csv`, WITNESS alerts.
