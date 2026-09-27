@@ -38,6 +38,11 @@ class SettingsPanel extends JPanel {
     // device
     private final JComboBox<Config.DeviceConfig.Role> role = new JComboBox<>();
     private final JTextField posLat = new JTextField(10), posLon = new JTextField(10), posAlt = new JTextField(5);
+    private final JCheckBox wifiOn = new JCheckBox("WiFi enabled");
+    private final JTextField wifiSsid = new JTextField(16), ntp = new JTextField(14);
+    private final JPasswordField wifiPsk = new JPasswordField(14);
+    private final JCheckBox ethOn = new JCheckBox("Ethernet enabled");
+    private final JLabel wifiNote = new JLabel(" ");
     private final JCheckBox debugLogApi = new JCheckBox("Stream firmware debug log to this app (security.debug_log_api_enabled)");
     // mqtt
     private final JCheckBox mqttEnabled = new JCheckBox("MQTT module enabled");
@@ -127,6 +132,23 @@ class SettingsPanel extends JPanel {
             client.setConfig(Config.newBuilder().setDevice(b).build());
         }));
         box.add(dev);
+
+        JPanel net = section("WiFi / network (ESP32 boards: Station G2, Heltec, T-Deck…)");
+        net.add(wifiOn); net.add(new JLabel("SSID:")); net.add(wifiSsid); net.add(new JLabel("Password:")); net.add(wifiPsk);
+        net.add(ethOn); net.add(new JLabel("NTP:")); net.add(ntp);
+        net.add(button("Save network", () -> {
+            Config base = state.config(Config.PayloadVariantCase.NETWORK);
+            Config.NetworkConfig.Builder b = base == null ? Config.NetworkConfig.newBuilder() : base.getNetwork().toBuilder();
+            b.setWifiEnabled(wifiOn.isSelected()).setWifiSsid(wifiSsid.getText().trim()).setEthEnabled(ethOn.isSelected());
+            String pw = new String(wifiPsk.getPassword());
+            if (!pw.isEmpty() && !pw.equals("\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022")) b.setWifiPsk(pw);
+            if (!ntp.getText().isBlank()) b.setNtpServer(ntp.getText().trim());
+            client.setConfig(Config.newBuilder().setNetwork(b).build());
+        }));
+        box.add(net);
+        JPanel netNote = section(null);
+        netNote.add(wifiNote);
+        box.add(netNote);
 
         JPanel posP = section("Fixed position (for nodes without GPS)");
         posP.add(new JLabel("Latitude:")); posP.add(posLat);
@@ -258,6 +280,14 @@ class SettingsPanel extends JPanel {
         }
         Config dc = state.config(Config.PayloadVariantCase.DEVICE);
         if (dc != null) role.setSelectedItem(dc.getDevice().getRole());
+        Config nc = state.config(Config.PayloadVariantCase.NETWORK);
+        if (nc != null) {
+            Config.NetworkConfig n = nc.getNetwork();
+            wifiOn.setSelected(n.getWifiEnabled()); wifiSsid.setText(n.getWifiSsid()); wifiPsk.setText(n.getWifiPsk().isEmpty() ? "" : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022");
+            ethOn.setSelected(n.getEthEnabled()); ntp.setText(n.getNtpServer());
+            wifiNote.setText(n.getWifiEnabled() ? "WiFi is on. The radio reboots after saving; once it has joined, connect with TCP… using the IP your router (or the phone app) shows for it. Bluetooth is disabled while WiFi is on."
+                                              : "Turn WiFi on and the radio can be reached with TCP… (port 4403) instead of USB – no cable, and it can sit by the antenna.");
+        } else wifiNote.setText("Network settings not received – this radio may not have WiFi (nRF52 boards such as the RAK4631 don't).");
         Config sc = state.config(Config.PayloadVariantCase.SECURITY);
         if (sc != null) debugLogApi.setSelected(sc.getSecurity().getDebugLogApiEnabled());
         ModuleConfig mc = state.moduleConfig(ModuleConfig.PayloadVariantCase.MQTT);

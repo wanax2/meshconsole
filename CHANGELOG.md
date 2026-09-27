@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2 — 2026-09-27
+
+- Settings → Common: **WiFi / network** section (WiFi on/off, SSID, password, Ethernet, NTP) for ESP32 boards, so a Station G2 or T-Deck can be put on the LAN and then used over TCP.
+
+
 ## 1.5.1 — 2026-09-24
 
 - Fix: "Export all logs as zip" ran on the UI thread and froze the window for the duration of a large export. It now runs in the background with a progress dialog.
