@@ -105,6 +105,7 @@ class SettingsPanel extends JPanel {
         lora2.add(txEnabled);
         lora2.add(button("Save LoRa", () -> {
             Config base = state.config(Config.PayloadVariantCase.LORA);
+            if (base == null) throw new IOException("LoRa settings have not been received from this radio yet – wait for the config to load (or press Reload from radio), then save.");
             Config.LoRaConfig.Builder b = base == null ? Config.LoRaConfig.newBuilder() : base.getLora().toBuilder();
             b.setUsePreset(true)
              .setRegion((Config.LoRaConfig.RegionCode) region.getSelectedItem())
@@ -127,6 +128,7 @@ class SettingsPanel extends JPanel {
         dev.add(new JLabel("Role:")); dev.add(role);
         dev.add(button("Save device", () -> {
             Config base = state.config(Config.PayloadVariantCase.DEVICE);
+            if (base == null) throw new IOException("Device settings have not been received from this radio yet.");
             Config.DeviceConfig.Builder b = base == null ? Config.DeviceConfig.newBuilder() : base.getDevice().toBuilder();
             b.setRole((Config.DeviceConfig.Role) role.getSelectedItem());
             client.setConfig(Config.newBuilder().setDevice(b).build());
@@ -138,6 +140,7 @@ class SettingsPanel extends JPanel {
         net.add(ethOn); net.add(new JLabel("NTP:")); net.add(ntp);
         net.add(button("Save network", () -> {
             Config base = state.config(Config.PayloadVariantCase.NETWORK);
+            if (base == null) throw new IOException("Network settings have not been received from this radio yet (nRF52 boards have none).");
             Config.NetworkConfig.Builder b = base == null ? Config.NetworkConfig.newBuilder() : base.getNetwork().toBuilder();
             b.setWifiEnabled(wifiOn.isSelected()).setWifiSsid(wifiSsid.getText().trim()).setEthEnabled(ethOn.isSelected());
             String pw = new String(wifiPsk.getPassword());
@@ -188,6 +191,7 @@ class SettingsPanel extends JPanel {
         mq2.add(mqttEncrypt); mq2.add(mqttJson); mq2.add(mqttTls); mq2.add(mqttMap); mq2.add(mqttProxy);
         mq2.add(button("Save MQTT", () -> {
             ModuleConfig base = state.moduleConfig(ModuleConfig.PayloadVariantCase.MQTT);
+            if (base == null) throw new IOException("MQTT settings have not been received from this radio yet.");
             ModuleConfig.MQTTConfig.Builder b = base == null ? ModuleConfig.MQTTConfig.newBuilder() : base.getMqtt().toBuilder();
             b.setEnabled(mqttEnabled.isSelected()).setAddress(mqttAddress.getText().trim()).setUsername(mqttUser.getText().trim())
              .setPassword(new String(mqttPass.getPassword())).setRoot(mqttRoot.getText().trim())
@@ -258,7 +262,7 @@ class SettingsPanel extends JPanel {
 
     void populate() {
         if (state.myNodeNum() == 0) { loaded.setText("Settings not loaded – connect to a radio."); return; }
-        populated = true;
+        populated = state.config(Config.PayloadVariantCase.LORA) != null;   // keep re-populating until the LoRa section has actually arrived
         loaded.setText("Loaded from " + state.nodeName(state.myNodeNum()) + ".");
         NodeEntry me = state.myNode();
         if (me != null) {

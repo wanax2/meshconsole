@@ -97,6 +97,9 @@ public class MainWindow extends JFrame {
         showBbs.addActionListener(e -> { java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).putBoolean("showBbs", showBbs.isSelected()); applyBbsVisibility(showBbs.isSelected()); });
         view.add(showBbs);
         menu.add(view);
+        JMenuItem fw = new JMenuItem("Firmware update…");
+        fw.addActionListener(e -> new FirmwareDialog(this, client, lastPortName).setVisible(true));
+        tools.addSeparator(); tools.add(fw);
         JMenu help = new JMenu("Help");
         JMenuItem about = new JMenuItem("About " + meshconsole.Version.NAME + "…");
         about.addActionListener(e -> showAbout());

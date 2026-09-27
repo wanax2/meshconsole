@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0 — 2026-09-27
+
+- **Firmware update** (Tools → Firmware update…): lists Meshtastic releases from GitHub (stable, optionally pre-releases), downloads the right platform package for the connected board, lets you pick the file (best guess preselected), and flashes it:
+  - **nRF52 boards** (RAK4631/3401, T-Echo, T1000-E, Heltec T114, …): fully in-app — the radio is put into DFU mode, the UF2 bootloader drive is detected, the file copied; settings are kept.
+  - **ESP32 boards** (Station G2, T-Deck, Heltec V3/V4, T-Beam, …): via `esptool` if installed (`pip install esptool`) with the correct arguments — update at 0x10000 keeps settings, full install erases first; otherwise the file is downloaded and the web flasher opened.
+- Fix: the Common settings tab could write empty defaults (region UNSET, tx power 0) if "Save LoRa" was pressed before the radio's config had arrived. Saves now refuse until the section has been received.
+
+
 ## 1.5.2 — 2026-09-27
 
 - Settings → Common: **WiFi / network** section (WiFi on/off, SSID, password, Ethernet, NTP) for ESP32 boards, so a Station G2 or T-Deck can be put on the LAN and then used over TCP.

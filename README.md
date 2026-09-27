@@ -135,6 +135,10 @@ By default everything goes in the folder the app is started from; **File → Dat
 Adding another port number is a new `case` in `MeshState.handlePacket`; adding an admin operation (e.g.
 changing config) means building an `AdminMessage` from `AdminProtos` and sending it on `ADMIN_APP`.
 
+## Firmware updates
+
+Tools → **Firmware update…** downloads a release and flashes it. nRF52 boards are done entirely in-app (DFU + UF2 copy, settings kept). ESP32 boards use `esptool` (`pip install esptool`) if present — "update" keeps settings, "full install" erases — or fall back to the web flasher with the downloaded file. Export your channel URL first if you plan a full install.
+
 ## Settings tab: how writes work
 
 The firmware only accepts state-changing admin messages that carry a fresh *session passkey*. `MeshClient.ensureSessionKey()`

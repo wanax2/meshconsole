@@ -30,3 +30,4 @@ mqtt_log.csv
 admin_log.txt
 mqtt_witness.csv
 messages_radio2.log
+firmware/
