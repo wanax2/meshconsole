@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.3 — 2026-09-28
+
+- The **Radio port** drop-down now lists remembered TCP hosts alongside the COM ports, plus a "TCP host… (add)" entry; Connect does the right thing for whichever is selected. When no radio is on USB the last-used TCP host is preselected.
+- Auto-reconnect works for TCP too (retries every 5 s for 5 minutes after a lost connection — radio reboot, WiFi blip).
+
+
 ## 1.6.2 — 2026-09-28
 
 - The app now sets the radio's clock from the PC on connect (`set_time_only`), like the phone and web clients — a radio with no GPS, phone or NTP otherwise runs on its build date.

@@ -14,12 +14,13 @@ import java.io.IOException;
 public class MainWindow extends JFrame {
     private final MeshClient client;
     private final MeshState state;
-    private final JComboBox<PortItem> ports = new JComboBox<>();
+    private final JComboBox<Object> ports = new JComboBox<>();
     private final JButton connect = new JButton("Connect to device");
     private final JLabel status = new JLabel("Not connected");
     private final JCheckBox autoReconnect = new JCheckBox("Auto-reconnect", true);
     private String lastPortName;
     private Timer reconnectTimer;
+    private TcpItem lastTcp;
     private final JTabbedPane tabs = new JTabbedPane();
     private final StatusPanel statusPanel;
     private final MessagesPanel messagesPanel;
@@ -57,6 +58,10 @@ public class MainWindow extends JFrame {
         if (!show && bbs != null && bbs.store().enabled) bbs.setEnabled(false);
     }
     private long connectedSince; private int connectedNum; private boolean registered;
+
+    record TcpItem(String host, int port) { @Override public String toString() { return "TCP  " + host + (port == 4403 ? "" : ":" + port); } }
+    static final Object ADD_TCP = new Object() { @Override public String toString() { return "TCP host… (add)"; } };
+    private static final java.util.prefs.Preferences PREFS = java.util.prefs.Preferences.userNodeForPackage(MainWindow.class);
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
@@ -114,6 +119,7 @@ public class MainWindow extends JFrame {
         JButton refresh = new JButton("↻");
         refresh.setToolTipText("Rescan serial ports");
         refresh.addActionListener(e -> refreshPorts());
+        ports.addActionListener(e -> { if (ports.getSelectedItem() == ADD_TCP && !client.isConnected()) SwingUtilities.invokeLater(this::connectTcp); });
         bar.add(refresh);
         connect.setFont(connect.getFont().deriveFont(Font.BOLD, 15f));
         connect.setPreferredSize(new Dimension(200, 36));
@@ -186,6 +192,7 @@ public class MainWindow extends JFrame {
                 status.setText(d.isEmpty() ? "Not connected" : "Disconnected: " + d);
                 settingsPanel.onDisconnected();
                 if (!d.isEmpty() && autoReconnect.isSelected() && lastPortName != null) startReconnectWatch();
+                else if (!d.isEmpty() && autoReconnect.isSelected() && lastTcp != null) startTcpReconnectWatch();
             } else {
                 connectedSince = System.currentTimeMillis(); registered = false;
                 status.setText("Connected on " + d + " – loading config…");
@@ -298,18 +305,51 @@ public class MainWindow extends JFrame {
         status.setText(sb.toString());
     }
 
+    private java.util.List<TcpItem> savedTcp() {
+        java.util.List<TcpItem> l = new java.util.ArrayList<>();
+        for (String s : PREFS.get("tcpHosts", "").split(";")) { if (s.isBlank()) continue; String h = s; int p = 4403; int c = s.lastIndexOf(':'); if (c > 0) { try { p = Integer.parseInt(s.substring(c + 1)); h = s.substring(0, c); } catch (NumberFormatException ignored) { } } l.add(new TcpItem(h, p)); }
+        return l;
+    }
+    private void rememberTcp(TcpItem t) {
+        java.util.List<TcpItem> l = savedTcp(); l.removeIf(x -> x.host().equalsIgnoreCase(t.host()) && x.port() == t.port()); l.add(0, t);
+        while (l.size() > 6) l.remove(l.size() - 1);
+        StringBuilder sb = new StringBuilder(); for (TcpItem x : l) sb.append(x.host()).append(':').append(x.port()).append(';');
+        PREFS.put("tcpHosts", sb.toString());
+    }
+
     void refreshPorts() {
+        Object sel = ports.getSelectedItem();
         ports.removeAllItems();
         for (SerialPort p : SerialPort.getCommPorts()) ports.addItem(new PortItem(p));
+        for (TcpItem t : savedTcp()) ports.addItem(t);
+        ports.addItem(ADD_TCP);
         int pick = -1;
+        if (sel instanceof TcpItem) { ports.setSelectedItem(sel); return; }
         for (int i = 0; i < ports.getItemCount(); i++) {
-            String d = ports.getItemAt(i).port().getDescriptivePortName().toLowerCase();
+            if (!(ports.getItemAt(i) instanceof PortItem pi)) continue;
+            String d = pi.port().getDescriptivePortName().toLowerCase();
             if (d.contains("rak") || d.contains("meshtastic") || d.contains("wisblock") || d.contains("usb serial")) { pick = i; break; }
             // built-in / virtual ports that are never a radio
             if (pick < 0 && !d.contains("active management") && !d.contains("sol") && !d.contains("communications port") && !d.contains("bluetooth")) pick = i;
         }
         if (pick >= 0) ports.setSelectedIndex(pick);
-        if (ports.getItemCount() == 0) status.setText("No serial ports found – plug in the radio and press ↻");
+        else if (!savedTcp().isEmpty()) ports.setSelectedIndex(ports.getItemCount() - 2);   // last-used TCP host when no radio is on USB
+        if (SerialPort.getCommPorts().length == 0 && savedTcp().isEmpty()) status.setText("No serial ports found – plug in the radio and press ↻, or add a TCP host");
+    }
+
+    /** Retry a lost TCP connection every 5 s for 5 minutes (the radio rebooted, WiFi dropped). */
+    private void startTcpReconnectWatch() {
+        if (reconnectTimer != null) reconnectTimer.stop();
+        final long deadline = System.currentTimeMillis() + 5 * 60_000;
+        final TcpItem want = lastTcp;
+        reconnectTimer = new Timer(5000, null);
+        reconnectTimer.addActionListener(e -> {
+            if (client.isConnected() || System.currentTimeMillis() > deadline || want == null) { reconnectTimer.stop(); reconnectTimer = null; return; }
+            status.setText("Reconnecting to " + want.host() + "…");
+            try { client.connectTcp(want.host(), want.port()); reconnectTimer.stop(); reconnectTimer = null; }
+            catch (IOException ex) { status.setText("Waiting for " + want.host() + " (" + ex.getMessage() + ")"); }
+        });
+        reconnectTimer.start();
     }
 
     /** Poll for the last-used serial port to reappear (device rebooted) and reconnect to it. */
@@ -412,7 +452,6 @@ public class MainWindow extends JFrame {
     }
 
     private void connectTcp() {
-        if (client.isConnected()) client.disconnect();
         String s = JOptionPane.showInputDialog(this, "Host or IP (optionally :port, default 4403):", "meshtastic.local:4403");
         if (s == null || s.isBlank()) return;
         String host = s.trim();
@@ -421,17 +460,25 @@ public class MainWindow extends JFrame {
         if (colon > 0) {
             try { port = Integer.parseInt(host.substring(colon + 1)); host = host.substring(0, colon); } catch (NumberFormatException ignored) { }
         }
-        try {
-            client.connectTcp(host, port);
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(this, ex.getMessage(), "TCP connect failed", JOptionPane.ERROR_MESSAGE);
-        }
+        TcpItem t = new TcpItem(host, port);
+        rememberTcp(t);
+        refreshPorts();
+        ports.setSelectedItem(t);
+        connectTcp(t);
+    }
+
+    private void connectTcp(TcpItem t) {
+        if (client.isConnected()) client.disconnect();
+        try { client.connectTcp(t.host(), t.port()); lastPortName = null; lastTcp = t; rememberTcp(t); }
+        catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "TCP connect failed", JOptionPane.ERROR_MESSAGE); }
     }
 
     private void toggleConnect() {
-        if (client.isConnected()) { lastPortName = null; client.disconnect(); return; }
-        PortItem pi = (PortItem) ports.getSelectedItem();
-        if (pi == null) { refreshPorts(); return; }
+        if (client.isConnected()) { lastPortName = null; lastTcp = null; client.disconnect(); return; }
+        Object sel = ports.getSelectedItem();
+        if (sel == ADD_TCP) { connectTcp(); return; }
+        if (sel instanceof TcpItem t) { connectTcp(t); return; }
+        if (!(sel instanceof PortItem pi)) { refreshPorts(); return; }
         try {
             lastPortName = pi.port().getSystemPortName();
             client.connect(pi.port());
