@@ -132,7 +132,7 @@ public class MeshSerial implements AutoCloseable {
             } catch (IOException e) {
                 fail("heartbeat failed: " + e.getMessage());
             }
-        }, 60, 60, TimeUnit.SECONDS);
+        }, 20, 20, TimeUnit.SECONDS);
         // If the radio rebooted when the port opened (ESP32 boards do this), the first request was
         // lost: keep asking until something arrives.
         heartbeat.scheduleAtFixedRate(() -> {

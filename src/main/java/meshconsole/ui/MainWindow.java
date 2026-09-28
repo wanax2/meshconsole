@@ -337,12 +337,12 @@ public class MainWindow extends JFrame {
         if (SerialPort.getCommPorts().length == 0 && savedTcp().isEmpty()) status.setText("No serial ports found – plug in the radio and press ↻, or add a TCP host");
     }
 
-    /** Retry a lost TCP connection every 5 s for 5 minutes (the radio rebooted, WiFi dropped). */
+    /** Retry a lost TCP connection every 2 s for 30 minutes (the radio rebooted, WiFi dropped). */
     private void startTcpReconnectWatch() {
         if (reconnectTimer != null) reconnectTimer.stop();
-        final long deadline = System.currentTimeMillis() + 5 * 60_000;
+        final long deadline = System.currentTimeMillis() + 30 * 60_000;
         final TcpItem want = lastTcp;
-        reconnectTimer = new Timer(5000, null);
+        reconnectTimer = new Timer(2000, null);
         reconnectTimer.addActionListener(e -> {
             if (client.isConnected() || System.currentTimeMillis() > deadline || want == null) { reconnectTimer.stop(); reconnectTimer = null; return; }
             status.setText("Reconnecting to " + want.host() + "…");

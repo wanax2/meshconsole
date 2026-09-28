@@ -150,6 +150,7 @@ public class MeshClient implements MeshSerial.Listener {
         Socket sock = new Socket();
         sock.connect(new InetSocketAddress(host, port), 5000);
         sock.setTcpNoDelay(true);
+        sock.setKeepAlive(true);
         serial = new MeshSerial(sock.getInputStream(), sock.getOutputStream(), this, () -> {
             try { sock.close(); } catch (IOException ignored) { }
         });

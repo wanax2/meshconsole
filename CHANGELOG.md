@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.4 — 2026-09-28
+
+- TCP: heartbeat every 20 s (was 60), socket keep-alive on, reconnect retries every 2 s for 30 minutes — a WiFi radio that drops out is noticed and picked up again quickly.
+
+
 ## 1.6.3 — 2026-09-28
 
 - The **Radio port** drop-down now lists remembered TCP hosts alongside the COM ports, plus a "TCP host… (add)" entry; Connect does the right thing for whichever is selected. When no radio is on USB the last-used TCP host is preselected.
