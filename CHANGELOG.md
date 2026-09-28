@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.2 — 2026-09-28
+
+- The app now sets the radio's clock from the PC on connect (`set_time_only`), like the phone and web clients — a radio with no GPS, phone or NTP otherwise runs on its build date.
+- KEY_CHANGE alerts only when a node's public key changed together with its name or hardware; a key change alone (firmware 2.7 rotates keys on reflash/reset) is logged as INFO.
+
+
 ## 1.6.1 — 2026-09-27
 
 - Messages: destination list is alphabetical, with a **find** box beside it — type part of a name, short name or !id to narrow it (a single match is selected automatically).

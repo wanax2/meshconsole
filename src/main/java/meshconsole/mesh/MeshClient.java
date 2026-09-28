@@ -401,6 +401,13 @@ public class MeshClient implements MeshSerial.Listener {
         state.emitLog((fav ? "Favourited " : "Unfavourited ") + state.nodeName(node) + " on the radio");
     }
 
+    /** Sets the radio's clock from this PC (radios without GPS/phone/NTP otherwise drift or start from their build date). */
+    public void setRadioTime() throws IOException {
+        int now = (int) (System.currentTimeMillis() / 1000);
+        sendAdmin(AdminMessage.newBuilder().setSetTimeOnly(now), false);
+        state.emitLog("Radio clock set from PC");
+    }
+
     public void reboot(int seconds) throws IOException {
         adminLog("reboot", null, null);
         ensureSessionKey();

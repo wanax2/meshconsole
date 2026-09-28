@@ -374,6 +374,7 @@ public class MeshState {
     }
 
     private void applyUser(NodeEntry n, User u) {
+        String oldLong = n.longName, oldHw = n.hwModel;
         n.longName = u.getLongName();
         n.shortName = u.getShortName();
         n.hwModel = u.getHwModel().name();
@@ -381,7 +382,11 @@ public class MeshState {
             byte[] k = u.getPublicKey().toByteArray();
             if (n.publicKey.length > 0 && !Arrays.equals(n.publicKey, k)) {
                 final String who = n.displayName();
-                fire(l -> l.onAlert("KEY_CHANGE", "Public key of " + who + " changed – reflashed node, or someone impersonating it"));
+                // Firmware 2.7+ rotates keys routinely (reflash, factory reset, key regeneration). Only treat it as
+                // suspicious when the identity changed with it; otherwise just note it.
+                boolean identityChanged = (!oldLong.isEmpty() && !oldLong.equals(n.longName)) || (!oldHw.isEmpty() && !oldHw.equals("UNSET") && !oldHw.equals(n.hwModel));
+                if (identityChanged) fire(l -> l.onAlert("KEY_CHANGE", "Public key AND name/hardware of " + who + " changed (was " + oldLong + " / " + oldHw + ") – possible impersonation"));
+                else fire(l -> l.onAlert("INFO", "Public key of " + who + " changed (same name and hardware – reflash or key rotation)"));
             }
             n.publicKey = k;
         }

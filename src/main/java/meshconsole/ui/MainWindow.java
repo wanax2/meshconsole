@@ -285,6 +285,8 @@ public class MainWindow extends JFrame {
         if (state.configComplete() && !registered && state.myNodeNum() != 0 && analysisPanel != null) {
             registered = true; connectedNum = state.myNodeNum();
             analysisPanel.registerConnectedRadio();
+            // like every other client: give the radio the time on connect (a radio with no GPS/phone/NTP may be months off)
+            new Thread(() -> { try { Thread.sleep(2000); client.setRadioTime(); } catch (Exception ignored) { } }, "set-time").start();
         }
         NodeEntry me = state.myNode();
         StringBuilder sb = new StringBuilder("Connected");
