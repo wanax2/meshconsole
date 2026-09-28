@@ -20,6 +20,7 @@ class MessagesPanel extends JPanel {
     private final Model model = new Model();
     private final JTable table = new JTable(model);
     private final JComboBox<Dest> dest = new JComboBox<>();
+    private final JTextField destFilter = new JTextField(9);
     private final JComboBox<String> channel = new JComboBox<>();
     private final JTextField input = new JTextField();
     private final JButton send = new JButton("Send");
@@ -138,6 +139,13 @@ class MessagesPanel extends JPanel {
         line1.add(new JLabel("To:"));
         dest.setPrototypeDisplayValue(new Dest(0, "A reasonably long node name here"));
         line1.add(dest);
+        destFilter.setToolTipText("Type part of a node name, short name or !id to narrow the list (nodes are listed alphabetically)");
+        destFilter.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { refreshDests(true); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { refreshDests(true); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { refreshDests(true); }
+        });
+        line1.add(new JLabel("find:")); line1.add(destFilter);
         line1.add(new JLabel("Channel:"));
         channel.addItem("0");
         line1.add(channel);
@@ -234,13 +242,18 @@ class MessagesPanel extends JPanel {
         dest.setSelectedItem(d);
     }
 
-    private void refreshDests() {
+    private void refreshDests() { refreshDests(false); }
+
+    private void refreshDests(boolean fromFilter) {
         Dest sel = (Dest) dest.getSelectedItem();
         int selNum = sel == null ? ChatMessage.BROADCAST : sel.num();
         List<Dest> wanted = new ArrayList<>();
         wanted.add(new Dest(ChatMessage.BROADCAST, "Broadcast (everyone)"));
         int my = state.myNodeNum();
-        for (NodeEntry n : state.nodes()) if (n.num != my) wanted.add(new Dest(n.num, n.displayName() + "  " + n.idString()));
+        List<NodeEntry> sorted = new ArrayList<>(state.nodes());
+        sorted.sort((a, b) -> a.displayName().compareToIgnoreCase(b.displayName()));
+        String q = destFilter.getText().trim().toLowerCase();
+        for (NodeEntry n : sorted) if (n.num != my && (q.isEmpty() || n.displayName().toLowerCase().contains(q) || n.idString().contains(q) || n.shortName.toLowerCase().contains(q))) wanted.add(new Dest(n.num, n.displayName() + "  " + n.idString()));
         boolean same = wanted.size() == dest.getItemCount();
         if (same) for (int i = 0; i < wanted.size(); i++) if (!wanted.get(i).equals(dest.getItemAt(i))) { same = false; break; }
         if (same) return;
@@ -249,6 +262,8 @@ class MessagesPanel extends JPanel {
             dest.addItem(d);
             if (d.num() == selNum) dest.setSelectedItem(d);
         }
+        // when filtering to a single node, pick it straight away
+        if (fromFilter && wanted.size() == 2) dest.setSelectedIndex(1);
     }
 
     private void refreshChannels() {

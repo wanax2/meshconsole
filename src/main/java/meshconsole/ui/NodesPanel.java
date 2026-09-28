@@ -169,6 +169,26 @@ class NodesPanel extends JPanel {
     void setOnMessageNode(IntConsumer c) { onMessageNode = c; }
     void setOnShowOnMap(IntConsumer c) { onShowOnMap = c; }
 
+    private void popup(java.awt.event.MouseEvent e) {
+        int r = table.rowAtPoint(e.getPoint());
+        if (r >= 0) table.setRowSelectionInterval(r, r);
+        NodeEntry[] holder = new NodeEntry[1];
+        withSelected(n -> holder[0] = n);
+        NodeEntry n = holder[0];
+        if (n == null) return;
+        JPopupMenu m = new JPopupMenu();
+        JMenuItem title = new JMenuItem(n.displayName() + "  " + n.idString()); title.setEnabled(false); m.add(title); m.addSeparator();
+        JMenuItem dm = new JMenuItem("Send direct message…"); dm.addActionListener(a -> onMessageNode.accept(n.num)); m.add(dm);
+        JMenuItem tr = new JMenuItem("Traceroute"); tr.addActionListener(a -> { try { client.traceroute(n.num); } catch (IOException ex) { error(ex); } }); m.add(tr);
+        JMenuItem info = new JMenuItem("Request node info"); info.addActionListener(a -> { try { client.requestNodeInfo(n.num); } catch (IOException ex) { error(ex); } }); m.add(info);
+        JMenuItem map = new JMenuItem("Show on map"); map.setEnabled(n.hasPosition); map.addActionListener(a -> onShowOnMap.accept(n.num)); m.add(map);
+        m.addSeparator();
+        JMenuItem watch = new JMenuItem(n.watched ? "Stop watching" : "Watch (alert when lost / back)"); watch.addActionListener(a -> { n.watched = !n.watched; state.notifyNodesChanged(); }); m.add(watch);
+        JMenuItem fav = new JMenuItem(n.isFavorite ? "★ Remove favourite on radio" : "★ Favourite on radio"); fav.addActionListener(a -> { try { client.setFavoriteOnRadio(n.num, !n.isFavorite); } catch (IOException ex) { error(ex); } }); m.add(fav);
+        JMenuItem copy = new JMenuItem("Copy !id"); copy.addActionListener(a -> java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(n.idString()), null)); m.add(copy);
+        m.show(table, e.getX(), e.getY());
+    }
+
     private void withSelected(java.util.function.Consumer<NodeEntry> action) {
         int r = table.getSelectedRow();
         if (r < 0 || r >= model.rows.size()) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1 — 2026-09-27
+
+- Messages: destination list is alphabetical, with a **find** box beside it — type part of a name, short name or !id to narrow it (a single match is selected automatically).
+- Nodes: **right-click menu** — Send direct message, Traceroute, Request node info, Show on map, Watch/unwatch, Favourite on radio, Copy !id. **Double-click** a node to message it.
+
+
 ## 1.6.0 — 2026-09-27
 
 - **Firmware update** (Tools → Firmware update…): lists Meshtastic releases from GitHub (stable, optionally pre-releases), downloads the right platform package for the connected board, lets you pick the file (best guess preselected), and flashes it:
