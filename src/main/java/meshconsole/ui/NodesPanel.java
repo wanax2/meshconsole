@@ -71,14 +71,26 @@ class NodesPanel extends JPanel {
 
         table.setFillsViewportHeight(true);
         table.setRowHeight(20);
+        javax.swing.table.TableRowSorter<Model> sorter = new javax.swing.table.TableRowSorter<>(model);
+        sorter.setSortsOnUpdates(true);
+        table.setRowSorter(sorter);
+        // compare on the underlying values, not the display strings
+        sorter.setComparator(0, java.util.Comparator.comparing((Object o) -> String.valueOf(o).replace("★ ", "").toLowerCase()));
+        sorter.setComparator(1, java.util.Comparator.comparing((Object o) -> String.valueOf(o).toLowerCase()));
+        sorter.setComparator(2, java.util.Comparator.comparing(String::valueOf));
+        java.util.Comparator<Object> num = (a, b) -> Double.compare(parseNum(a), parseNum(b));
+        for (int c : new int[]{3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 19, 20, 21}) sorter.setComparator(c, num);
+        sorter.setComparator(17, java.util.Comparator.comparing(String::valueOf));
+        sorter.setComparator(18, java.util.Comparator.comparing(String::valueOf));
         int[] widths = {150, 45, 85, 80, 45, 60, 65, 55, 70, 140, 120, 60, 80, 40, 60, 70, 60, 150, 100, 55, 60, 60};
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         DefaultTableCellRenderer ageRenderer = new DefaultTableCellRenderer() {
             @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
                 Component c = super.getTableCellRendererComponent(t, v, sel, foc, row, col);
-                if (!sel && row < model.rows.size()) {
-                    NodeEntry n = model.rows.get(row);
+                int mrow = row < t.getRowCount() ? t.convertRowIndexToModel(row) : -1;
+                if (!sel && mrow >= 0 && mrow < model.rows.size()) {
+                    NodeEntry n = model.rows.get(mrow);
                     long age = System.currentTimeMillis() - n.lastHeardMillis();
                     if (col == 3) c.setForeground(age < 15 * 60_000 ? new Color(0, 130, 0) : age < 2 * 3600_000 ? new Color(180, 120, 0) : age < 24 * 3600_000 ? Color.GRAY : new Color(150, 90, 90));
                     else c.setForeground(n.fromDb ? Color.GRAY : Color.BLACK);
@@ -169,6 +181,24 @@ class NodesPanel extends JPanel {
     void setOnMessageNode(IntConsumer c) { onMessageNode = c; }
     void setOnShowOnMap(IntConsumer c) { onShowOnMap = c; }
 
+    /** Turns a display string like "-107 dBm", "3.2 dB", "12%", "1.4 km", "5 m ago", "direct", "?" into a sortable number. */
+    private static double parseNum(Object o) {
+        String s = String.valueOf(o).trim();
+        if (s.isEmpty() || s.equals("?") || s.equals("(this radio)")) return Double.MAX_VALUE;
+        if (s.equals("direct")) return 0;
+        if (s.equals("ext")) return 101;
+        if (s.equals("never")) return Double.MAX_VALUE;
+        if (s.matches("\\d+[smhd]( \\d+[smh])?")) {   // Fmt.ago: "45s", "3m", "2h 10m", "1d 4h" -> seconds
+            double total = 0;
+            for (String part : s.split(" ")) {
+                double v = Double.parseDouble(part.substring(0, part.length() - 1));
+                switch (part.charAt(part.length() - 1)) { case 's' -> total += v; case 'm' -> total += v * 60; case 'h' -> total += v * 3600; case 'd' -> total += v * 86400; }
+            }
+            return total;
+        }
+        try { return Double.parseDouble(s.replaceAll("[^0-9.+-].*$", "")); } catch (NumberFormatException e) { return Double.MAX_VALUE; }
+    }
+
     private void popup(java.awt.event.MouseEvent e) {
         int r = table.rowAtPoint(e.getPoint());
         if (r >= 0) table.setRowSelectionInterval(r, r);
@@ -191,6 +221,7 @@ class NodesPanel extends JPanel {
 
     private void withSelected(java.util.function.Consumer<NodeEntry> action) {
         int r = table.getSelectedRow();
+        if (r >= 0) r = table.convertRowIndexToModel(r);
         if (r < 0 || r >= model.rows.size()) {
             JOptionPane.showMessageDialog(this, "Select a node first.", "No node selected", JOptionPane.INFORMATION_MESSAGE);
             return;
@@ -220,11 +251,11 @@ class NodesPanel extends JPanel {
         refreshDbInfo();
         int selNum = 0;
         int r = table.getSelectedRow();
-        if (r >= 0 && r < model.rows.size()) selNum = model.rows.get(r).num;
+        if (r >= 0) { int mr = table.convertRowIndexToModel(r); if (mr < model.rows.size()) selNum = model.rows.get(mr).num; }
         model.rows = state.nodes();
         model.fireTableDataChanged();
         for (int i = 0; i < model.rows.size(); i++) {
-            if (model.rows.get(i).num == selNum) { table.setRowSelectionInterval(i, i); break; }
+            if (model.rows.get(i).num == selNum) { int vr = table.convertRowIndexToView(i); if (vr >= 0) table.setRowSelectionInterval(vr, vr); break; }
         }
     }
 

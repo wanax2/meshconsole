@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.5 — 2026-09-28
+
+- Nodes table: click a column header to sort (click again to reverse). Numeric columns — last heard, hops, SNR, RSSI, battery, distance, packets, averages, sessions, airtime, neighbours — sort by value, with unknowns last; the selection and right-click menu follow the sorted order.
+
+
 ## 1.6.4 — 2026-09-28
 
 - TCP: heartbeat every 20 s (was 60), socket keep-alive on, reconnect retries every 2 s for 30 minutes — a WiFi radio that drops out is noticed and picked up again quickly.
