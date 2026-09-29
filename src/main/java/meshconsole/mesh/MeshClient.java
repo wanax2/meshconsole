@@ -402,6 +402,15 @@ public class MeshClient implements MeshSerial.Listener {
         state.emitLog((fav ? "Favourited " : "Unfavourited ") + state.nodeName(node) + " on the radio");
     }
 
+    /** Asks the connected radio (or another node) for fresh device metrics and local statistics. */
+    public void requestStats(int node) throws IOException {
+        org.meshtastic.proto.TelemetryProtos.Telemetry dm = org.meshtastic.proto.TelemetryProtos.Telemetry.newBuilder().setDeviceMetrics(org.meshtastic.proto.TelemetryProtos.DeviceMetrics.newBuilder()).build();
+        org.meshtastic.proto.TelemetryProtos.Telemetry ls = org.meshtastic.proto.TelemetryProtos.Telemetry.newBuilder().setLocalStats(org.meshtastic.proto.TelemetryProtos.LocalStats.newBuilder()).build();
+        sendTo(node, Data.newBuilder().setPortnum(PortNum.TELEMETRY_APP).setPayload(dm.toByteString()).setWantResponse(true).build(), false, null);
+        sendTo(node, Data.newBuilder().setPortnum(PortNum.TELEMETRY_APP).setPayload(ls.toByteString()).setWantResponse(true).build(), false, null);
+        if (node == state.myNodeNum()) state.emitLog("Stats refresh requested"); else state.emitLog("Stats requested from " + state.nodeName(node));
+    }
+
     /** Sets the radio's clock from this PC (radios without GPS/phone/NTP otherwise drift or start from their build date). */
     public void setRadioTime() throws IOException {
         int now = (int) (System.currentTimeMillis() / 1000);

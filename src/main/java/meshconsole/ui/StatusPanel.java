@@ -67,7 +67,15 @@ class StatusPanel extends JPanel {
         charts.add(chartBox, BorderLayout.CENTER);
         charts.add(utilBox, BorderLayout.SOUTH);
 
-        JSplitPane top = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, infoScroll, charts);
+        JPanel infoBox = new JPanel(new BorderLayout());
+        infoBox.add(infoScroll, BorderLayout.CENTER);
+        JPanel infoButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JButton refreshStats = new JButton("Refresh stats");
+        refreshStats.setToolTipText("Ask the radio for fresh device metrics and local statistics now (they are otherwise reported every few minutes; the app also asks every 5 min)");
+        refreshStats.addActionListener(e -> new Thread(() -> { try { client.requestStats(state.myNodeNum()); } catch (java.io.IOException ex) { state.emitLog("Stats request failed: " + ex.getMessage()); } }).start());
+        infoButtons.add(refreshStats);
+        infoBox.add(infoButtons, BorderLayout.SOUTH);
+        JSplitPane top = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, infoBox, charts);
         top.setResizeWeight(0.4);
 
         log.setEditable(false);
@@ -172,6 +180,7 @@ class StatusPanel extends JPanel {
     void refreshAll() {
         refreshInfo();
         new javax.swing.Timer(30_000, e -> { if (state.configComplete()) refreshInfo(); }).start();   // keep uptime / ages ticking between reports
+        new javax.swing.Timer(5 * 60_000, e -> { if (client.isConnected() && state.configComplete()) new Thread(() -> { try { client.requestStats(state.myNodeNum()); } catch (java.io.IOException ignored) { } }).start(); }).start();
         refreshNodeChoices();
         refreshChart();
     }

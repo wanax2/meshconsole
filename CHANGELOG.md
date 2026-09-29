@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.8 — 2026-09-28
+
+- Status: **Refresh stats** button asks the radio for fresh device metrics and local statistics (noise floor, rx/bad/dupe, utilisation, battery); the app also asks every 5 minutes, so those lines no longer wait for the firmware's own 15–30 minute report.
+
+
 ## 1.6.7 — 2026-09-28
 
 - Status: uptime counts forward from the radio's last statistics report instead of freezing between reports (device telemetry arrives every few minutes); the age of the last report is shown beside it, and the panel refreshes every 30 s.
