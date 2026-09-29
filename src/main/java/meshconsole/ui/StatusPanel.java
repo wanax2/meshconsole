@@ -171,6 +171,7 @@ class StatusPanel extends JPanel {
 
     void refreshAll() {
         refreshInfo();
+        new javax.swing.Timer(30_000, e -> { if (state.configComplete()) refreshInfo(); }).start();   // keep uptime / ages ticking between reports
         refreshNodeChoices();
         refreshChart();
     }
@@ -273,7 +274,8 @@ class StatusPanel extends JPanel {
                 if (ls.getNoiseFloor() != 0) sb.append("Noise floor:  ").append(ls.getNoiseFloor()).append(" dBm\n");
                 if (ls.getHeapTotalBytes() != 0) sb.append(String.format("Memory:       %d / %d KB free\n", ls.getHeapFreeBytes() / 1024, ls.getHeapTotalBytes() / 1024));
                 if (ls.getNumTxRelayCanceled() != 0) sb.append("Relays cancelled: ").append(ls.getNumTxRelayCanceled()).append('\n');
-                sb.append("Uptime:       ").append(ls.getUptimeSeconds() / 3600).append(" h ").append((ls.getUptimeSeconds() % 3600) / 60).append(" m\n");
+                long up = ls.getUptimeSeconds() + (state.localStatsAt() > 0 ? (System.currentTimeMillis() - state.localStatsAt()) / 1000 : 0);   // count forward from the last report
+                sb.append("Uptime:       ").append(up / 3600).append(" h ").append((up % 3600) / 60).append(" m").append(state.localStatsAt() > 0 ? "   (stats " + Fmt.ago(state.localStatsAt()) + " old)" : "").append('\n');
             }
             if (state.queueFree() >= 0) sb.append("TX queue:     ").append(state.queueFree()).append(" free slots\n");
             long drift = state.clockDriftMs();

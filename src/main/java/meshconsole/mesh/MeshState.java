@@ -96,6 +96,8 @@ public class MeshState {
     private String firmware = "";
     private Config.LoRaConfig lora;
     private LocalStats localStats;
+    private long localStatsAt;
+    public long localStatsAt() { synchronized (lock) { return localStatsAt; } }
     private int queueFree = -1;
     private int encryptedSeen;
     private static final int SIGNAL_HISTORY = 600;
@@ -577,7 +579,7 @@ public class MeshState {
                         fire(Listener::onTelemetryChanged);
                     }
                     if (t.hasLocalStats() && fromMe) {
-                        synchronized (lock) { localStats = t.getLocalStats(); }
+                        synchronized (lock) { localStats = t.getLocalStats(); localStatsAt = System.currentTimeMillis(); }
                         if (utilHistoryFile != null) {
                             utilHistoryFile.addDupe(t.getLocalStats().getNumPacketsRx(), t.getLocalStats().getNumRxDupe(), t.getLocalStats().getNumOnlineNodes());
                             utilHistoryFile.addNoise(t.getLocalStats().getNoiseFloor());

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.7 — 2026-09-28
+
+- Status: uptime counts forward from the radio's last statistics report instead of freezing between reports (device telemetry arrives every few minutes); the age of the last report is shown beside it, and the panel refreshes every 30 s.
+
+
 ## 1.6.6 — 2026-09-28
 
 - Fix: the Nodes right-click menu (and double-click to message) announced in 1.6.1 was never actually attached to the table. It is now.
