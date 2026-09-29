@@ -71,6 +71,11 @@ class NodesPanel extends JPanel {
 
         table.setFillsViewportHeight(true);
         table.setRowHeight(20);
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mousePressed(java.awt.event.MouseEvent e) { if (e.isPopupTrigger()) popup(e); }
+            @Override public void mouseReleased(java.awt.event.MouseEvent e) { if (e.isPopupTrigger()) popup(e); }
+            @Override public void mouseClicked(java.awt.event.MouseEvent e) { if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) withSelected(n -> onMessageNode.accept(n.num)); }
+        });
         javax.swing.table.TableRowSorter<Model> sorter = new javax.swing.table.TableRowSorter<>(model);
         sorter.setSortsOnUpdates(true);
         table.setRowSorter(sorter);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.6 — 2026-09-28
+
+- Fix: the Nodes right-click menu (and double-click to message) announced in 1.6.1 was never actually attached to the table. It is now.
+- Fix: "Request node info" now sends our **public key** (and hardware model) with our name, so the other node can accept PKI direct messages from us afterwards; the log line says when it went out.
+
+
 ## 1.6.5 — 2026-09-28
 
 - Nodes table: click a column header to sort (click again to reverse). Numeric columns — last heard, hops, SNR, RSSI, battery, distance, packets, averages, sessions, airtime, neighbours — sort by value, with unknowns last; the selection and right-click menu follow the sorted order.

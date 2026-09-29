@@ -439,9 +439,13 @@ public class MeshClient implements MeshSerial.Listener {
     public void requestNodeInfo(int to) throws IOException {
         NodeEntry me = state.myNode();
         User.Builder u = User.newBuilder().setId(String.format("!%08x", state.myNodeNum()));
-        if (me != null) u.setLongName(me.longName).setShortName(me.shortName);
+        if (me != null) {
+            u.setLongName(me.longName).setShortName(me.shortName);
+            try { u.setHwModel(org.meshtastic.proto.MeshProtos.HardwareModel.valueOf(me.hwModel)); } catch (IllegalArgumentException ignored) { }
+            if (me.publicKey.length > 0) u.setPublicKey(com.google.protobuf.ByteString.copyFrom(me.publicKey));   // the other node needs this for PKI DMs
+        }
         Data d = Data.newBuilder().setPortnum(PortNum.NODEINFO_APP).setPayload(u.build().toByteString()).setWantResponse(true).build();
-        sendTo(to, d, true, "Node info request sent to " + state.nodeName(to));
+        sendTo(to, d, true, "Node info (with our public key) sent to " + state.nodeName(to) + " – its reply can take up to a minute");
     }
 
     /** Admin message to another node (needs our public key in its admin list, or the legacy admin channel). */
