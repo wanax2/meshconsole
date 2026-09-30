@@ -103,7 +103,7 @@ public class MainWindow extends JFrame {
         view.add(showBbs);
         JCheckBoxMenuItem autoStats = new JCheckBoxMenuItem("Auto-refresh radio stats every 5 min", java.util.prefs.Preferences.userNodeForPackage(StatusPanel.class).getBoolean("autoStats", false));
         autoStats.setToolTipText("Sends a telemetry request to the radio itself. Off by default: it coincided with reboots on a T-Deck.");
-        autoStats.addActionListener(e -> { if (statusPanel != null) statusPanel.autoStats = autoStats.isSelected(); java.util.prefs.Preferences.userNodeForPackage(StatusPanel.class).putBoolean("autoStats", autoStats.isSelected()); });
+        autoStats.addActionListener(e -> { java.util.prefs.Preferences.userNodeForPackage(StatusPanel.class).putBoolean("autoStats", autoStats.isSelected()); StatusPanel sp = (StatusPanel) tabs.getComponentAt(0); sp.autoStats = autoStats.isSelected(); });
         view.add(autoStats);
         menu.add(view);
         JMenuItem fw = new JMenuItem("Firmware update…");
