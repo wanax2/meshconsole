@@ -11,6 +11,12 @@ import java.util.*;
 /** bbs.json — posts, mail, settings and a few counters. */
 public class BbsStore {
     public static class Post { public int id; public long time; public int author; public String authorName = "", text = ""; }
+    public static class Event { public int id; public long time, when; public String text = ""; }
+    public final List<Event> events = new ArrayList<>();
+    public final Map<Integer, Integer> trivia = new HashMap<>();      // node → points
+    public final Map<Integer, Integer> guessTarget = new HashMap<>(), guessTries = new HashMap<>(), advRoom = new HashMap<>(), triviaQ = new HashMap<>();
+    public final Set<Integer> advHasSa = new HashSet<>();
+    public String wmataKey = "", discordWebhook = "", station = "KDCA";
     public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; }
     public final Map<Integer, Caller> callers = new LinkedHashMap<>();
     public long callsToday; public String callsDay = "";
@@ -46,6 +52,11 @@ public class BbsStore {
                 x.authorName = Json.str(p.get("authorName")); x.text = Json.str(p.get("text")); posts.add(x);
             }
             callsToday = (long) Json.num(m.get("callsToday"), 0); callsDay = Json.str(m.get("callsDay"));
+            if (m.get("wmataKey") != null) wmataKey = Json.str(m.get("wmataKey"));
+            if (m.get("discordWebhook") != null) discordWebhook = Json.str(m.get("discordWebhook"));
+            if (m.get("station") != null) station = Json.str(m.get("station"));
+            if (m.get("events") instanceof List<?> es) for (Object o : es) if (o instanceof Map<?, ?> p) { Event x = new Event(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.when = (long) Json.num(p.get("when"), 0); x.text = Json.str(p.get("text")); events.add(x); }
+            if (m.get("trivia") instanceof Map<?, ?> tm) for (Map.Entry<?, ?> e : tm.entrySet()) try { trivia.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
             if (m.get("callers") instanceof List<?> cs) for (Object o : cs) if (o instanceof Map<?, ?> p) {
                 Caller x = new Caller(); x.num = (int) (long) Json.num(p.get("num"), 0); x.name = Json.str(p.get("name")); x.first = (long) Json.num(p.get("first"), 0); x.last = (long) Json.num(p.get("last"), 0);
                 x.commands = (int) Json.num(p.get("commands"), 0); x.lastCommand = Json.str(p.get("lastCommand")); if (x.num != 0) callers.put(x.num, x);
@@ -62,7 +73,13 @@ public class BbsStore {
     public synchronized void save() {
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
-          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay));
+          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station));
+        sb.append("\"trivia\":{");
+        boolean tf = true; for (Map.Entry<Integer, Integer> e : trivia.entrySet()) { if (!tf) sb.append(','); tf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); }
+        sb.append("},\n\"events\":[\n");
+        tf = true;
+        for (Event e : events) { if (!tf) sb.append(",\n"); tf = false; sb.append("  {").append(kv("id", e.id)).append(kv("time", e.time)).append(kv("when", e.when)).append(kv("text", e.text)); sb.setLength(sb.length() - 1); sb.append('}'); }
+        sb.append("\n],\n");
         sb.append("\"banned\":[");
         boolean f = true; for (int b : banned) { if (!f) sb.append(','); f = false; sb.append(Integer.toUnsignedLong(b)); }
         sb.append("],\n\"posts\":[\n");

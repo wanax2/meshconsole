@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0 — 2026-09-29
+
+BBS 2.0 — new commands for callers:
+- **T** traceroute on demand (the BBS traces the caller and replies with the path and per-hop SNR); **S** now includes distance.
+- **STATS** mesh snapshot (nodes/hour, direct, known, utilisation, farthest node heard); **TOP** leaderboards (farthest node, most hops, top poster, trivia champion).
+- **TAF** aviation forecast and **METRO** WMATA rail alerts (needs a free key from developer.wmata.com, set on the BBS tab); **C callsign** FCC lookup via callook.info.
+- **E** events (sysop-posted, with dates), plus games: **TRIVIA** (A answer; points kept), **GUESS** (G n), **ADV** (a five-room text adventure).
+- **Discord/Slack webhook bridge**: bulletins and events are mirrored to a channel (read-only from that side).
+- Menu split into `?` and `?2`; everything stays under 200 bytes per reply.
+
+
 ## 1.6.10 — 2026-09-29
 
 - Messages: **right-click a message** → React (👍 👎 ❤️ 😂 😮 😢 🔥 👋 ✅ ❓ or any emoji), Reply… (threaded reply the other end shows as quoting your message), Direct message the sender, Copy text. Reactions and replies go where the original went — the channel for a broadcast, the sender for a DM.

@@ -29,6 +29,8 @@ public class BbsEngine {
         @Override public void onStateChanged() { for (Listener l : listeners) l.onStateChanged(); }
     };
     private long lastMailSweep;
+    private final Map<Integer, Long> pendingTrace = new HashMap<>();
+    private final java.util.concurrent.ExecutorService bg = java.util.concurrent.Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "bbs-net"); t.setDaemon(true); return t; });
 
     public BbsEngine(MeshClient client, BbsStore store) {
         this.client = client;
@@ -38,6 +40,12 @@ public class BbsEngine {
         state.addListener(new MeshState.Listener() {
             @Override public void onMessage(ChatMessage m, boolean isNew) { if (isNew && !m.outgoing) handle(m); }
             @Override public void onNodesChanged() { deliverPendingMail(); }
+            @Override public void onTracerouteResult(int node, String summary) {
+                if (pendingTrace.remove(node) != null) {
+                    String s = summary.replace("Traceroute ", "").replace("   |   ", " | ");
+                    send(node, s.length() > 190 ? s.substring(0, 187) + "…" : s);
+                }
+            }
         });
     }
 
@@ -47,6 +55,12 @@ public class BbsEngine {
         store.enabled = on; store.save();
         log(on ? "BBS ON – waiting for callers" : "BBS OFF");
         listener.onStateChanged();
+    }
+
+    /** Mirrors a bulletin to the configured Discord/Slack webhook (read-only bridge). */
+    public void bridge(String text) {
+        if (store.discordWebhook.isBlank()) return;
+        bg.submit(() -> { String err = BbsExtras.discord(store.discordWebhook, text); if (err != null) log("bridge failed: " + err); });
     }
 
     /** Sysop-initiated DM to a caller (bypasses cooldown; counts as a reply). */
@@ -100,7 +114,7 @@ public class BbsEngine {
         String reply;
         try { reply = dm ? command(m.from, text) : store.name + " here – DM me ? for commands"; }
         catch (RuntimeException e) { reply = "error: " + e.getMessage(); }
-        if (reply == null) return;
+        if (reply == null) { store.commandsServed++; store.save(); return; }   // answered asynchronously
         store.commandsServed++;
         send(m.from, reply);
         store.save();
@@ -139,7 +153,8 @@ public class BbsEngine {
         String arg = parts.length > 1 ? parts[1].trim() : "";
         String who = state.nodeName(from);
         switch (cmd) {
-            case "?", "H", "HELP", "MENU" -> { return store.name + ": B=bulletins R n=read P text=post D n=delete mine M=mail M name text=send mail N=nodes S=your signal W=weather I=info PING"; }
+            case "?", "H", "HELP", "MENU" -> { return store.name + " menu: B bulletins, R n, P text, D n | M mail, M name text | S signal, T trace, N nodes, STATS, TOP | W wx, TAF, METRO | C call, E events | TRIVIA, GUESS, ADV | I, PING (?2 = details)"; }
+            case "?2", "HELP2" -> { return "B list (B 2 next page) R 3 read #3 P text post D 3 delete yours | M read mail, M bob hi = mail bob | S signal at BBS T traceroute you N nodes/1h STATS mesh TOP leaderboards | W METAR TAF forecast METRO rail | C N8HM callsign E events | games: TRIVIA, GUESS, ADV"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
                 long up = (System.currentTimeMillis() - store.started) / 60000;
@@ -171,9 +186,11 @@ public class BbsEngine {
                 store.posts.add(p);
                 while (store.posts.size() > store.maxPosts) store.posts.remove(0);
                 log("post #" + p.id + " by " + who + ": " + arg);
+                bridge("📌 " + who + ": " + arg);
                 return "Posted #" + p.id + ". B to list.";
             }
             case "D", "DEL", "DELETE" -> {
+                if (cmd.equals("D") && arg.isEmpty() && store.advRoom.containsKey(from)) return command(from, "DOWN");
                 BbsStore.Post p = post(arg);
                 if (p == null) return "D n – which post?";
                 if (p.author != from) return "Only the author can delete #" + p.id;
@@ -199,18 +216,97 @@ public class BbsEngine {
                 log("mail #" + x.id + " " + who + " → " + state.nodeName(to));
                 return "Mail queued for " + state.nodeName(to) + "; delivered when they're heard.";
             }
-            case "N", "NODES" -> {
-                long cutoff = System.currentTimeMillis() - 3600_000L;
-                List<String> names = new ArrayList<>();
-                for (NodeEntry n : state.nodes()) if (n.num != state.myNodeNum() && n.lastHeardMillis() > cutoff) names.add(n.shortLabel());
-                if (names.isEmpty()) return "Nobody heard in the last hour.";
-                String s = names.size() + " nodes/1h: " + String.join(" ", names);
-                return s.length() > 180 ? s.substring(0, 177) + "…" : s;
-            }
+            case "NODES" -> { return nodesLine(); }
             case "S", "SIG", "SIGNAL" -> {
                 NodeEntry n = state.node(from);
                 if (n == null || n.rssiCount == 0) return "Haven't measured you yet.";
-                return String.format("You at %s: last %d dBm / %.1f dB, %s, avg %.0f dBm over %d pkts", store.name, n.rssi, n.snr, n.hopsAway == 0 ? "direct" : n.hopsAway + " hop" + (n.hopsAway == 1 ? "" : "s"), n.avgRssi(), n.rssiCount);
+                String dist = "";
+                NodeEntry me = state.myNode();
+                if (me != null && me.hasPosition && n.hasPosition) dist = String.format(", %.1f km", meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, n.lat, n.lon));
+                return String.format("You at %s: last %d dBm / %.1f dB, %s%s, avg %.0f dBm over %d pkts. T = traceroute you.", store.name, n.rssi, n.snr, n.hopsAway == 0 ? "direct" : n.hopsAway + " hop" + (n.hopsAway == 1 ? "" : "s"), dist, n.avgRssi(), n.rssiCount);
+            }
+            case "T", "TRACE" -> {
+                try { client.traceroute(from); pendingTrace.put(from, System.currentTimeMillis()); return "Tracing the route to you – reply follows in up to a minute."; }
+                catch (IOException e) { return "Traceroute failed: " + e.getMessage(); }
+            }
+            case "STATS", "MESH" -> {
+                long cutoff = System.currentTimeMillis() - 3600_000L; int heard = 0, total = 0, direct = 0; NodeEntry far = null; NodeEntry me = state.myNode();
+                for (NodeEntry n : state.nodes()) {
+                    if (n.num == state.myNodeNum()) continue; total++;
+                    if (n.lastHeardMillis() > cutoff) { heard++; if (n.hopsAway == 0) direct++; }
+                    if (me != null && me.hasPosition && n.hasPosition && n.lastLocalRx > cutoff * 0 && n.packetsSeen > 0) { if (far == null || meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, n.lat, n.lon) > meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, far.lat, far.lon)) far = n; }
+                }
+                float util = me == null ? 0 : me.channelUtil;
+                String farS = far == null ? "" : String.format(", farthest heard %s %.0f km", far.shortLabel(), meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, far.lat, far.lon));
+                return String.format("Mesh via %s: %d nodes/1h (%d direct), %d known, util %.0f%%%s", store.name, heard, direct, total, util, farS);
+            }
+            case "TOP", "LEADER" -> {
+                StringBuilder sb = new StringBuilder("TOP: ");
+                NodeEntry me = state.myNode(); NodeEntry far = null; NodeEntry hops = null; Map<Integer, Integer> posts = new HashMap<>();
+                for (NodeEntry n : state.nodes()) { if (n.num == state.myNodeNum() || n.packetsSeen == 0) continue; if (me != null && me.hasPosition && n.hasPosition && (far == null || meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, n.lat, n.lon) > meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, far.lat, far.lon))) far = n; if (n.hopsAway >= 0 && (hops == null || n.hopsAway > hops.hopsAway)) hops = n; }
+                for (BbsStore.Post p : store.posts) posts.merge(p.author, 1, Integer::sum);
+                if (far != null) sb.append("farthest ").append(far.shortLabel()).append(String.format(" %.0f km", meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, far.lat, far.lon))).append("; ");
+                if (hops != null) sb.append("most hops ").append(hops.shortLabel()).append(" (").append(hops.hopsAway).append("); ");
+                posts.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(e -> sb.append("top poster ").append(shortName(state.nodeName(e.getKey()))).append(" (").append(e.getValue()).append("); "));
+                store.trivia.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(e -> sb.append("trivia champ ").append(shortName(state.nodeName(e.getKey()))).append(" (").append(e.getValue()).append(" pts)"));
+                return sb.toString();
+            }
+            case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
+            case "METRO", "WMATA" -> { bg.submit(() -> send(from, BbsExtras.metro(store.wmataKey))); return null; }
+            case "C", "CALL", "CALLSIGN" -> {
+                if (arg.isEmpty()) return "C N8HM – look up a US callsign";
+                final String call = arg.split("\\s+")[0];
+                bg.submit(() -> send(from, BbsExtras.callsign(call))); return null;
+            }
+            case "E", "EVENTS" -> {
+                if (store.events.isEmpty()) return "No events posted. (Sysop posts them.)";
+                StringBuilder sb = new StringBuilder();
+                java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("MMM d HH:mm");
+                for (BbsStore.Event e : store.events) { String line = (e.when > 0 ? f.format(new Date(e.when)) + " " : "") + e.text + "\n"; if (sb.length() + line.length() > 190) break; sb.append(line); }
+                return sb.toString().trim();
+            }
+            case "TRIVIA", "Q" -> {
+                int qi = new Random().nextInt(BbsExtras.TRIVIA.length);
+                store.triviaQ.put(from, qi);
+                return "Q: " + BbsExtras.TRIVIA[qi].q() + "  (answer with A your-answer)";
+            }
+            case "A", "ANSWER" -> {
+                Integer qi = store.triviaQ.get(from);
+                if (qi == null) return "No question pending – send TRIVIA first.";
+                BbsExtras.Trivia t = BbsExtras.TRIVIA[qi];
+                String ans = arg.trim().toLowerCase().replace(".", "");
+                boolean ok = ans.equals(t.a()) || Arrays.asList(t.alts()).contains(ans) || ans.contains(t.a());
+                store.triviaQ.remove(from);
+                if (ok) { int pts = store.trivia.merge(from, 1, Integer::sum); return "Correct! " + pts + " point" + (pts == 1 ? "" : "s") + ". TRIVIA for another."; }
+                return "Nope – it was '" + t.a() + "'. TRIVIA for another.";
+            }
+            case "GUESS", "G" -> {
+                Integer target = store.guessTarget.get(from);
+                if (arg.isEmpty() || target == null) {
+                    if (target == null) { store.guessTarget.put(from, 1 + new Random().nextInt(100)); store.guessTries.put(from, 0); }
+                    return "I'm thinking of a number 1–100. Send G 50 to guess.";
+                }
+                int g; try { g = Integer.parseInt(arg.trim()); } catch (NumberFormatException e) { return "G followed by a number, e.g. G 42"; }
+                int tries = store.guessTries.merge(from, 1, Integer::sum);
+                if (g == target) { store.guessTarget.remove(from); return "Yes! " + g + " in " + tries + " tr" + (tries == 1 ? "y" : "ies") + ". GUESS for a new game."; }
+                return g < target ? "Higher. (" + tries + ")" : "Lower. (" + tries + ")";
+            }
+            case "ADV", "LOOK", "N", "NORTH", "SOUTH", "U", "UP", "DOWN", "TAKE" -> {
+                // "N" doubles as nodes when no adventure is in progress
+                if (cmd.equals("N") && !store.advRoom.containsKey(from)) { return nodesLine(); }
+                int room = store.advRoom.getOrDefault(from, -1);
+                if (cmd.equals("ADV") || room < 0) { store.advRoom.put(from, 0); store.advHasSa.remove(from); return BbsExtras.ROOMS[0]; }
+                switch (cmd) {
+                    case "LOOK" -> { return BbsExtras.ROOMS[room]; }
+                    case "N", "NORTH" -> { if (room == 0) room = 1; else if (room == 2) room = 0; else return "Can't go north."; }
+                    case "SOUTH" -> { if (room == 0) room = 2; else if (room == 1) room = 0; else return "Can't go south."; }
+                    case "U", "UP" -> { if (room == 1) { if (!store.advHasSa.contains(from)) return "The roof is noisy – you'd better TAKE SA (the tinySA) first."; room = 3; } else return "Can't go up."; }
+                    case "DOWN" -> { if (room == 3) room = 1; else return "Can't go down."; }
+                    case "TAKE" -> { if (room == 1 && arg.toUpperCase().startsWith("SA")) { store.advHasSa.add(from); return "Taken. The tinySA reads −124 dBm. Nice."; } if (room == 2 && arg.toUpperCase().startsWith("PSU")) return "Taken. 12 V, ready for a Pi."; return "Nothing like that here."; }
+                }
+                if (room == 3 && store.advHasSa.contains(from)) { store.advRoom.remove(from); return BbsExtras.ROOMS[4]; }
+                store.advRoom.put(from, room);
+                return BbsExtras.ROOMS[room];
             }
             case "W", "WX", "WEATHER" -> {
                 WeatherObs o = weather == null ? null : weather.latest();
@@ -220,6 +316,15 @@ public class BbsEngine {
             }
             default -> { return "Unknown '" + parts[0] + "'. Send ? for commands."; }
         }
+    }
+
+    private String nodesLine() {
+        long cutoff = System.currentTimeMillis() - 3600_000L;
+        List<String> names = new ArrayList<>();
+        for (NodeEntry n : state.nodes()) if (n.num != state.myNodeNum() && n.lastHeardMillis() > cutoff) names.add(n.shortLabel());
+        if (names.isEmpty()) return "Nobody heard in the last hour.";
+        String s = names.size() + " nodes/1h: " + String.join(" ", names);
+        return s.length() > 180 ? s.substring(0, 177) + "…" : s;
     }
 
     private BbsStore.Post post(String arg) {

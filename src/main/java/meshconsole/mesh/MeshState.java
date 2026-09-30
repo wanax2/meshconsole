@@ -29,6 +29,8 @@ public class MeshState {
         default void onStatusChanged() { }
         default void onLog(String line) { }
         default void onTraceroute(String summary) { }
+        /** node = the traced node (the one that replied); summary as above. */
+        default void onTracerouteResult(int node, String summary) { }
         default void onConfigChanged() { }
         default void onMqttProxyMessage(MqttClientProxyMessage m) { }
         default void onAdminResponse(AdminMessage m) { }
@@ -820,6 +822,8 @@ public class MeshState {
             java.nio.file.Files.writeString(meshconsole.DataDir.file("traceroute_log.csv"), csv.toString(), java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (java.io.IOException ignored) { }
         fire(l -> l.onTraceroute(s));
+        final int tracedNode = p.getFrom();
+        fire(l -> l.onTracerouteResult(tracedNode, s));
     }
 
     private static String snrLabel(List<Integer> snrs, int i) {

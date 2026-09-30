@@ -52,9 +52,24 @@ class BbsPanel extends JPanel {
         JPanel r1 = row(); r1.add(enabled); r1.add(new JLabel("Name:")); r1.add(name); r1.add(new JLabel("Welcome:")); r1.add(welcome);
         JPanel r2 = row(); r2.add(channelTrigger); r2.add(trigger); r2.add(new JLabel("   Cooldown per node (s):")); r2.add(cooldown); r2.add(new JLabel("   Keep posts:")); r2.add(maxPosts);
         JButton save = new JButton("Save settings"); save.addActionListener(e -> applySettings()); r2.add(save);
-        JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> their signal · <b>W</b> weather · <b>I</b> info · <b>PING</b></html>"));
+        JPanel r2b = row();
+        JTextField wmata = new JTextField(store.wmataKey, 14), discord = new JTextField(store.discordWebhook, 28), station = new JTextField(store.station, 5);
+        r2b.add(new JLabel("Weather station:")); r2b.add(station); r2b.add(new JLabel("WMATA API key (developer.wmata.com):")); r2b.add(wmata); r2b.add(new JLabel("Discord webhook (bulletins mirror):")); r2b.add(discord);
+        JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.station = station.getText().trim().toUpperCase(); store.wmataKey = wmata.getText().trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
+        JButton postEvent = new JButton("Post event…");
+        postEvent.addActionListener(e -> {
+            JTextField when = new JTextField("", 12), text = new JTextField("", 30);
+            JPanel form = new JPanel(new GridLayout(0, 2, 4, 4)); form.add(new JLabel("When (yyyy-MM-dd HH:mm, blank = none):")); form.add(when); form.add(new JLabel("Event:")); form.add(text);
+            if (JOptionPane.showConfirmDialog(this, form, "Post event", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION || text.getText().isBlank()) return;
+            BbsStore.Event ev = new BbsStore.Event(); ev.id = store.nextId(); ev.time = System.currentTimeMillis(); ev.text = text.getText().trim();
+            try { if (!when.getText().isBlank()) ev.when = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").parse(when.getText().trim()).getTime(); } catch (java.text.ParseException ex) { ev.when = 0; }
+            store.events.add(ev); store.events.sort((a, b) -> Long.compare(a.when, b.when)); store.save(); engine.bridge("📅 " + ev.text); reload();
+        });
+        JButton clearEvents = new JButton("Clear past events"); clearEvents.addActionListener(e -> { long now = System.currentTimeMillis(); store.events.removeIf(ev -> ev.when > 0 && ev.when < now); store.save(); reload(); });
+        r2b.add(postEvent); r2b.add(clearEvents);
+        JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> their signal · <b>T</b> traceroute them · <b>STATS</b> mesh · <b>TOP</b> leaderboards · <b>W</b> METAR · <b>TAF</b> · <b>METRO</b> · <b>C call</b> callsign · <b>E</b> events · <b>TRIVIA/GUESS/ADV</b> games · <b>I</b> · <b>PING</b></html>"));
         JPanel r4 = row(); r4.add(stats);
-        top.add(r1); top.add(r2); top.add(r3); top.add(r4);
+        top.add(r1); top.add(r2); top.add(r2b); top.add(r3); top.add(r4);
         add(top, BorderLayout.NORTH);
 
         postTable.setRowHeight(20); mailTable.setRowHeight(20);
