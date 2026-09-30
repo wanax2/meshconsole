@@ -433,6 +433,7 @@ public class MeshClient implements MeshSerial.Listener {
 
     // ---- requests to other nodes ------------------------------------------
 
+    private long lastSendFailLog;
     private void sendTo(int to, Data data, boolean wantAck, String logLine) throws IOException {
         MeshSerial s = requireSerial();
         MeshPacket pkt = MeshPacket.newBuilder()
@@ -440,7 +441,7 @@ public class MeshClient implements MeshSerial.Listener {
                 .setWantAck(wantAck).setHopLimit(hopLimit()).setDecoded(data).build();
         sender.submit(() -> {
             try { s.send(ToRadio.newBuilder().setPacket(pkt).build()); if (logLine != null) state.emitLog(logLine); }
-            catch (IOException e) { state.emitLog("Send failed: " + e.getMessage()); }
+            catch (IOException e) { if (System.currentTimeMillis() - lastSendFailLog > 10_000) { state.emitLog("Send failed: " + e.getMessage()); lastSendFailLog = System.currentTimeMillis(); } }
         });
     }
 

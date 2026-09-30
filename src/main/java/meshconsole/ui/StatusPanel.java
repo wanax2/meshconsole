@@ -30,6 +30,8 @@ class StatusPanel extends JPanel {
     private final JCheckBox trace = new JCheckBox("Trace frames");
     private final JCheckBox toFile = new JCheckBox("Write meshconsole.log", true);
     private java.io.PrintWriter logFile;
+    private javax.swing.Timer autoStatsTimer;
+    volatile boolean autoStats = java.util.prefs.Preferences.userNodeForPackage(StatusPanel.class).getBoolean("autoStats", false);
     private long logLines;
     private meshconsole.mesh.MeshClient client;
 
@@ -180,7 +182,10 @@ class StatusPanel extends JPanel {
     void refreshAll() {
         refreshInfo();
         new javax.swing.Timer(30_000, e -> { if (state.configComplete()) refreshInfo(); }).start();   // keep uptime / ages ticking between reports
-        new javax.swing.Timer(5 * 60_000, e -> { if (client.isConnected() && state.configComplete()) new Thread(() -> { try { client.requestStats(state.myNodeNum()); } catch (java.io.IOException ignored) { } }).start(); }).start();
+        // Automatic stats requests are OFF by default: a self-addressed telemetry request every 5 min coincided with
+        // watchdog resets on a T-Deck (2.7.26, device-UI build). Use the button, or enable auto-refresh in View.
+        autoStatsTimer = new javax.swing.Timer(5 * 60_000, e -> { if (autoStats && client.isConnected() && state.configComplete()) new Thread(() -> { try { client.requestStats(state.myNodeNum()); } catch (java.io.IOException ignored) { } }).start(); });
+        autoStatsTimer.start();
         refreshNodeChoices();
         refreshChart();
     }
