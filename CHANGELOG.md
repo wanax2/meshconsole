@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.10 — 2026-09-29
+
+- Messages: **right-click a message** → React (👍 👎 ❤️ 😂 😮 😢 🔥 👋 ✅ ❓ or any emoji), Reply… (threaded reply the other end shows as quoting your message), Direct message the sender, Copy text. Reactions and replies go where the original went — the channel for a broadcast, the sender for a DM.
+
+
 ## 1.6.9 — 2026-09-29
 
 - The automatic 5-minute stats request introduced in 1.6.8 is now **off by default** (View → "Auto-refresh radio stats"). A self-addressed telemetry request coincided with repeated watchdog resets on a T-Deck running 2.7.26; the Refresh stats button still works on demand.

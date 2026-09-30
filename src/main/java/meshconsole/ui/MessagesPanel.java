@@ -128,6 +128,10 @@ class MessagesPanel extends JPanel {
         thread.setEditable(false); thread.setLineWrap(true); thread.setWrapStyleWord(true);
         JScrollPane threadScroll = new JScrollPane(thread); threadScroll.setBorder(BorderFactory.createTitledBorder("Thread (replies and reactions to the selected message)"));
         table.getSelectionModel().addListSelectionListener(e -> showThread());
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mousePressed(java.awt.event.MouseEvent e) { if (e.isPopupTrigger()) messagePopup(e); }
+            @Override public void mouseReleased(java.awt.event.MouseEvent e) { if (e.isPopupTrigger()) messagePopup(e); }
+        });
         JPanel center = new JPanel(new BorderLayout());
         center.add(searchRow, BorderLayout.NORTH);
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(table), threadScroll); split.setResizeWeight(0.8);
@@ -279,6 +283,41 @@ class MessagesPanel extends JPanel {
     }
 
     private boolean dmOnly;
+    private static final String[] REACTIONS = {"👍", "👎", "❤️", "😂", "😮", "😢", "🔥", "👋", "✅", "❓"};
+
+    private void messagePopup(java.awt.event.MouseEvent e) {
+        int r = table.rowAtPoint(e.getPoint());
+        if (r < 0 || r >= model.rows.size()) return;
+        table.setRowSelectionInterval(r, r);
+        ChatMessage m = model.rows.get(r);
+        if (m.packetId == 0) return;
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem head = new JMenuItem((m.outgoing ? "Your message" : "From " + state.nodeName(m.from)) + ": " + (m.text.length() > 40 ? m.text.substring(0, 40) + "…" : m.text)); head.setEnabled(false); menu.add(head);
+        menu.addSeparator();
+        JMenu react = new JMenu("React");
+        for (String emo : REACTIONS) { JMenuItem it = new JMenuItem(emo); it.addActionListener(a -> react(m, emo)); react.add(it); }
+        JMenuItem custom = new JMenuItem("Other…"); custom.addActionListener(a -> { String s = JOptionPane.showInputDialog(this, "Emoji:"); if (s != null && !s.isBlank()) react(m, s.trim()); }); react.add(custom);
+        menu.add(react);
+        JMenuItem reply = new JMenuItem("Reply…"); reply.addActionListener(a -> replyTo(m)); menu.add(reply);
+        JMenuItem dm = new JMenuItem("Direct message " + state.nodeName(m.from) + "…"); dm.setEnabled(!m.outgoing); dm.addActionListener(a -> selectDestination(m.from)); menu.add(dm);
+        JMenuItem copy = new JMenuItem("Copy text"); copy.addActionListener(a -> java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(m.text), null)); menu.add(copy);
+        menu.show(table, e.getX(), e.getY());
+    }
+
+    /** A reaction goes where the original went: to the channel for a broadcast, to the sender for a DM. */
+    private void react(ChatMessage m, String emo) {
+        int to = m.isBroadcast() ? ChatMessage.BROADCAST : (m.outgoing ? m.to : m.from);
+        try { client.sendText(emo, to, m.channel, m.packetId, true); }
+        catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "Reaction", JOptionPane.ERROR_MESSAGE); }
+    }
+
+    private void replyTo(ChatMessage m) {
+        String s = JOptionPane.showInputDialog(this, "Reply to " + (m.outgoing ? "your message" : state.nodeName(m.from)) + " (\"" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text) + "\"):");
+        if (s == null || s.isBlank()) return;
+        int to = m.isBroadcast() ? ChatMessage.BROADCAST : (m.outgoing ? m.to : m.from);
+        try { client.sendText(s.trim(), to, m.channel, m.packetId, false); }
+        catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "Reply", JOptionPane.ERROR_MESSAGE); }
+    }
 
     private void showThread() {
         int r = table.getSelectedRow();

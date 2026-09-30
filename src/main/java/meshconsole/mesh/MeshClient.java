@@ -186,8 +186,13 @@ public class MeshClient implements MeshSerial.Listener {
     }
 
     /** Sends a text message; returns the ChatMessage tracked for ack/nak updates. */
-    public ChatMessage sendText(String text, int to, int channel) throws IOException {
+    public ChatMessage sendText(String text, int to, int channel) throws IOException { return sendText(text, to, channel, 0, false); }
+
+    /** replyTo = packet id of the message being replied to / reacted to (0 = none); emoji = true marks it as a reaction. */
+    public ChatMessage sendText(String text, int to, int channel, int replyTo, boolean emoji) throws IOException {
         ChatMessage m = new ChatMessage();
+        m.replyId = replyTo;
+        m.emoji = emoji;
         m.time = System.currentTimeMillis();
         m.from = state.myNodeNum();
         m.to = to;
@@ -220,10 +225,12 @@ public class MeshClient implements MeshSerial.Listener {
 
     private void transmit(ChatMessage m) throws IOException {
         MeshSerial s = requireSerial();
-        Data data = Data.newBuilder()
+        Data.Builder db = Data.newBuilder()
                 .setPortnum(PortNum.TEXT_MESSAGE_APP)
-                .setPayload(ByteString.copyFromUtf8(m.text))
-                .build();
+                .setPayload(ByteString.copyFromUtf8(m.text));
+        if (m.replyId != 0) db.setReplyId(m.replyId);
+        if (m.emoji) db.setEmoji(1);
+        Data data = db.build();
         MeshPacket.Builder pkt = MeshPacket.newBuilder()
                 .setTo(m.to)
                 .setChannel(m.channel)
