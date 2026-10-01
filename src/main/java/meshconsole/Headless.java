@@ -78,7 +78,7 @@ public final class Headless {
             }
             Thread.sleep(5000);
             long now = System.currentTimeMillis();
-            if (now - lastAlert > 60_000) { alerts.check(); scheduler.tick(); lastAlert = now; }
+            if (now - lastAlert > 60_000) { alerts.check(); scheduler.tick(); engine.tick(); lastAlert = now; }
             if (now - lastSave > 5 * 60_000) { client.saveDbQuietly(); lastSave = now; }
         }
     }

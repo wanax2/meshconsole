@@ -279,7 +279,7 @@ public class MainWindow extends JFrame {
         scheduler = new meshconsole.tools.Scheduler(client, () -> Report.html(state, signalHistory, util, weatherPanel.history(), null, meshconsole.DataDir.file("alerts.log")));
         schedulePanel = new SchedulePanel(scheduler);
         tabs.insertTab("Schedule", null, schedulePanel, null, tabs.indexOfComponent(alertsPanel));
-        new Timer(60_000, e -> scheduler.tick()).start();
+        new Timer(60_000, e -> { scheduler.tick(); if (bbs != null) bbs.tick(); }).start();
         java.util.List<Integer> mine = new java.util.ArrayList<>(); for (meshconsole.analysis.RadioDb.Radio r : analysisPanel.radioDb().all()) mine.add(r.num); witnessPanel.addMyNodes(mine);
         sysop = new SysopWindow(bbs, state);
         applyBbsVisibility(java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).getBoolean("showBbs", false));

@@ -17,6 +17,8 @@ public class BbsStore {
     public final Map<Integer, Integer> guessTarget = new HashMap<>(), guessTries = new HashMap<>(), advRoom = new HashMap<>(), triviaQ = new HashMap<>();
     public final Set<Integer> advHasSa = new HashSet<>();
     public String wmataKey = "", discordWebhook = "", station = "KDCA";
+    public boolean advertOn = false; public String advertTime = "09:00", advertText = "", advertDay = "";
+    public String defaultAdvert() { return name + " BBS is online: DM this node ? for bulletins, mail, weather, your signal report & games. 73"; }
     public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; }
     public final Map<Integer, Caller> callers = new LinkedHashMap<>();
     public long callsToday; public String callsDay = "";
@@ -55,6 +57,7 @@ public class BbsStore {
             if (m.get("wmataKey") != null) wmataKey = Json.str(m.get("wmataKey"));
             if (m.get("discordWebhook") != null) discordWebhook = Json.str(m.get("discordWebhook"));
             if (m.get("station") != null) station = Json.str(m.get("station"));
+            advertOn = Boolean.TRUE.equals(m.get("advertOn")); if (m.get("advertTime") != null) advertTime = Json.str(m.get("advertTime")); if (m.get("advertText") != null) advertText = Json.str(m.get("advertText")); if (m.get("advertDay") != null) advertDay = Json.str(m.get("advertDay"));
             if (m.get("events") instanceof List<?> es) for (Object o : es) if (o instanceof Map<?, ?> p) { Event x = new Event(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.when = (long) Json.num(p.get("when"), 0); x.text = Json.str(p.get("text")); events.add(x); }
             if (m.get("trivia") instanceof Map<?, ?> tm) for (Map.Entry<?, ?> e : tm.entrySet()) try { trivia.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
             if (m.get("callers") instanceof List<?> cs) for (Object o : cs) if (o instanceof Map<?, ?> p) {
@@ -73,7 +76,7 @@ public class BbsStore {
     public synchronized void save() {
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
-          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station));
+          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay));
         sb.append("\"trivia\":{");
         boolean tf = true; for (Map.Entry<Integer, Integer> e : trivia.entrySet()) { if (!tf) sb.append(','); tf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); }
         sb.append("},\n\"events\":[\n");

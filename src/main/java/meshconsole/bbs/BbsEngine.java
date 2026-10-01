@@ -69,6 +69,27 @@ public class BbsEngine {
         store.save();
     }
 
+    /** Call about once a minute: sends the daily advertisement at the configured time while the board is online. */
+    public void tick() {
+        if (!store.enabled || !store.advertOn) return;
+        java.time.LocalTime now = java.time.LocalTime.now();
+        java.time.LocalTime at; try { at = java.time.LocalTime.parse(store.advertTime.trim()); } catch (Exception e) { return; }
+        String today = java.time.LocalDate.now().toString();
+        if (now.getHour() == at.getHour() && now.getMinute() == at.getMinute() && !today.equals(store.advertDay)) {
+            store.advertDay = today; store.save();
+            String text = store.advertText.isBlank() ? store.defaultAdvert() : store.advertText;
+            try { client.sendText(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
+            catch (IOException e) { log("advert failed: " + e.getMessage()); }
+        }
+    }
+
+    /** Sends the advertisement now (sysop). */
+    public void advertiseNow() {
+        String text = store.advertText.isBlank() ? store.defaultAdvert() : store.advertText;
+        try { client.sendText(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
+        catch (IOException e) { log("advert failed: " + e.getMessage()); }
+    }
+
     public String stateLine() {
         long up = (System.currentTimeMillis() - store.started) / 60000;
         return String.format("%s  |  %s  |  up %dh%02dm  |  calls today %d  |  callers %d  |  posts %d  |  mail %d  |  cmds %d",

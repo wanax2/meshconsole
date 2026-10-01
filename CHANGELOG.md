@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1 — 2026-09-30
+
+- BBS: **daily advertisement** — one broadcast at a chosen time while the board is online (BBS tab: text, time, on/off, "Send now"). Default text names the board and the ? command. Once a day only, by design.
+
+
 ## 1.7.0 — 2026-09-29
 
 BBS 2.0 — new commands for callers:

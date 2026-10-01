@@ -67,9 +67,15 @@ class BbsPanel extends JPanel {
         });
         JButton clearEvents = new JButton("Clear past events"); clearEvents.addActionListener(e -> { long now = System.currentTimeMillis(); store.events.removeIf(ev -> ev.when > 0 && ev.when < now); store.save(); reload(); });
         r2b.add(postEvent); r2b.add(clearEvents);
+        JPanel r2c = row();
+        JCheckBox advOn = new JCheckBox("Advertise daily at", store.advertOn); JTextField advTime = new JTextField(store.advertTime, 5); JTextField advText = new JTextField(store.advertText.isBlank() ? store.defaultAdvert() : store.advertText, 50);
+        r2c.add(advOn); r2c.add(advTime); r2c.add(new JLabel("text:")); r2c.add(advText);
+        JButton advSave = new JButton("Save advert"); advSave.addActionListener(e -> { store.advertOn = advOn.isSelected(); store.advertTime = advTime.getText().trim(); store.advertText = advText.getText().trim(); store.save(); });
+        JButton advNow = new JButton("Send now"); advNow.addActionListener(e -> { store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
+        r2c.add(advSave); r2c.add(advNow);
         JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> their signal · <b>T</b> traceroute them · <b>STATS</b> mesh · <b>TOP</b> leaderboards · <b>W</b> METAR · <b>TAF</b> · <b>METRO</b> · <b>C call</b> callsign · <b>E</b> events · <b>TRIVIA/GUESS/ADV</b> games · <b>I</b> · <b>PING</b></html>"));
         JPanel r4 = row(); r4.add(stats);
-        top.add(r1); top.add(r2); top.add(r2b); top.add(r3); top.add(r4);
+        top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r3); top.add(r4);
         add(top, BorderLayout.NORTH);
 
         postTable.setRowHeight(20); mailTable.setRowHeight(20);
