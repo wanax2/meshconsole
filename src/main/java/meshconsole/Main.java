@@ -11,6 +11,18 @@ import java.nio.file.Path;
 
 public class Main {
     public static void main(String[] args) throws Exception {
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                java.io.StringWriter sw = new java.io.StringWriter(); e.printStackTrace(new java.io.PrintWriter(sw));
+                String rec = java.time.ZonedDateTime.now() + "  " + Version.NAME + " " + Version.VERSION + "  thread " + t.getName() + "\n" + sw + "\n";
+                java.nio.file.Files.writeString(DataDir.file("crash.log"), rec, java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                System.err.print(rec);
+                if (!java.awt.GraphicsEnvironment.isHeadless()) {
+                    String msg = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
+                    javax.swing.SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(null, "Something went wrong in " + t.getName() + ":\n" + msg + "\n\nDetails were written to crash.log in the data folder. The app keeps running.", "Mesh Console error", javax.swing.JOptionPane.ERROR_MESSAGE));
+                }
+            } catch (Exception ignored) { }
+        });
         for (String a : args) if (a.equals("--headless")) { Headless.run(args); return; }
         if (args.length > 0 && !args[0].startsWith("--")) DataDir.set(Path.of(args[0]));
         Path logFile = DataDir.file("messages.log");

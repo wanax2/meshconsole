@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.2 — 2026-10-01
+
+- Any uncaught error is now written to `crash.log` in the data folder (with the stack trace) and shown in a dialog; the app keeps running instead of silently dying. `crash.log` is included in exports.
+- Export: a file that is rotated or locked while the zip is being written is skipped instead of failing the whole export.
+
+
 ## 1.7.1 — 2026-09-30
 
 - BBS: **daily advertisement** — one broadcast at a chosen time while the board is online (BBS tab: text, time, on/off, "Send now"). Default text names the board and the ? command. Once a day only, by design.

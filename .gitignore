@@ -31,3 +31,4 @@ admin_log.txt
 mqtt_witness.csv
 messages_radio2.log
 firmware/
+crash.log

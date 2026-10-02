@@ -18,7 +18,7 @@ public final class DataDir {
 
     /** Data files the app owns; used for backups and moves. */
     public static final List<String> FILES = List.of("messages.log", "nodes.json", "signal_history.csv", "weather_history.csv", "util_history.csv",
-            "antenna_log.csv", "antennas.json", "radios.json", "setup_log.csv", "bbs.json", "bbs.log", "traceroute_log.csv", "mqtt_witness.csv", "messages_radio2.log", "mqtt_log.csv", "admin_log.txt", "config_log.csv", "alerts.log", "sessions.log", "meshconsole.log", "mesh_report.html", "data_version.txt");
+            "antenna_log.csv", "antennas.json", "crash.log", "radios.json", "setup_log.csv", "bbs.json", "bbs.log", "traceroute_log.csv", "mqtt_witness.csv", "messages_radio2.log", "mqtt_log.csv", "admin_log.txt", "config_log.csv", "alerts.log", "sessions.log", "meshconsole.log", "mesh_report.html", "data_version.txt");
 
     private DataDir() { }
 
@@ -71,7 +71,9 @@ public final class DataDir {
         try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(Files.newOutputStream(zip))) {
             for (String f : FILES) {
                 Path src = file(f);
-                if (Files.exists(src)) addEntry(out, src, f);
+                if (!Files.exists(src)) continue;
+                try { addEntry(out, src, f); }
+                catch (IOException e) { /* file rotated or locked mid-export: skip it rather than fail the whole zip */ }
             }
             if (includeCaptures) {
                 try (var list = Files.list(get())) {
@@ -91,8 +93,7 @@ public final class DataDir {
         java.util.zip.ZipEntry e = new java.util.zip.ZipEntry(name);
         e.setTime(Files.getLastModifiedTime(src).toMillis());
         out.putNextEntry(e);
-        Files.copy(src, out);
-        out.closeEntry();
+        try { Files.copy(src, out); } finally { out.closeEntry(); }
     }
 
     /**
