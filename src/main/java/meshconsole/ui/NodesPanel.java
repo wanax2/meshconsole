@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.function.IntConsumer;
 
 class NodesPanel extends JPanel {
+    private final Coalesce nodesCoalesce = new Coalesce(1000, NodesPanel.this::reload);
     private final MeshClient client;
     private final MeshState state;
     private final Model model = new Model();
@@ -172,7 +173,7 @@ class NodesPanel extends JPanel {
         }));
 
         state.addListener(new MeshState.Listener() {
-            @Override public void onNodesChanged() { SwingUtilities.invokeLater(NodesPanel.this::reload); }
+            @Override public void onNodesChanged() { nodesCoalesce.request(); }
             @Override public void onTraceroute(String summary) {
                 SwingUtilities.invokeLater(() -> results.append(Fmt.time(System.currentTimeMillis()) + "  " + summary + "\n"));
             }

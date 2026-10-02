@@ -11,6 +11,7 @@ import java.util.List;
 
 /** Environment, device and power telemetry per node. */
 class TelemetryPanel extends JPanel {
+    private final Coalesce nodesCoalesce = new Coalesce(1500, TelemetryPanel.this::reload);
     private final MeshState state;
     private final Model model = new Model();
     private final JTable table = new JTable(model);
@@ -66,7 +67,7 @@ class TelemetryPanel extends JPanel {
         add(note, BorderLayout.SOUTH);
         state.addListener(new MeshState.Listener() {
             @Override public void onTelemetryChanged() { SwingUtilities.invokeLater(TelemetryPanel.this::reload); }
-            @Override public void onNodesChanged() { SwingUtilities.invokeLater(TelemetryPanel.this::reload); }
+            @Override public void onNodesChanged() { nodesCoalesce.request(); }
         });
     }
 

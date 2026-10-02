@@ -10,6 +10,34 @@ import javax.swing.*;
 import java.nio.file.Path;
 
 public class Main {
+    /** Writes hang.log with the UI thread's stack if the UI stops responding for more than 8 s (helps diagnose freezes). */
+    private static void startUiWatchdog() {
+        Thread t = new Thread(() -> {
+            long lastSeen = System.currentTimeMillis();
+            final long[] pong = {lastSeen};
+            boolean reported = false;
+            while (true) {
+                try { Thread.sleep(2000); } catch (InterruptedException e) { return; }
+                javax.swing.SwingUtilities.invokeLater(() -> pong[0] = System.currentTimeMillis());
+                long stall = System.currentTimeMillis() - pong[0];
+                if (stall > 8000 && !reported) {
+                    reported = true;
+                    try {
+                        StringBuilder sb = new StringBuilder(java.time.ZonedDateTime.now() + "  UI thread unresponsive for " + stall / 1000 + " s\n");
+                        for (java.util.Map.Entry<Thread, StackTraceElement[]> e : Thread.getAllStackTraces().entrySet()) {
+                            if (!e.getKey().getName().startsWith("AWT-EventQueue")) continue;
+                            sb.append("Thread ").append(e.getKey().getName()).append(":\n");
+                            for (StackTraceElement el : e.getValue()) sb.append("    at ").append(el).append('\n');
+                        }
+                        java.nio.file.Files.writeString(DataDir.file("hang.log"), sb + "\n", java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                    } catch (Exception ignored) { }
+                } else if (stall < 2000) reported = false;
+            }
+        }, "ui-watchdog");
+        t.setDaemon(true);
+        t.start();
+    }
+
     public static void main(String[] args) throws Exception {
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
             try {
@@ -24,6 +52,7 @@ public class Main {
             } catch (Exception ignored) { }
         });
         for (String a : args) if (a.equals("--headless")) { Headless.run(args); return; }
+        startUiWatchdog();
         if (args.length > 0 && !args[0].startsWith("--")) DataDir.set(Path.of(args[0]));
         Path logFile = DataDir.file("messages.log");
         String upgradeNote = DataDir.checkVersion();

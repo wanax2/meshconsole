@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
  * first time) and cached under ./tilecache so the map still works offline later.
  */
 class MapPanel extends JPanel {
+    private final Coalesce mapCoalesce = new Coalesce(1000, () -> { MapPanel.this.view.autoCenterOnce(); MapPanel.this.view.repaint(); });
     private static final int TILE = 256;
     private final MeshState state;
     private MeshClient client;
@@ -68,7 +69,7 @@ class MapPanel extends JPanel {
         showNames.addActionListener(e -> view.repaint());
 
         state.addListener(new MeshState.Listener() {
-            @Override public void onNodesChanged() { SwingUtilities.invokeLater(() -> { view.autoCenterOnce(); view.repaint(); }); }
+            @Override public void onNodesChanged() { mapCoalesce.request(); }
             @Override public void onWaypointsChanged() { SwingUtilities.invokeLater(view::repaint); }
         });
     }

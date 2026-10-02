@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.3 — 2026-10-01
+
+- UI refreshes are coalesced: the Nodes, Messages, Telemetry, Status and Map views rebuild at most once a second instead of on every packet — with 800 nodes the per-packet re-sorting could stall the window for minutes.
+- A UI watchdog writes `hang.log` (with the UI thread's stack) if the window stops responding for more than 8 s, so a freeze can be diagnosed.
+
+
 ## 1.7.2 — 2026-10-01
 
 - Any uncaught error is now written to `crash.log` in the data folder (with the stack trace) and shown in a dialog; the app keeps running instead of silently dying. `crash.log` is included in exports.

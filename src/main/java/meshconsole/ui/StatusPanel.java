@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 class StatusPanel extends JPanel {
+    private final Coalesce nodesCoalesce = new Coalesce(1000, StatusPanel.this::refreshAll);
     private final MeshState state;
     private final JTextArea info = new JTextArea(12, 40);
     private final SignalChart chart = new SignalChart();
@@ -111,7 +112,7 @@ class StatusPanel extends JPanel {
 
         state.addListener(new MeshState.Listener() {
             @Override public void onStatusChanged() { SwingUtilities.invokeLater(StatusPanel.this::refreshInfo); }
-            @Override public void onNodesChanged() { SwingUtilities.invokeLater(StatusPanel.this::refreshAll); }
+            @Override public void onNodesChanged() { nodesCoalesce.request(); }
             @Override public void onLog(String line) { SwingUtilities.invokeLater(() -> appendLog(line)); }
             @Override public void onTelemetryChanged() { SwingUtilities.invokeLater(() -> utilChart.setData(state.utilHistory())); }
         });
