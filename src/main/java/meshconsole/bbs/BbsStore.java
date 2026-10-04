@@ -19,7 +19,22 @@ public class BbsStore {
     public String wmataKey = "", discordWebhook = "", station = "KDCA";
     public boolean advertOn = false; public String advertTime = "09:00", advertText = "", advertDay = "";
     public String defaultAdvert() { return name + " BBS is online: DM this node ? for bulletins, mail, weather, your signal report & games. 73"; }
-    public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; }
+    // ---- 2.1 additions
+    public final Map<String, Integer> callsPerDay = new TreeMap<>();      // yyyy-MM-dd → calls
+    public final Map<String, Integer> cmdCounts = new TreeMap<>();        // command → count
+    public final int[] hourCounts = new int[24];
+    public final Map<Integer, Set<String>> subs = new HashMap<>();        // node → {WX, EVENTS}
+    public String digestTime = "07:30", digestDay = "";
+    public String pollQuestion = ""; public final List<String> pollOptions = new ArrayList<>(); public final Map<Integer, Integer> pollVotes = new HashMap<>();
+    public String motd = "";
+    public static class GuestEntry { public long time; public int num; public String name = "", text = ""; }
+    public final List<GuestEntry> guestbook = new ArrayList<>();
+    public String sysopPassword = ""; public final Map<Integer, Long> admins = new HashMap<>();
+    public String discordBotToken = "", discordChannelId = "", discordLastId = "";
+    public static class Peer { public int num; public String name = ""; public long lastExchange; public int lastPostSent; }
+    public final List<Peer> peers = new ArrayList<>(); public final Set<String> netSeen = new HashSet<>(); public String netTime = "04:00", netDay = "";
+    public boolean netOn = false;
+    public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; public int lastPostSeen; public String lastMotdDay = ""; }
     public final Map<Integer, Caller> callers = new LinkedHashMap<>();
     public long callsToday; public String callsDay = "";
     public static class Mail { public int id; public long time, delivered; public int from, to; public String fromName = "", text = ""; }
@@ -57,12 +72,28 @@ public class BbsStore {
             if (m.get("wmataKey") != null) wmataKey = Json.str(m.get("wmataKey"));
             if (m.get("discordWebhook") != null) discordWebhook = Json.str(m.get("discordWebhook"));
             if (m.get("station") != null) station = Json.str(m.get("station"));
+            if (m.get("callsPerDay") instanceof Map<?, ?> cp) for (Map.Entry<?, ?> e : cp.entrySet()) callsPerDay.put(String.valueOf(e.getKey()), (int) Json.num(e.getValue(), 0));
+            if (m.get("cmdCounts") instanceof Map<?, ?> cc) for (Map.Entry<?, ?> e : cc.entrySet()) cmdCounts.put(String.valueOf(e.getKey()), (int) Json.num(e.getValue(), 0));
+            if (m.get("hourCounts") instanceof List<?> hc) for (int i = 0; i < Math.min(24, hc.size()); i++) hourCounts[i] = (int) Json.num(hc.get(i), 0);
+            if (m.get("subs") instanceof Map<?, ?> sm) for (Map.Entry<?, ?> e : sm.entrySet()) { Set<String> set = new HashSet<>(); if (e.getValue() instanceof List<?> l) for (Object o : l) set.add(String.valueOf(o)); try { subs.put((int) Long.parseLong(String.valueOf(e.getKey())), set); } catch (NumberFormatException ignored) { } }
+            if (m.get("digestTime") != null) digestTime = Json.str(m.get("digestTime")); if (m.get("digestDay") != null) digestDay = Json.str(m.get("digestDay"));
+            if (m.get("pollQuestion") != null) pollQuestion = Json.str(m.get("pollQuestion"));
+            if (m.get("pollOptions") instanceof List<?> po) for (Object o : po) pollOptions.add(String.valueOf(o));
+            if (m.get("pollVotes") instanceof Map<?, ?> pv) for (Map.Entry<?, ?> e : pv.entrySet()) try { pollVotes.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
+            if (m.get("motd") != null) motd = Json.str(m.get("motd"));
+            if (m.get("guestbook") instanceof List<?> gb) for (Object o : gb) if (o instanceof Map<?, ?> g) { GuestEntry x = new GuestEntry(); x.time = (long) Json.num(g.get("time"), 0); x.num = (int) (long) Json.num(g.get("num"), 0); x.name = Json.str(g.get("name")); x.text = Json.str(g.get("text")); guestbook.add(x); }
+            if (m.get("sysopPassword") != null) sysopPassword = Json.str(m.get("sysopPassword"));
+            if (m.get("discordBotToken") != null) discordBotToken = Json.str(m.get("discordBotToken")); if (m.get("discordChannelId") != null) discordChannelId = Json.str(m.get("discordChannelId")); if (m.get("discordLastId") != null) discordLastId = Json.str(m.get("discordLastId"));
+            if (m.get("peers") instanceof List<?> ps2) for (Object o : ps2) if (o instanceof Map<?, ?> g) { Peer x = new Peer(); x.num = (int) (long) Json.num(g.get("num"), 0); x.name = Json.str(g.get("name")); x.lastExchange = (long) Json.num(g.get("lastExchange"), 0); x.lastPostSent = (int) Json.num(g.get("lastPostSent"), 0); if (x.num != 0) peers.add(x); }
+            if (m.get("netSeen") instanceof List<?> ns) for (Object o : ns) netSeen.add(String.valueOf(o));
+            if (m.get("netTime") != null) netTime = Json.str(m.get("netTime")); if (m.get("netDay") != null) netDay = Json.str(m.get("netDay"));
+            netOn = Boolean.TRUE.equals(m.get("netOn"));
             advertOn = Boolean.TRUE.equals(m.get("advertOn")); if (m.get("advertTime") != null) advertTime = Json.str(m.get("advertTime")); if (m.get("advertText") != null) advertText = Json.str(m.get("advertText")); if (m.get("advertDay") != null) advertDay = Json.str(m.get("advertDay"));
             if (m.get("events") instanceof List<?> es) for (Object o : es) if (o instanceof Map<?, ?> p) { Event x = new Event(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.when = (long) Json.num(p.get("when"), 0); x.text = Json.str(p.get("text")); events.add(x); }
             if (m.get("trivia") instanceof Map<?, ?> tm) for (Map.Entry<?, ?> e : tm.entrySet()) try { trivia.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
             if (m.get("callers") instanceof List<?> cs) for (Object o : cs) if (o instanceof Map<?, ?> p) {
                 Caller x = new Caller(); x.num = (int) (long) Json.num(p.get("num"), 0); x.name = Json.str(p.get("name")); x.first = (long) Json.num(p.get("first"), 0); x.last = (long) Json.num(p.get("last"), 0);
-                x.commands = (int) Json.num(p.get("commands"), 0); x.lastCommand = Json.str(p.get("lastCommand")); if (x.num != 0) callers.put(x.num, x);
+                x.commands = (int) Json.num(p.get("commands"), 0); x.lastCommand = Json.str(p.get("lastCommand")); x.lastPostSeen = (int) Json.num(p.get("lastPostSeen"), 0); x.lastMotdDay = Json.str(p.get("lastMotdDay")); if (x.num != 0) callers.put(x.num, x);
             }
             if (m.get("mail") instanceof List<?> ms) for (Object o : ms) if (o instanceof Map<?, ?> p) {
                 Mail x = new Mail(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.delivered = (long) Json.num(p.get("delivered"), 0);
@@ -76,7 +107,12 @@ public class BbsStore {
     public synchronized void save() {
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
-          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay));
+          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay));
+        sb.append("\"callsPerDay\":").append(mapJson(callsPerDay)).append(",\"cmdCounts\":").append(mapJson(cmdCounts)).append(",\"hourCounts\":").append(Arrays.toString(hourCounts)).append(",\n");
+        sb.append("\"subs\":{"); boolean sf = true; for (Map.Entry<Integer, Set<String>> e : subs.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":["); boolean ff = true; for (String v : e.getValue()) { if (!ff) sb.append(','); ff = false; sb.append('"').append(v).append('"'); } sb.append(']'); } sb.append("},\n");
+        sb.append("\"pollOptions\":["); sf = true; for (String o : pollOptions) { if (!sf) sb.append(','); sf = false; sb.append(kv("x", o), 4, kv("x", o).length() - 1); } sb.append("],\"pollVotes\":{"); sf = true; for (Map.Entry<Integer, Integer> e : pollVotes.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); } sb.append("},\n");
+        sb.append("\"guestbook\":["); sf = true; for (GuestEntry g : guestbook) { if (!sf) sb.append(','); sf = false; sb.append('{').append(kv("time", g.time)).append("\"num\":").append(Integer.toUnsignedLong(g.num)).append(',').append(kv("name", g.name)).append(kv("text", g.text)); sb.setLength(sb.length() - 1); sb.append('}'); } sb.append("],\n");
+        sb.append("\"peers\":["); sf = true; for (Peer pr : peers) { if (!sf) sb.append(','); sf = false; sb.append("{\"num\":").append(Integer.toUnsignedLong(pr.num)).append(',').append(kv("name", pr.name)).append(kv("lastExchange", pr.lastExchange)).append(kv("lastPostSent", pr.lastPostSent)); sb.setLength(sb.length() - 1); sb.append('}'); } sb.append("],\"netSeen\":["); sf = true; for (String n : netSeen) { if (!sf) sb.append(','); sf = false; sb.append('"').append(n).append('"'); } sb.append("],\n");
         sb.append("\"trivia\":{");
         boolean tf = true; for (Map.Entry<Integer, Integer> e : trivia.entrySet()) { if (!tf) sb.append(','); tf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); }
         sb.append("},\n\"events\":[\n");
@@ -90,7 +126,7 @@ public class BbsStore {
         for (Post p : posts) { if (!f) sb.append(",\n"); f = false; sb.append("  {").append(kv("id", p.id)).append(kv("time", p.time)).append("\"author\":").append(Integer.toUnsignedLong(p.author)).append(',').append(kv("authorName", p.authorName)).append(kv("text", p.text)); sb.setLength(sb.length() - 1); sb.append('}'); }
         sb.append("\n],\n\"callers\":[\n");
         f = true;
-        for (Caller c : callers.values()) { if (!f) sb.append(",\n"); f = false; sb.append("  {\"num\":").append(Integer.toUnsignedLong(c.num)).append(',').append(kv("name", c.name)).append(kv("first", c.first)).append(kv("last", c.last)).append(kv("commands", c.commands)).append(kv("lastCommand", c.lastCommand)); sb.setLength(sb.length() - 1); sb.append('}'); }
+        for (Caller c : callers.values()) { if (!f) sb.append(",\n"); f = false; sb.append("  {\"num\":").append(Integer.toUnsignedLong(c.num)).append(',').append(kv("name", c.name)).append(kv("first", c.first)).append(kv("last", c.last)).append(kv("commands", c.commands)).append(kv("lastCommand", c.lastCommand)).append(kv("lastPostSeen", c.lastPostSeen)).append(kv("lastMotdDay", c.lastMotdDay)); sb.setLength(sb.length() - 1); sb.append('}'); }
         sb.append("\n],\n\"mail\":[\n");
         f = true;
         for (Mail m : mail) { if (!f) sb.append(",\n"); f = false; sb.append("  {").append(kv("id", m.id)).append(kv("time", m.time)).append(kv("delivered", m.delivered)).append("\"from\":").append(Integer.toUnsignedLong(m.from)).append(",\"to\":").append(Integer.toUnsignedLong(m.to)).append(',').append(kv("fromName", m.fromName)).append(kv("text", m.text)); sb.setLength(sb.length() - 1); sb.append('}'); }
@@ -100,6 +136,13 @@ public class BbsStore {
             Files.writeString(tmp, sb.toString(), StandardCharsets.UTF_8);
             Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ignored) { }
+    }
+
+    private static String mapJson(Map<String, Integer> m) {
+        StringBuilder sb = new StringBuilder("{"); boolean f = true;
+        for (Map.Entry<String, Integer> e : m.entrySet()) { if (!f) sb.append(','); f = false; sb.append(kv(e.getKey(), e.getValue())); }
+        if (!f) sb.setLength(sb.length() - 1);
+        return sb.append('}').toString();
     }
 
     private static String kv(String k, Object v) {

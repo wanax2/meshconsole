@@ -205,3 +205,16 @@ sudo systemctl enable --now meshconsole
 ```
 
 Point the desktop GUI's data folder at a copy (or a share) of the Pi's folder to analyse it.
+
+## MeshNet (board-to-board exchange)
+
+Boards running Mesh Console can form a small store-and-forward network over direct messages, in the spirit of WWIVnet. Each board lists its peers (node ids) on the BBS tab; once a day (or on demand) it sends each peer any bulletins it hasn't had yet, and routes mail addressed `board!user`. Every line is an ordinary DM of at most 200 bytes:
+
+```
+NET HELLO <board name>              announce / handshake (sets the peer's display name)
+NET POST <id> <author>: <text>      a bulletin headline; the receiver dedupes on peer:id and files it as "<author> via <board>"
+NET MAIL <user> <from>: <text>      mail for a local user, routed from the peer; delivered when the user next calls
+NET ACK <id>                        delivery confirmation for a POST
+```
+
+Lines are only accepted from configured peers; a board never forwards a peer's posts to another peer (no loops). Any other BBS software can join by speaking these four lines.

@@ -25,6 +25,8 @@ class BbsPanel extends JPanel {
     private final JTable postTable = new JTable(posts), mailTable = new JTable(mail);
     private final JTextArea activity = new JTextArea();
     private final JLabel stats = new JLabel(" ");
+    private final AnalysisPanel.BarChart dash = new AnalysisPanel.BarChart();
+    private final JLabel dashText = new JLabel(" ");
 
     private class PostModel extends AbstractTableModel {
         final String[] cols = {"#", "Time", "Author", "Text"};
@@ -73,9 +75,41 @@ class BbsPanel extends JPanel {
         JButton advSave = new JButton("Save advert"); advSave.addActionListener(e -> { store.advertOn = advOn.isSelected(); store.advertTime = advTime.getText().trim(); store.advertText = advText.getText().trim(); store.save(); });
         JButton advNow = new JButton("Send now"); advNow.addActionListener(e -> { store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
         r2c.add(advSave); r2c.add(advNow);
-        JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> their signal · <b>T</b> traceroute them · <b>STATS</b> mesh · <b>TOP</b> leaderboards · <b>W</b> METAR · <b>TAF</b> · <b>METRO</b> · <b>C call</b> callsign · <b>E</b> events · <b>TRIVIA/GUESS/ADV</b> games · <b>I</b> · <b>PING</b></html>"));
+        // ---- 2.1: MOTD, poll, sysop password, digest time
+        JPanel r2d = row();
+        JTextField motd = new JTextField(store.motd, 30), pw = new JPasswordField(store.sysopPassword, 10), digest = new JTextField(store.digestTime, 5);
+        r2d.add(new JLabel("MOTD:")); r2d.add(motd); r2d.add(new JLabel("Sysop DM password:")); r2d.add(pw); r2d.add(new JLabel("Digest at:")); r2d.add(digest);
+        JButton save2d = new JButton("Save"); save2d.addActionListener(e -> { store.motd = motd.getText().trim(); store.sysopPassword = new String(((JPasswordField) pw).getPassword()).trim(); store.digestTime = digest.getText().trim(); store.save(); }); r2d.add(save2d);
+        JButton poll = new JButton("New poll…");
+        poll.addActionListener(e -> {
+            JTextField q = new JTextField(store.pollQuestion, 30), opts = new JTextField(String.join("; ", store.pollOptions), 30);
+            JPanel form = new JPanel(new GridLayout(0, 2, 4, 4)); form.add(new JLabel("Question:")); form.add(q); form.add(new JLabel("Options (semicolon-separated):")); form.add(opts);
+            if (JOptionPane.showConfirmDialog(this, form, "Poll", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+            store.pollQuestion = q.getText().trim(); store.pollOptions.clear(); for (String o : opts.getText().split(";")) if (!o.isBlank()) store.pollOptions.add(o.trim()); store.pollVotes.clear(); store.save(); reload();
+        });
+        JButton closePoll = new JButton("Close poll"); closePoll.addActionListener(e -> { store.pollQuestion = ""; store.pollOptions.clear(); store.pollVotes.clear(); store.save(); reload(); });
+        r2d.add(poll); r2d.add(closePoll);
+        // ---- MeshNet peers + Discord bot
+        JPanel r2e = row();
+        JCheckBox netOn = new JCheckBox("MeshNet exchange daily at", store.netOn); JTextField netTime = new JTextField(store.netTime, 5);
+        StringBuilder peerStr = new StringBuilder(); for (BbsStore.Peer pr : store.peers) peerStr.append(String.format("!%08x", pr.num)).append(pr.name.isEmpty() ? "" : "=" + pr.name).append("; ");
+        JTextField peers = new JTextField(peerStr.toString().trim(), 30);
+        r2e.add(netOn); r2e.add(netTime); r2e.add(new JLabel("peers (!id=Name; …):")); r2e.add(peers);
+        JButton savePeers = new JButton("Save peers"); savePeers.addActionListener(e -> {
+            store.netOn = netOn.isSelected(); store.netTime = netTime.getText().trim();
+            java.util.Map<Integer, BbsStore.Peer> old = new java.util.HashMap<>(); for (BbsStore.Peer pr : store.peers) old.put(pr.num, pr);
+            store.peers.clear();
+            for (String tok : peers.getText().split(";")) { tok = tok.trim(); if (tok.isEmpty()) continue; String[] kv = tok.split("=", 2); try { int num = (int) Long.parseLong(kv[0].trim().replace("!", ""), 16); BbsStore.Peer pr = old.getOrDefault(num, new BbsStore.Peer()); pr.num = num; if (kv.length > 1) pr.name = kv[1].trim(); store.peers.add(pr); } catch (NumberFormatException ignored) { } }
+            store.save(); reload();
+        }); r2e.add(savePeers);
+        JButton netNow = new JButton("Exchange now"); netNow.addActionListener(e -> { if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first."); return; } int n = engine.netExchangeNow(); JOptionPane.showMessageDialog(this, "Sent HELLO to " + store.peers.size() + " peer(s) and " + n + " post(s)."); }); r2e.add(netNow);
+        JPanel r2f = row();
+        JTextField botTok = new JPasswordField(store.discordBotToken, 14), botCh = new JTextField(store.discordChannelId, 14);
+        r2f.add(new JLabel("Discord → board (bot token / channel id; messages starting '!post' become bulletins):")); r2f.add(botTok); r2f.add(botCh);
+        JButton saveBot = new JButton("Save"); saveBot.addActionListener(e -> { store.discordBotToken = new String(((JPasswordField) botTok).getPassword()).trim(); store.discordChannelId = botCh.getText().trim(); store.save(); }); r2f.add(saveBot);
+        JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> signal · <b>T</b> traceroute · <b>STATS</b> · <b>TOP</b> · <b>WHO n</b> · <b>W/TAF/METRO</b> · <b>C call</b> · <b>E</b> events · <b>POLL / V n</b> · <b>GB</b> guestbook · <b>SUB WX|EVENTS</b> digest · <b>TRIVIA/GUESS/ADV</b> · <b>NET</b> peers · <b>SYSOP pw</b> then <b>X …</b> admin by DM</html>"));
         JPanel r4 = row(); r4.add(stats);
-        top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r3); top.add(r4);
+        top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r2d); top.add(r2e); top.add(r2f); top.add(r3); top.add(r4);
         add(top, BorderLayout.NORTH);
 
         postTable.setRowHeight(20); mailTable.setRowHeight(20);
@@ -107,7 +141,10 @@ class BbsPanel extends JPanel {
         JSplitPane tables = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, postBox, mailBox); tables.setResizeWeight(0.6);
         activity.setEditable(false); activity.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         JScrollPane act = new JScrollPane(activity); act.setBorder(BorderFactory.createTitledBorder("Activity"));
-        JSplitPane main = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tables, act); main.setResizeWeight(0.65);
+        dash.setPreferredSize(new Dimension(600, 120));
+        JPanel dashBox = new JPanel(new BorderLayout()); dashBox.setBorder(BorderFactory.createTitledBorder("Usage – calls per day (last 30), busiest hours, top commands")); dashBox.add(dash, BorderLayout.CENTER); dashBox.add(dashText, BorderLayout.SOUTH);
+        JSplitPane lower = new JSplitPane(JSplitPane.VERTICAL_SPLIT, act, dashBox); lower.setResizeWeight(0.6);
+        JSplitPane main = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tables, lower); main.setResizeWeight(0.55);
         add(main, BorderLayout.CENTER);
 
         enabled.setSelected(store.enabled); name.setText(store.name); welcome.setText(store.welcome); channelTrigger.setSelected(store.channelTrigger);
@@ -128,6 +165,15 @@ class BbsPanel extends JPanel {
 
     void reload() {
         enabled.setSelected(store.enabled);
+        java.util.List<String> days = new java.util.ArrayList<>(store.callsPerDay.keySet());
+        int[] bars = new int[Math.min(30, days.size())];
+        for (int i = 0; i < bars.length; i++) bars[i] = store.callsPerDay.get(days.get(days.size() - bars.length + i));
+        dash.set(bars, null);
+        int busiest = 0; for (int h = 1; h < 24; h++) if (store.hourCounts[h] > store.hourCounts[busiest]) busiest = h;
+        java.util.List<java.util.Map.Entry<String, Integer>> top = new java.util.ArrayList<>(store.cmdCounts.entrySet()); top.sort((a, b) -> b.getValue() - a.getValue());
+        StringBuilder tc = new StringBuilder(); for (int i = 0; i < Math.min(6, top.size()); i++) tc.append(top.get(i).getKey()).append(' ').append(top.get(i).getValue()).append("  ");
+        long week = System.currentTimeMillis() - 7L * 86400_000L; int weekly = 0; for (BbsStore.Caller c : store.callers.values()) if (c.last > week) weekly++;
+        dashText.setText("  " + store.callers.size() + " callers all time, " + weekly + " this week · busiest hour " + String.format("%02d:00", busiest) + " · top commands: " + (tc.length() == 0 ? "–" : tc));
         posts.rows = new ArrayList<>(store.posts); posts.fireTableDataChanged();
         mail.rows = new ArrayList<>(store.mail); mail.fireTableDataChanged();
         stats.setText((store.enabled ? "Running" : "Stopped") + "  ·  " + store.posts.size() + " posts, " + store.mail.size() + " mail, " + store.commandsServed + " commands served, " + store.repliesSent + " replies, " + store.banned.size() + " banned");

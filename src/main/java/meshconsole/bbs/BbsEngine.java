@@ -71,16 +71,23 @@ public class BbsEngine {
 
     /** Call about once a minute: sends the daily advertisement at the configured time while the board is online. */
     public void tick() {
-        if (!store.enabled || !store.advertOn) return;
-        java.time.LocalTime now = java.time.LocalTime.now();
-        java.time.LocalTime at; try { at = java.time.LocalTime.parse(store.advertTime.trim()); } catch (Exception e) { return; }
+        if (!store.enabled) return;
         String today = java.time.LocalDate.now().toString();
-        if (now.getHour() == at.getHour() && now.getMinute() == at.getMinute() && !today.equals(store.advertDay)) {
+        java.time.LocalTime now = java.time.LocalTime.now();
+        if (due(now, store.digestTime) && !today.equals(store.digestDay) && !store.subs.isEmpty()) { store.digestDay = today; store.save(); sendDigest(); }
+        if (store.netOn && due(now, store.netTime) && !today.equals(store.netDay) && !store.peers.isEmpty()) { store.netDay = today; store.save(); int n = netExchangeNow(); log("MeshNet daily exchange: " + n + " post(s) sent"); }
+        if (System.currentTimeMillis() - lastDiscordPoll > 5 * 60_000L) { lastDiscordPoll = System.currentTimeMillis(); pollDiscord(); }
+        if (!store.advertOn) return;
+        if (due(now, store.advertTime) && !today.equals(store.advertDay)) {
             store.advertDay = today; store.save();
             String text = store.advertText.isBlank() ? store.defaultAdvert() : store.advertText;
             try { client.sendText(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
             catch (IOException e) { log("advert failed: " + e.getMessage()); }
         }
+    }
+
+    private static boolean due(java.time.LocalTime now, String hhmm) {
+        try { java.time.LocalTime t = java.time.LocalTime.parse(hhmm.trim()); return now.getHour() == t.getHour() && now.getMinute() == t.getMinute(); } catch (Exception e) { return false; }
     }
 
     /** Sends the advertisement now (sysop). */
@@ -125,17 +132,23 @@ public class BbsEngine {
         Long last = lastReply.get(m.from);
         if (last != null && now - last < store.cooldownSec * 1000L) { log("rate-limited " + state.nodeName(m.from)); return; }
         // caller bookkeeping
+        // MeshNet traffic from a configured peer board is protocol, not a caller
+        if (dm && text.startsWith("NET ") && isPeer(m.from)) { handleNet(m.from, text.substring(4)); return; }
         BbsStore.Caller cl = store.callers.computeIfAbsent(m.from, k -> { BbsStore.Caller x = new BbsStore.Caller(); x.num = k; x.first = now; return x; });
         cl.name = state.nodeName(m.from); cl.last = now; cl.commands++; cl.lastCommand = text.length() > 40 ? text.substring(0, 40) : text;
         String today = java.time.LocalDate.now().toString();
         if (!today.equals(store.callsDay)) { store.callsDay = today; store.callsToday = 0; }
         store.callsToday++;
+        store.callsPerDay.merge(today, 1, Integer::sum);
+        store.cmdCounts.merge(text.split("\\s+")[0].toUpperCase(Locale.ROOT), 1, Integer::sum);
+        store.hourCounts[java.time.LocalTime.now().getHour()]++;
         log("← " + cl.name + ": " + text);
         listener.onCaller(m.from, text);
         String reply;
         try { reply = dm ? command(m.from, text) : store.name + " here – DM me ? for commands"; }
         catch (RuntimeException e) { reply = "error: " + e.getMessage(); }
         if (reply == null) { store.commandsServed++; store.save(); return; }   // answered asynchronously
+        if (!store.motd.isBlank() && !today.equals(cl.lastMotdDay) && text.trim().startsWith("?")) { cl.lastMotdDay = today; reply = "MOTD: " + store.motd + "\n" + reply; }
         store.commandsServed++;
         send(m.from, reply);
         store.save();
@@ -174,8 +187,8 @@ public class BbsEngine {
         String arg = parts.length > 1 ? parts[1].trim() : "";
         String who = state.nodeName(from);
         switch (cmd) {
-            case "?", "H", "HELP", "MENU" -> { return store.name + " menu: B bulletins, R n, P text, D n | M mail, M name text | S signal, T trace, N nodes, STATS, TOP | W wx, TAF, METRO | C call, E events | TRIVIA, GUESS, ADV | I, PING (?2 = details)"; }
-            case "?2", "HELP2" -> { return "B list (B 2 next page) R 3 read #3 P text post D 3 delete yours | M read mail, M bob hi = mail bob | S signal at BBS T traceroute you N nodes/1h STATS mesh TOP leaderboards | W METAR TAF forecast METRO rail | C N8HM callsign E events | games: TRIVIA, GUESS, ADV"; }
+            case "?", "H", "HELP", "MENU" -> { return store.name + " menu: B R P D | M mail | S T N STATS TOP WHO | W TAF METRO | E events, POLL, GB guestbook, SUB | TRIVIA GUESS ADV | NET | I PING (?2 = details)"; }
+            case "?2", "HELP2" -> { return "B list(B 2 next) R 3 read P text post D 3 del | M mail, M bob hi, M board!bob hi | S signal T trace N nodes STATS TOP WHO n | W TAF METRO C call | E events POLL/V n GB text SUB WX|EVENTS | TRIVIA(A ans) GUESS(G n) ADV | NET peers"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
                 long up = (System.currentTimeMillis() - store.started) / 60000;
@@ -183,6 +196,10 @@ public class BbsEngine {
             }
             case "B", "LIST" -> {
                 if (store.posts.isEmpty()) return "No bulletins yet. P text to post.";
+                BbsStore.Caller cl = store.callers.get(from);
+                int newer = 0; for (BbsStore.Post p : store.posts) if (cl != null && p.id > cl.lastPostSeen) newer++;
+                String newNote = cl != null && cl.lastPostSeen > 0 && newer > 0 ? newer + " new since your last visit. " : "";
+                if (cl != null) cl.lastPostSeen = store.posts.isEmpty() ? 0 : store.posts.get(store.posts.size() - 1).id;
                 int page = 1; try { page = Math.max(1, Integer.parseInt(arg)); } catch (NumberFormatException ignored) { }
                 List<BbsStore.Post> ps = new ArrayList<>(store.posts); Collections.reverse(ps);
                 int per = 4, start = (page - 1) * per;
@@ -194,7 +211,7 @@ public class BbsEngine {
                     sb.append('#').append(p.id).append(' ').append(shortName(p.authorName)).append(": ").append(t).append('\n');
                 }
                 if (start + per < ps.size()) sb.append("B ").append(page + 1).append(" for more");
-                return sb.toString().trim();
+                return (page == 1 ? newNote : "") + sb.toString().trim();
             }
             case "R", "READ" -> {
                 BbsStore.Post p = post(arg);
@@ -230,6 +247,13 @@ public class BbsEngine {
                 }
                 String[] mp = arg.split("\\s+", 2);
                 if (mp.length < 2) return "M name text – who and what?";
+                if (mp[0].contains("!") && !mp[0].startsWith("!")) {   // board!user → route via MeshNet
+                    String[] bu = mp[0].split("!", 2); BbsStore.Peer pr = peerByName(bu[0]);
+                    if (pr == null) return "No MeshNet peer called '" + bu[0] + "'. NET lists them.";
+                    send(pr.num, "NET MAIL " + bu[1] + " " + who + ": " + mp[1]);
+                    log("mail routed to " + pr.name + " for " + bu[1]);
+                    return "Mail handed to " + pr.name + " for " + bu[1] + ".";
+                }
                 Integer to = resolve(mp[0]);
                 if (to == null) return "Don't know '" + mp[0] + "'. Use !id or a name from N.";
                 BbsStore.Mail x = new BbsStore.Mail(); x.id = store.nextId(); x.time = System.currentTimeMillis(); x.from = from; x.fromName = who; x.to = to; x.text = mp[1];
@@ -269,8 +293,87 @@ public class BbsEngine {
                 if (far != null) sb.append("farthest ").append(far.shortLabel()).append(String.format(" %.0f km", meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, far.lat, far.lon))).append("; ");
                 if (hops != null) sb.append("most hops ").append(hops.shortLabel()).append(" (").append(hops.hopsAway).append("); ");
                 posts.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(e -> sb.append("top poster ").append(shortName(state.nodeName(e.getKey()))).append(" (").append(e.getValue()).append("); "));
-                store.trivia.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(e -> sb.append("trivia champ ").append(shortName(state.nodeName(e.getKey()))).append(" (").append(e.getValue()).append(" pts)"));
+                store.trivia.entrySet().stream().max(Map.Entry.comparingByValue()).ifPresent(e -> sb.append("trivia champ ").append(shortName(state.nodeName(e.getKey()))).append(" (").append(e.getValue()).append(" pts); "));
+                NodeEntry farCaller = null; for (BbsStore.Caller c : store.callers.values()) { NodeEntry n = state.node(c.num); if (n != null && me != null && me.hasPosition && n.hasPosition && (farCaller == null || meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, n.lat, n.lon) > meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, farCaller.lat, farCaller.lon))) farCaller = n; }
+                if (farCaller != null) sb.append("farthest caller ").append(farCaller.shortLabel()).append(String.format(" %.0f km; ", meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, farCaller.lat, farCaller.lon)));
+                ChatMessage farDm = null; for (ChatMessage cm : state.messages()) if (!cm.outgoing && !cm.isBroadcast() && cm.hops >= 0 && (farDm == null || cm.hops > farDm.hops)) farDm = cm;
+                if (farDm != null) sb.append("most-hops DM ").append(shortName(state.nodeName(farDm.from))).append(" (").append(farDm.hops).append(")");
                 return sb.toString();
+            }
+            case "SUB", "SUBSCRIBE" -> {
+                String what = arg.trim().toUpperCase();
+                if (!what.equals("WX") && !what.equals("EVENTS")) { Set<String> cur = store.subs.getOrDefault(from, Set.of()); return "SUB WX = daily weather at " + store.digestTime + ", SUB EVENTS = new events. UNSUB to stop. You have: " + (cur.isEmpty() ? "none" : String.join(",", cur)); }
+                store.subs.computeIfAbsent(from, k -> new HashSet<>()).add(what);
+                return "Subscribed to " + what + ". Daily at " + store.digestTime + ". UNSUB to stop.";
+            }
+            case "UNSUB" -> { store.subs.remove(from); return "Unsubscribed from everything."; }
+            case "WHO" -> {
+                if (arg.isEmpty()) return "WHO name – look up a node (short name, long name or !id)";
+                Integer num = resolve(arg.trim());
+                NodeEntry n = num == null ? null : state.node(num);
+                if (n == null) return "Don't know '" + arg + "'.";
+                int mail = 0; for (BbsStore.Mail x : store.mail) if (x.to == n.num) mail++;
+                NodeEntry me = state.myNode();
+                String dist = (me != null && me.hasPosition && n.hasPosition) ? String.format(", %.1f km", meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, n.lat, n.lon)) : "";
+                return String.format("%s %s: %s, heard %s ago, %s, SNR %.1f/RSSI %d%s, batt %s%s", n.displayName(), n.idString(), n.hwModel, meshconsole.ui.FmtBridge.ago(n.lastHeardMillis()), n.hopsAway < 0 ? "hops ?" : n.hopsAway == 0 ? "direct" : n.hopsAway + " hops", n.snr, n.rssi, dist, n.battery < 0 ? "?" : n.battery > 100 ? "ext" : n.battery + "%", mail > 0 ? ", " + mail + " mail waiting here" : "");
+            }
+            case "POLL" -> {
+                if (store.pollQuestion.isBlank()) return "No poll open.";
+                StringBuilder sb = new StringBuilder("POLL: " + store.pollQuestion + "\n");
+                int[] tally = new int[store.pollOptions.size()];
+                for (int v : store.pollVotes.values()) if (v >= 0 && v < tally.length) tally[v]++;
+                for (int i = 0; i < store.pollOptions.size(); i++) sb.append(i + 1).append(") ").append(store.pollOptions.get(i)).append(" [").append(tally[i]).append("] ");
+                sb.append("– V n to vote");
+                return sb.toString();
+            }
+            case "V", "VOTE" -> {
+                if (store.pollQuestion.isBlank()) return "No poll open.";
+                int v; try { v = Integer.parseInt(arg.trim()) - 1; } catch (NumberFormatException e) { return "V n – vote for option n (POLL to see them)"; }
+                if (v < 0 || v >= store.pollOptions.size()) return "Options are 1–" + store.pollOptions.size();
+                store.pollVotes.put(from, v);
+                return "Vote recorded: " + store.pollOptions.get(v) + ". POLL for the tally.";
+            }
+            case "GB", "GUESTBOOK" -> {
+                if (arg.isEmpty()) {
+                    if (store.guestbook.isEmpty()) return "Guestbook is empty. GB your message to sign it.";
+                    StringBuilder sb = new StringBuilder();
+                    List<BbsStore.GuestEntry> g = new ArrayList<>(store.guestbook); Collections.reverse(g);
+                    for (BbsStore.GuestEntry e : g) { String line = shortName(e.name) + ": " + e.text + "\n"; if (sb.length() + line.length() > 190) break; sb.append(line); }
+                    return sb.toString().trim();
+                }
+                BbsStore.GuestEntry e = new BbsStore.GuestEntry(); e.time = System.currentTimeMillis(); e.num = from; e.name = who; e.text = arg.length() > 80 ? arg.substring(0, 80) : arg;
+                store.guestbook.add(e); while (store.guestbook.size() > 200) store.guestbook.remove(0);
+                bridge("✍️ guestbook – " + who + ": " + e.text);
+                return "Signed. GB to read the book.";
+            }
+            case "SYSOP" -> {
+                if (store.sysopPassword.isBlank()) return "Remote admin is not enabled.";
+                if (!arg.equals(store.sysopPassword)) { log("bad sysop password from " + who); return "No."; }
+                store.admins.put(from, System.currentTimeMillis() + 3600_000L);
+                return "Sysop mode for 1 h. X POST text, X DEL n, X CALLERS, X BAN name, X UNBAN name, X MOTD text, X ADVERT, X STATS, X NET";
+            }
+            case "X" -> {
+                Long until = store.admins.get(from);
+                if (until == null || until < System.currentTimeMillis()) return "Not in sysop mode (SYSOP password).";
+                String[] xp = arg.split("\\s+", 2); String sub = xp[0].toUpperCase(); String xa = xp.length > 1 ? xp[1] : "";
+                switch (sub) {
+                    case "POST" -> { BbsStore.Post p = new BbsStore.Post(); p.id = store.nextId(); p.time = System.currentTimeMillis(); p.author = state.myNodeNum(); p.authorName = "sysop"; p.text = xa; store.posts.add(p); bridge("📌 sysop: " + xa); return "Posted #" + p.id; }
+                    case "DEL" -> { BbsStore.Post p = post(xa); if (p == null) return "No such post."; store.posts.remove(p); return "Deleted #" + p.id; }
+                    case "CALLERS" -> { List<BbsStore.Caller> l = new ArrayList<>(store.callers.values()); l.sort((a, b) -> Long.compare(b.last, a.last)); StringBuilder sb = new StringBuilder(); for (BbsStore.Caller c : l) { String line = shortName(c.name) + " " + c.commands + "x " + meshconsole.ui.FmtBridge.ago(c.last) + "; "; if (sb.length() + line.length() > 190) break; sb.append(line); } return sb.length() == 0 ? "No callers yet." : sb.toString(); }
+                    case "BAN" -> { Integer n = resolve(xa); if (n == null) return "Unknown node."; store.banned.add(n); return "Banned " + state.nodeName(n); }
+                    case "UNBAN" -> { Integer n = resolve(xa); if (n == null) return "Unknown node."; store.banned.remove(n); return "Unbanned " + state.nodeName(n); }
+                    case "MOTD" -> { store.motd = xa; return xa.isBlank() ? "MOTD cleared." : "MOTD set."; }
+                    case "ADVERT" -> { advertiseNow(); return "Advert sent."; }
+                    case "STATS" -> { return stateLine(); }
+                    case "NET" -> { int sent = netExchangeNow(); return "MeshNet exchange started with " + store.peers.size() + " peer(s), " + sent + " post(s) queued."; }
+                    default -> { return "X POST|DEL|CALLERS|BAN|UNBAN|MOTD|ADVERT|STATS|NET"; }
+                }
+            }
+            case "NET" -> {
+                if (store.peers.isEmpty()) return "This board is not networked yet.";
+                StringBuilder sb = new StringBuilder("MeshNet peers: ");
+                for (BbsStore.Peer pr : store.peers) sb.append(pr.name.isEmpty() ? state.nodeName(pr.num) : pr.name).append(pr.lastExchange > 0 ? " (" + meshconsole.ui.FmtBridge.ago(pr.lastExchange) + " ago)" : " (never)").append("; ");
+                return sb.append("Posts from peers show 'via <board>'. M board!name text mails a user on a peer.").toString();
             }
             case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
             case "METRO", "WMATA" -> { bg.submit(() -> send(from, BbsExtras.metro(store.wmataKey))); return null; }
@@ -347,6 +450,115 @@ public class BbsEngine {
         String s = names.size() + " nodes/1h: " + String.join(" ", names);
         return s.length() > 180 ? s.substring(0, 177) + "…" : s;
     }
+
+    private boolean isPeer(int num) { for (BbsStore.Peer p : store.peers) if (p.num == num) return true; return false; }
+    private BbsStore.Peer peerByName(String name) {
+        String q = name.toLowerCase();
+        for (BbsStore.Peer p : store.peers) if (p.name.equalsIgnoreCase(name) || state.nodeName(p.num).equalsIgnoreCase(name)) return p;
+        for (BbsStore.Peer p : store.peers) { NodeEntry n = state.node(p.num); if (p.name.toLowerCase().startsWith(q) || state.nodeName(p.num).toLowerCase().startsWith(q) || (n != null && n.shortName.equalsIgnoreCase(name))) return p; }
+        return null;
+    }
+
+    /**
+     * MeshNet: WWIVnet-style store-and-forward between boards, over DMs. Lines (each ≤ 200 bytes):
+     *   NET HELLO <board name>                       – announce / handshake
+     *   NET POST <id> <author>: <text>               – a bulletin headline from the peer (deduped by peer:id)
+     *   NET MAIL <user> <from>: <text>               – mail for a local user, routed from the peer
+     *   NET ACK <id>                                 – delivery confirmation for a POST
+     */
+    private void handleNet(int peer, String line) {
+        BbsStore.Peer pr = null; for (BbsStore.Peer p : store.peers) if (p.num == peer) pr = p;
+        if (pr == null) return;
+        String[] parts = line.split("\\s+", 2); String op = parts[0].toUpperCase(); String rest = parts.length > 1 ? parts[1] : "";
+        switch (op) {
+            case "HELLO" -> { if (pr.name.isEmpty() && !rest.isBlank()) pr.name = rest.trim(); pr.lastExchange = System.currentTimeMillis(); log("MeshNet hello from " + pr.name); }
+            case "POST" -> {
+                String[] pp = rest.split("\\s+", 2); if (pp.length < 2) return;
+                String key = Integer.toUnsignedString(peer) + ":" + pp[0];
+                if (store.netSeen.add(key)) {
+                    int colon = pp[1].indexOf(':');
+                    BbsStore.Post p = new BbsStore.Post(); p.id = store.nextId(); p.time = System.currentTimeMillis(); p.author = peer;
+                    p.authorName = (colon > 0 ? pp[1].substring(0, colon).trim() : pr.name) + " via " + (pr.name.isEmpty() ? state.nodeName(peer) : pr.name);
+                    p.text = colon > 0 ? pp[1].substring(colon + 1).trim() : pp[1];
+                    store.posts.add(p); while (store.posts.size() > store.maxPosts) store.posts.remove(0);
+                    log("MeshNet post from " + pr.name + ": " + p.text);
+                    bridge("🌐 " + p.authorName + ": " + p.text);
+                }
+                send(peer, "NET ACK " + pp[0]);
+                pr.lastExchange = System.currentTimeMillis();
+            }
+            case "MAIL" -> {
+                String[] mp = rest.split("\\s+", 2); if (mp.length < 2) return;
+                Integer to = resolve(mp[0]);
+                int colon = mp[1].indexOf(':');
+                BbsStore.Mail x = new BbsStore.Mail(); x.id = store.nextId(); x.time = System.currentTimeMillis(); x.from = peer; x.fromName = (colon > 0 ? mp[1].substring(0, colon).trim() : "?") + "@" + (pr.name.isEmpty() ? state.nodeName(peer) : pr.name); x.text = colon > 0 ? mp[1].substring(colon + 1).trim() : mp[1];
+                if (to == null) { log("MeshNet mail for unknown user " + mp[0] + " – dropped"); return; }
+                x.to = to; store.mail.add(x); log("MeshNet mail from " + pr.name + " for " + state.nodeName(to));
+            }
+            case "ACK" -> { pr.lastExchange = System.currentTimeMillis(); }
+            default -> { }
+        }
+        store.save();
+    }
+
+    /** Sends each peer the local posts it hasn't had yet (max 5 per exchange, oldest first) and a HELLO. Returns posts queued. */
+    public int netExchangeNow() {
+        int queued = 0;
+        for (BbsStore.Peer pr : store.peers) {
+            send(pr.num, "NET HELLO " + store.name);
+            int n = 0;
+            for (BbsStore.Post p : store.posts) {
+                if (p.id <= pr.lastPostSent || p.author == pr.num || p.authorName.contains(" via ")) continue;   // don't echo a peer's own posts back
+                String text = "NET POST " + p.id + " " + shortName(p.authorName) + ": " + p.text;
+                send(pr.num, text.length() > 195 ? text.substring(0, 195) : text);
+                pr.lastPostSent = p.id; queued++; if (++n >= 5) break;
+            }
+        }
+        store.save();
+        return queued;
+    }
+
+    /** Daily subscriber digest: weather and new events, sent as DMs. */
+    private void sendDigest() {
+        WeatherObs o = weather == null ? null : weather.latest();
+        String wx = o == null ? null : String.format("WX %s: %.0f°F RH %.0f%% wind %s kt %s", o.station(), o.tempC() * 9 / 5 + 32, o.humidityPct(), Double.isNaN(o.windKt()) ? "?" : String.valueOf((int) o.windKt()), o.wx());
+        String ev = store.events.isEmpty() ? null : command(0, "E");
+        for (Map.Entry<Integer, Set<String>> e : store.subs.entrySet()) {
+            if (e.getValue().contains("WX") && wx != null) send(e.getKey(), wx);
+            if (e.getValue().contains("EVENTS") && ev != null) send(e.getKey(), ev);
+        }
+        log("digest sent to " + store.subs.size() + " subscriber(s)");
+    }
+
+    /** Discord → board: new messages in the configured channel that start with !post become bulletins. Needs a bot token. */
+    private void pollDiscord() {
+        if (store.discordBotToken.isBlank() || store.discordChannelId.isBlank()) return;
+        bg.submit(() -> {
+            try {
+                String url = "https://discord.com/api/v10/channels/" + store.discordChannelId + "/messages?limit=20" + (store.discordLastId.isBlank() ? "" : "&after=" + store.discordLastId);
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) java.net.URI.create(url).toURL().openConnection();
+                c.setRequestProperty("Authorization", "Bot " + store.discordBotToken); c.setRequestProperty("User-Agent", "MeshConsole-BBS"); c.setConnectTimeout(6000); c.setReadTimeout(8000);
+                if (c.getResponseCode() != 200) { log("discord poll: HTTP " + c.getResponseCode()); return; }
+                String body; try (java.io.InputStream in = c.getInputStream()) { body = new String(in.readAllBytes(), StandardCharsets.UTF_8); }
+                Object root = meshconsole.analysis.Json.parse(body);
+                if (!(root instanceof List<?> arr)) return;
+                List<Map<?, ?>> msgs = new ArrayList<>(); for (Object o : arr) if (o instanceof Map<?, ?> mm) msgs.add(mm);
+                Collections.reverse(msgs);   // oldest first
+                for (Map<?, ?> mm : msgs) {
+                    String id = meshconsole.analysis.Json.str(mm.get("id")); store.discordLastId = id;
+                    String content = meshconsole.analysis.Json.str(mm.get("content"));
+                    if (!content.toLowerCase().startsWith("!post ")) continue;
+                    Map<?, ?> author = (Map<?, ?>) mm.get("author"); String name = author == null ? "discord" : meshconsole.analysis.Json.str(author.get("username"));
+                    BbsStore.Post p = new BbsStore.Post(); p.id = store.nextId(); p.time = System.currentTimeMillis(); p.author = 0; p.authorName = name + " (discord)"; p.text = content.substring(6).trim();
+                    if (p.text.length() > 180) p.text = p.text.substring(0, 180);
+                    store.posts.add(p); log("post from discord by " + name + ": " + p.text);
+                }
+                store.save();
+            } catch (Exception e) { log("discord poll failed: " + e.getMessage()); }
+        });
+    }
+
+    private long lastDiscordPoll;
 
     private BbsStore.Post post(String arg) {
         try { int id = Integer.parseInt(arg.replace("#", "").trim()); for (BbsStore.Post p : store.posts) if (p.id == id) return p; } catch (NumberFormatException ignored) { }

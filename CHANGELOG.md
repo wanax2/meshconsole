@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.0 — 2026-10-03
+
+BBS 2.1 + **MeshNet**:
+- **MeshNet** — a WWIVnet-style store-and-forward network between boards running Mesh Console, over ordinary DMs: boards exchange new bulletin headlines daily (`NET POST`, deduplicated, shown as "author via Board"), route mail (`M board!user text`), and announce themselves (`NET HELLO`). Peers are configured by node id on the BBS tab; callers see them with `NET`. Protocol documented in the README so other BBS software can interoperate.
+- **Usage dashboard** on the BBS tab: calls per day, busiest hour, top commands, callers this week.
+- **Subscriptions**: `SUB WX` / `SUB EVENTS` — a daily digest DM at a set time; `UNSUB`.
+- **MOTD** shown on a caller's first `?` of the day; `B` reports "n new since your last visit".
+- **WHO name** node profile card; **POLL** / `V n` polls (sysop creates them on the tab); **GB text** guestbook.
+- **Admin by DM**: `SYSOP password` then `X POST|DEL|CALLERS|BAN|UNBAN|MOTD|ADVERT|STATS|NET` — run the board from a handheld.
+- **TOP** adds farthest caller and most-hops DM.
+- **Discord → board**: with a bot token and channel id, messages starting `!post` in that channel become bulletins (polled every 5 min); bulletins, events and guestbook entries go out to the webhook as before.
+
+
 ## 1.7.3 — 2026-10-01
 
 - UI refreshes are coalesced: the Nodes, Messages, Telemetry, Status and Map views rebuild at most once a second instead of on every packet — with 800 nodes the per-packet re-sorting could stall the window for minutes.
