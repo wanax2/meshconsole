@@ -217,4 +217,4 @@ NET MAIL <user> <from>: <text>      mail for a local user, routed from the peer;
 NET ACK <id>                        delivery confirmation for a POST
 ```
 
-Full specification: `meshnet/MESHNET.md`. Reference implementation for other BBS software: `meshnet/meshnet.py` (Python, no dependencies — import it, wire three callbacks, done). Global ids, ACK/retry, forwarding up to 3 hops and optional per-peer HMAC signatures are part of v1.
+MeshNet has its own repository with the spec, the Python module and an example bot: https://github.com/wanax2/meshnet. Full specification also in `meshnet/MESHNET.md` here. Reference implementation for other BBS software: `meshnet/meshnet.py` (Python, no dependencies — import it, wire three callbacks, done). Global ids, ACK/retry, forwarding up to 3 hops and optional per-peer HMAC signatures are part of v1.

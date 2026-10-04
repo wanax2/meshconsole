@@ -385,30 +385,33 @@ public class MainWindow extends JFrame {
     }
 
     private void exportLogs() {
-        JFileChooser fc = new JFileChooser(meshconsole.DataDir.get().toFile());
-        fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        fc.setDialogTitle("Folder to save the export zip in");
-        fc.setApproveButtonText("Export here");
-        JCheckBox caps = new JCheckBox("Include packet captures (*.mcap)", false);
-        fc.setAccessory(caps);
-        if (fc.showDialog(this, "Export here") != JFileChooser.APPROVE_OPTION) return;
+        // No JFileChooser here: on Windows it enumerates every mapped drive and can block for minutes if one is offline.
+        Object[] opts = {"Export to data folder\\exports", "Choose a folder…", "Cancel"};
+        int choice = JOptionPane.showOptionDialog(this, "<html>Zip all logs (message log, node DB, histories, alerts, app log, crash/hang logs).<br>Packet captures (.mcap) are not included.</html>", "Export all logs",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opts, opts[0]);
+        if (choice == 2 || choice < 0) return;
+        java.nio.file.Path target = meshconsole.DataDir.file("exports");
+        if (choice == 1) {
+            java.awt.FileDialog fd = new java.awt.FileDialog(this, "Folder to save the export in (pick any file in it, or type a name)", java.awt.FileDialog.SAVE);
+            fd.setDirectory(meshconsole.DataDir.get().toString()); fd.setFile("meshconsole-export.zip");
+            fd.setVisible(true);
+            if (fd.getDirectory() == null) return;
+            target = java.nio.file.Path.of(fd.getDirectory());
+        }
         statusPanel.flushLog();
-        final java.nio.file.Path target = fc.getSelectedFile().toPath();
-        final boolean withCaps = caps.isSelected();
-        long total = 0;
-        for (String f : meshconsole.DataDir.FILES) { java.nio.file.Path pth = meshconsole.DataDir.file(f); try { if (java.nio.file.Files.exists(pth)) total += java.nio.file.Files.size(pth); } catch (java.io.IOException ignored) { } }
+        final java.nio.file.Path dir = target;
         JDialog progress = new JDialog(this, "Exporting…", false);
-        JLabel pl = new JLabel("Compressing " + (total / 1_048_576) + " MB of logs – the app stays usable meanwhile.  ");
+        JLabel pl = new JLabel("Compressing the data files – the app stays usable meanwhile.  ");
         pl.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
         progress.add(pl); progress.pack(); progress.setLocationRelativeTo(this); progress.setVisible(true);
         new Thread(() -> {
             try {
-                java.nio.file.Path zip = meshconsole.DataDir.exportZip(target, withCaps);
+                java.nio.file.Path zip = meshconsole.DataDir.exportZip(dir, false);
                 state.emitLog("Exported logs to " + zip);
                 SwingUtilities.invokeLater(() -> {
                     progress.dispose();
                     try {
-                        int r = JOptionPane.showOptionDialog(this, "Saved " + zip.getFileName() + " (" + java.nio.file.Files.size(zip) / 1024 + " KB)", "Export",
+                        int r = JOptionPane.showOptionDialog(this, "Saved " + zip.getFileName() + " (" + java.nio.file.Files.size(zip) / 1024 + " KB) in " + zip.getParent(), "Export",
                                 JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, new Object[]{"Show in folder", "OK"}, "OK");
                         if (r == 0 && Desktop.isDesktopSupported()) Desktop.getDesktop().open(zip.getParent().toFile());
                     } catch (java.io.IOException ignored) { }
@@ -420,11 +423,9 @@ public class MainWindow extends JFrame {
     }
 
     private void chooseDataFolder() {
-        JFileChooser fc = new JFileChooser(meshconsole.DataDir.get().toFile());
-        fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        fc.setDialogTitle("Folder for logs, node database and history (current: " + meshconsole.DataDir.get() + ")");
-        if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
-        java.nio.file.Path chosen = fc.getSelectedFile().toPath().toAbsolutePath();
+        String typed = JOptionPane.showInputDialog(this, "Folder for logs, node database and history:", meshconsole.DataDir.get().toString());
+        if (typed == null || typed.isBlank()) return;
+        java.nio.file.Path chosen = java.nio.file.Path.of(typed.trim()).toAbsolutePath();
         if (chosen.equals(meshconsole.DataDir.get())) return;
         Object[] opts = {"Copy existing data there", "Start empty there", "Cancel"};
         int r = JOptionPane.showOptionDialog(this, "<html>Use <b>" + chosen + "</b> for all data files from the next start?<br><br>"

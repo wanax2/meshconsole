@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.2 — 2026-10-04
+
+- Fix for the export freeze: the folder chooser (`JFileChooser`) is gone from Export and Data folder. On Windows it enumerates every mapped drive and can block the window for minutes if a network share is offline. Export now writes to `exports\` inside the data folder by default (background, with "Show in folder"), with a native Windows dialog as the alternative; the data folder is typed in.
+- README points to the standalone MeshNet repository.
+
+
 ## 1.8.1 — 2026-10-03
 
 - **MeshNet v1** is now a proper protocol, documented in `meshnet/MESHNET.md`: global ids (`origin:n`) so posts dedupe across any route, `HELLO v1` with capability flags, **ACK with retry** (10 min, 3 attempts) and pacing (2 lines/min), **forwarding** to other peers up to 3 hops with loop protection, and optional **HMAC-SHA256 signatures** per peer (`!id=Name=secret` on the BBS tab).
