@@ -67,9 +67,9 @@ class StatsPanel extends JPanel {
         export.add(button("Neighbour links", this::exportNeighbors));
         JButton kml = new JButton("Google Earth (KML)");
         kml.addActionListener(e -> {
-            JFileChooser fc = new JFileChooser(); fc.setSelectedFile(new java.io.File("mesh.kml"));
-            if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
-            try { meshconsole.tools.Kml.write(fc.getSelectedFile().toPath(), state); state.emitLog("KML written to " + fc.getSelectedFile()); }
+            Path kp = NativeFiles.save(this, "Save KML", meshconsole.DataDir.file("mesh.kml"));
+            if (kp == null) return;
+            try { meshconsole.tools.Kml.write(kp, state); state.emitLog("KML written to " + kp); }
             catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "KML", JOptionPane.ERROR_MESSAGE); }
         });
         export.add(kml);
@@ -86,10 +86,8 @@ class StatsPanel extends JPanel {
     private JButton button(String label, Writer w) {
         JButton b = new JButton(label);
         b.addActionListener(e -> {
-            JFileChooser fc = new JFileChooser();
-            fc.setSelectedFile(new java.io.File(label.toLowerCase().replace(' ', '_') + ".csv"));
-            if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
-            Path p = fc.getSelectedFile().toPath();
+            Path p = NativeFiles.save(this, "Export " + label, meshconsole.DataDir.file(label.toLowerCase().replace(' ', '_') + ".csv"));
+            if (p == null) return;
             try (PrintWriter pw = new PrintWriter(Files.newBufferedWriter(p, StandardCharsets.UTF_8))) {
                 w.write(pw);
                 state.emitLog("Exported " + p);

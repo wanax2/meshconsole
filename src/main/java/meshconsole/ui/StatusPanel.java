@@ -124,20 +124,18 @@ class StatusPanel extends JPanel {
     private void toggleCapture() {
         if (client == null) return;
         if (client.isCapturing()) { client.stopCapture(); captureBtn.setText("● Record packets"); captureInfo.setText(" "); return; }
-        JFileChooser fc = new JFileChooser();
-        fc.setSelectedFile(meshconsole.DataDir.file("capture-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".mcap").toFile());
-        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        java.nio.file.Path cp = NativeFiles.save(this, "Record packets to", meshconsole.DataDir.file("capture-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".mcap"));
+        if (cp == null) return;
         try {
-            client.startCapture(fc.getSelectedFile().toPath());
+            client.startCapture(cp);
             captureBtn.setText("■ Stop recording");
         } catch (java.io.IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "Capture", JOptionPane.ERROR_MESSAGE); }
     }
 
     private void replay() {
         if (client == null) return;
-        JFileChooser fc = new JFileChooser();
-        fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Mesh Console capture (*.mcap)", "mcap"));
-        if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        java.nio.file.Path rp = NativeFiles.open(this, "Replay capture", "mcap");
+        if (rp == null) return;
         String[] speeds = {"As fast as possible", "Real time", "10× speed"};
         int sp = JOptionPane.showOptionDialog(this, "Replay speed:", "Replay", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, speeds, speeds[0]);
         if (sp < 0) return;
@@ -147,7 +145,7 @@ class StatusPanel extends JPanel {
         for (java.awt.event.ActionListener l : replayBtn.getActionListeners()) replayBtn.removeActionListener(l);
         replayBtn.addActionListener(e -> cancel[0] = true);
         new Thread(() -> {
-            try { long n = client.replay(fc.getSelectedFile().toPath(), speed, () -> cancel[0]); SwingUtilities.invokeLater(() -> captureInfo.setText(n + " frames replayed")); }
+            try { long n = client.replay(rp, speed, () -> cancel[0]); SwingUtilities.invokeLater(() -> captureInfo.setText(n + " frames replayed")); }
             catch (java.io.IOException ex) { SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, ex.getMessage(), "Replay", JOptionPane.ERROR_MESSAGE)); }
             finally { SwingUtilities.invokeLater(() -> { replayBtn.setText("Replay capture…"); for (java.awt.event.ActionListener l : replayBtn.getActionListeners()) replayBtn.removeActionListener(l); replayBtn.addActionListener(e -> replay()); }); }
         }, "replay").start();

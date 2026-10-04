@@ -13,7 +13,7 @@ class SchedulePanel extends JPanel {
         JPanel box = new JPanel(); box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
         JCheckBox rep = new JCheckBox("Write mesh_report.html daily at", s.reportOn); JTextField repT = new JTextField(s.reportTime, 5);
         JCheckBox exp = new JCheckBox("Export all logs as zip nightly at", s.exportOn); JTextField expT = new JTextField(s.exportTime, 5); JTextField expD = new JTextField(s.exportDir, 28);
-        JButton pick = new JButton("Folder…"); pick.addActionListener(e -> { JFileChooser fc = new JFileChooser(); fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY); if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) expD.setText(fc.getSelectedFile().getPath()); });
+        JButton pick = new JButton("Folder…"); pick.addActionListener(e -> { java.nio.file.Path f = NativeFiles.folder(this, "Export folder", meshconsole.DataDir.get()); if (f != null) expD.setText(f.toString()); });
         JCheckBox tr = new JCheckBox("Traceroute every watched node weekly on", s.traceOn); JComboBox<String> day = new JComboBox<>(new String[]{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}); day.setSelectedIndex(Math.max(0, Math.min(6, s.traceWeekday - 1))); JTextField trT = new JTextField(s.traceTime, 5);
         JCheckBox bc = new JCheckBox("Send a beacon message every", s.beaconOn); JSpinner bcMin = new JSpinner(new SpinnerNumberModel(s.beaconMinutes, 5, 1440, 5)); JTextField bcText = new JTextField(s.beaconText, 22); JTextField bcTo = new JTextField(s.beaconTo == 0xFFFFFFFF ? "" : String.format("!%08x", s.beaconTo), 10);
         JPanel r1 = row(); r1.add(rep); r1.add(repT);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.3 — 2026-10-04
+
+- All remaining Swing file choosers (CSV/KML export, record/replay capture, nightly-export folder) replaced with native Windows dialogs. `hang.log` confirmed the freeze was `JFileChooser` waiting on the Windows shell for a drive icon (an offline mapped drive).
+
+
 ## 1.8.2 — 2026-10-04
 
 - Fix for the export freeze: the folder chooser (`JFileChooser`) is gone from Export and Data folder. On Windows it enumerates every mapped drive and can block the window for minutes if a network share is offline. Export now writes to `exports\` inside the data folder by default (background, with "Show in folder"), with a native Windows dialog as the alternative; the data folder is typed in.
