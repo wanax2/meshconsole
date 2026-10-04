@@ -217,4 +217,4 @@ NET MAIL <user> <from>: <text>      mail for a local user, routed from the peer;
 NET ACK <id>                        delivery confirmation for a POST
 ```
 
-Lines are only accepted from configured peers; a board never forwards a peer's posts to another peer (no loops). Any other BBS software can join by speaking these four lines.
+Full specification: `meshnet/MESHNET.md`. Reference implementation for other BBS software: `meshnet/meshnet.py` (Python, no dependencies — import it, wire three callbacks, done). Global ids, ACK/retry, forwarding up to 3 hops and optional per-peer HMAC signatures are part of v1.

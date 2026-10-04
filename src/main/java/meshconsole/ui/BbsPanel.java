@@ -92,14 +92,14 @@ class BbsPanel extends JPanel {
         // ---- MeshNet peers + Discord bot
         JPanel r2e = row();
         JCheckBox netOn = new JCheckBox("MeshNet exchange daily at", store.netOn); JTextField netTime = new JTextField(store.netTime, 5);
-        StringBuilder peerStr = new StringBuilder(); for (BbsStore.Peer pr : store.peers) peerStr.append(String.format("!%08x", pr.num)).append(pr.name.isEmpty() ? "" : "=" + pr.name).append("; ");
+        StringBuilder peerStr = new StringBuilder(); for (BbsStore.Peer pr : store.peers) peerStr.append(String.format("!%08x", pr.num)).append("=").append(pr.name).append(pr.secret.isBlank() ? "" : "=" + pr.secret).append("; ");
         JTextField peers = new JTextField(peerStr.toString().trim(), 30);
-        r2e.add(netOn); r2e.add(netTime); r2e.add(new JLabel("peers (!id=Name; …):")); r2e.add(peers);
+        r2e.add(netOn); r2e.add(netTime); r2e.add(new JLabel("peers (!id=Name[=secret]; …):")); r2e.add(peers);
         JButton savePeers = new JButton("Save peers"); savePeers.addActionListener(e -> {
             store.netOn = netOn.isSelected(); store.netTime = netTime.getText().trim();
             java.util.Map<Integer, BbsStore.Peer> old = new java.util.HashMap<>(); for (BbsStore.Peer pr : store.peers) old.put(pr.num, pr);
             store.peers.clear();
-            for (String tok : peers.getText().split(";")) { tok = tok.trim(); if (tok.isEmpty()) continue; String[] kv = tok.split("=", 2); try { int num = (int) Long.parseLong(kv[0].trim().replace("!", ""), 16); BbsStore.Peer pr = old.getOrDefault(num, new BbsStore.Peer()); pr.num = num; if (kv.length > 1) pr.name = kv[1].trim(); store.peers.add(pr); } catch (NumberFormatException ignored) { } }
+            for (String tok : peers.getText().split(";")) { tok = tok.trim(); if (tok.isEmpty()) continue; String[] kv = tok.split("=", 3); try { int num = (int) Long.parseLong(kv[0].trim().replace("!", ""), 16); BbsStore.Peer pr = old.getOrDefault(num, new BbsStore.Peer()); pr.num = num; if (kv.length > 1) pr.name = kv[1].trim(); pr.secret = kv.length > 2 ? kv[2].trim() : ""; store.peers.add(pr); } catch (NumberFormatException ignored) { } }
             store.save(); reload();
         }); r2e.add(savePeers);
         JButton netNow = new JButton("Exchange now"); netNow.addActionListener(e -> { if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first."); return; } int n = engine.netExchangeNow(); JOptionPane.showMessageDialog(this, "Sent HELLO to " + store.peers.size() + " peer(s) and " + n + " post(s)."); }); r2e.add(netNow);

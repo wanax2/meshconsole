@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.1 — 2026-10-03
+
+- **MeshNet v1** is now a proper protocol, documented in `meshnet/MESHNET.md`: global ids (`origin:n`) so posts dedupe across any route, `HELLO v1` with capability flags, **ACK with retry** (10 min, 3 attempts) and pacing (2 lines/min), **forwarding** to other peers up to 3 hops with loop protection, and optional **HMAC-SHA256 signatures** per peer (`!id=Name=secret` on the BBS tab).
+- **`meshnet/meshnet.py`** — a dependency-free Python reference implementation (~150 lines) any Meshtastic BBS can drop in: `handle_dm()`, `queue_post()`, `queue_mail()`, `exchange()`, `tick()`. Verified interoperating with the Java board, signatures on.
+
+
 ## 1.8.0 — 2026-10-03
 
 BBS 2.1 + **MeshNet**:

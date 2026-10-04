@@ -31,7 +31,10 @@ public class BbsStore {
     public final List<GuestEntry> guestbook = new ArrayList<>();
     public String sysopPassword = ""; public final Map<Integer, Long> admins = new HashMap<>();
     public String discordBotToken = "", discordChannelId = "", discordLastId = "";
-    public static class Peer { public int num; public String name = ""; public long lastExchange; public int lastPostSent; }
+    public static class Peer { public int num; public String name = "", secret = ""; public long lastExchange; public int lastPostSent; public Set<String> caps = new HashSet<>(); }
+    public static class Outbox { public int peer; public String line, gid; public int attempts; public long last; }
+    public final List<Outbox> outbox = new ArrayList<>();
+    public int netMailSeq = 1;
     public final List<Peer> peers = new ArrayList<>(); public final Set<String> netSeen = new HashSet<>(); public String netTime = "04:00", netDay = "";
     public boolean netOn = false;
     public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; public int lastPostSeen; public String lastMotdDay = ""; }
@@ -84,7 +87,9 @@ public class BbsStore {
             if (m.get("guestbook") instanceof List<?> gb) for (Object o : gb) if (o instanceof Map<?, ?> g) { GuestEntry x = new GuestEntry(); x.time = (long) Json.num(g.get("time"), 0); x.num = (int) (long) Json.num(g.get("num"), 0); x.name = Json.str(g.get("name")); x.text = Json.str(g.get("text")); guestbook.add(x); }
             if (m.get("sysopPassword") != null) sysopPassword = Json.str(m.get("sysopPassword"));
             if (m.get("discordBotToken") != null) discordBotToken = Json.str(m.get("discordBotToken")); if (m.get("discordChannelId") != null) discordChannelId = Json.str(m.get("discordChannelId")); if (m.get("discordLastId") != null) discordLastId = Json.str(m.get("discordLastId"));
-            if (m.get("peers") instanceof List<?> ps2) for (Object o : ps2) if (o instanceof Map<?, ?> g) { Peer x = new Peer(); x.num = (int) (long) Json.num(g.get("num"), 0); x.name = Json.str(g.get("name")); x.lastExchange = (long) Json.num(g.get("lastExchange"), 0); x.lastPostSent = (int) Json.num(g.get("lastPostSent"), 0); if (x.num != 0) peers.add(x); }
+            if (m.get("peers") instanceof List<?> ps2) for (Object o : ps2) if (o instanceof Map<?, ?> g) { Peer x = new Peer(); x.num = (int) (long) Json.num(g.get("num"), 0); x.name = Json.str(g.get("name")); x.secret = Json.str(g.get("secret")); x.lastExchange = (long) Json.num(g.get("lastExchange"), 0); x.lastPostSent = (int) Json.num(g.get("lastPostSent"), 0); if (g.get("caps") instanceof List<?> cl) for (Object c : cl) x.caps.add(String.valueOf(c)); if (x.num != 0) peers.add(x); }
+            if (m.get("outbox") instanceof List<?> ob) for (Object o : ob) if (o instanceof Map<?, ?> g) { Outbox x = new Outbox(); x.peer = (int) (long) Json.num(g.get("peer"), 0); x.line = Json.str(g.get("line")); x.gid = Json.str(g.get("gid")); x.attempts = (int) Json.num(g.get("attempts"), 0); x.last = (long) Json.num(g.get("last"), 0); outbox.add(x); }
+            netMailSeq = (int) Json.num(m.get("netMailSeq"), 1);
             if (m.get("netSeen") instanceof List<?> ns) for (Object o : ns) netSeen.add(String.valueOf(o));
             if (m.get("netTime") != null) netTime = Json.str(m.get("netTime")); if (m.get("netDay") != null) netDay = Json.str(m.get("netDay"));
             netOn = Boolean.TRUE.equals(m.get("netOn"));
@@ -112,7 +117,10 @@ public class BbsStore {
         sb.append("\"subs\":{"); boolean sf = true; for (Map.Entry<Integer, Set<String>> e : subs.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":["); boolean ff = true; for (String v : e.getValue()) { if (!ff) sb.append(','); ff = false; sb.append('"').append(v).append('"'); } sb.append(']'); } sb.append("},\n");
         sb.append("\"pollOptions\":["); sf = true; for (String o : pollOptions) { if (!sf) sb.append(','); sf = false; sb.append(kv("x", o), 4, kv("x", o).length() - 1); } sb.append("],\"pollVotes\":{"); sf = true; for (Map.Entry<Integer, Integer> e : pollVotes.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); } sb.append("},\n");
         sb.append("\"guestbook\":["); sf = true; for (GuestEntry g : guestbook) { if (!sf) sb.append(','); sf = false; sb.append('{').append(kv("time", g.time)).append("\"num\":").append(Integer.toUnsignedLong(g.num)).append(',').append(kv("name", g.name)).append(kv("text", g.text)); sb.setLength(sb.length() - 1); sb.append('}'); } sb.append("],\n");
-        sb.append("\"peers\":["); sf = true; for (Peer pr : peers) { if (!sf) sb.append(','); sf = false; sb.append("{\"num\":").append(Integer.toUnsignedLong(pr.num)).append(',').append(kv("name", pr.name)).append(kv("lastExchange", pr.lastExchange)).append(kv("lastPostSent", pr.lastPostSent)); sb.setLength(sb.length() - 1); sb.append('}'); } sb.append("],\"netSeen\":["); sf = true; for (String n : netSeen) { if (!sf) sb.append(','); sf = false; sb.append('"').append(n).append('"'); } sb.append("],\n");
+        sb.append("\"peers\":["); sf = true; for (Peer pr : peers) { if (!sf) sb.append(','); sf = false; sb.append("{\"num\":").append(Integer.toUnsignedLong(pr.num)).append(',').append(kv("name", pr.name)).append(kv("secret", pr.secret)).append(kv("lastExchange", pr.lastExchange)).append(kv("lastPostSent", pr.lastPostSent)).append("\"caps\":["); boolean cf = true; for (String c : pr.caps) { if (!cf) sb.append(','); cf = false; sb.append('"').append(c).append('"'); } sb.append("]}"); }
+        sb.append("],\"outbox\":["); sf = true; for (Outbox ob : outbox) { if (!sf) sb.append(','); sf = false; sb.append("{\"peer\":").append(Integer.toUnsignedLong(ob.peer)).append(',').append(kv("line", ob.line)).append(kv("gid", ob.gid)).append(kv("attempts", ob.attempts)).append(kv("last", ob.last)); sb.setLength(sb.length() - 1); sb.append('}'); }
+        sb.append("],").append(kv("netMailSeq", netMailSeq));
+        sb.append("\"netSeen\":["); sf = true; for (String n : netSeen) { if (!sf) sb.append(','); sf = false; sb.append('"').append(n).append('"'); } sb.append("],\n");
         sb.append("\"trivia\":{");
         boolean tf = true; for (Map.Entry<Integer, Integer> e : trivia.entrySet()) { if (!tf) sb.append(','); tf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); }
         sb.append("},\n\"events\":[\n");

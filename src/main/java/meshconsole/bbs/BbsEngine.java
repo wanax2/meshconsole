@@ -77,6 +77,7 @@ public class BbsEngine {
         if (due(now, store.digestTime) && !today.equals(store.digestDay) && !store.subs.isEmpty()) { store.digestDay = today; store.save(); sendDigest(); }
         if (store.netOn && due(now, store.netTime) && !today.equals(store.netDay) && !store.peers.isEmpty()) { store.netDay = today; store.save(); int n = netExchangeNow(); log("MeshNet daily exchange: " + n + " post(s) sent"); }
         if (System.currentTimeMillis() - lastDiscordPoll > 5 * 60_000L) { lastDiscordPoll = System.currentTimeMillis(); pollDiscord(); }
+        if (!store.outbox.isEmpty()) netPump();
         if (!store.advertOn) return;
         if (due(now, store.advertTime) && !today.equals(store.advertDay)) {
             store.advertDay = today; store.save();
@@ -250,9 +251,9 @@ public class BbsEngine {
                 if (mp[0].contains("!") && !mp[0].startsWith("!")) {   // board!user → route via MeshNet
                     String[] bu = mp[0].split("!", 2); BbsStore.Peer pr = peerByName(bu[0]);
                     if (pr == null) return "No MeshNet peer called '" + bu[0] + "'. NET lists them.";
-                    send(pr.num, "NET MAIL " + bu[1] + " " + who + ": " + mp[1]);
-                    log("mail routed to " + pr.name + " for " + bu[1]);
-                    return "Mail handed to " + pr.name + " for " + bu[1] + ".";
+                    netMail(pr, bu[1], who, mp[1]);
+                    log("mail queued for " + pr.name + " user " + bu[1]);
+                    return "Mail queued for " + bu[1] + " at " + pr.name + " (delivered at the next exchange, acknowledged on arrival).";
                 }
                 Integer to = resolve(mp[0]);
                 if (to == null) return "Don't know '" + mp[0] + "'. Use !id or a name from N.";
@@ -373,7 +374,7 @@ public class BbsEngine {
                 if (store.peers.isEmpty()) return "This board is not networked yet.";
                 StringBuilder sb = new StringBuilder("MeshNet peers: ");
                 for (BbsStore.Peer pr : store.peers) sb.append(pr.name.isEmpty() ? state.nodeName(pr.num) : pr.name).append(pr.lastExchange > 0 ? " (" + meshconsole.ui.FmtBridge.ago(pr.lastExchange) + " ago)" : " (never)").append("; ");
-                return sb.append("Posts from peers show 'via <board>'. M board!name text mails a user on a peer.").toString();
+                return sb.append(store.outbox.isEmpty() ? "" : store.outbox.size() + " queued. ").append("M board!name text mails a user on a peer.").toString();
             }
             case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
             case "METRO", "WMATA" -> { bg.submit(() -> send(from, BbsExtras.metro(store.wmataKey))); return null; }
@@ -459,63 +460,133 @@ public class BbsEngine {
         return null;
     }
 
-    /**
-     * MeshNet: WWIVnet-style store-and-forward between boards, over DMs. Lines (each ≤ 200 bytes):
-     *   NET HELLO <board name>                       – announce / handshake
-     *   NET POST <id> <author>: <text>               – a bulletin headline from the peer (deduped by peer:id)
-     *   NET MAIL <user> <from>: <text>               – mail for a local user, routed from the peer
-     *   NET ACK <id>                                 – delivery confirmation for a POST
-     */
-    private void handleNet(int peer, String line) {
-        BbsStore.Peer pr = null; for (BbsStore.Peer p : store.peers) if (p.num == peer) pr = p;
+    // ======================================================================================
+    // MeshNet v1 — see meshnet/MESHNET.md. Global ids <origin>:<n>, HELLO with caps, ACK + retry, forwarding, HMAC.
+    // ======================================================================================
+    private static final int NET_MAX_HOPS = 3, NET_MAX_PER_EXCHANGE = 5, NET_MAX_ATTEMPTS = 3;
+    private static final long NET_RETRY_MS = 10 * 60_000L;
+
+    private String myHex() { return String.format("%08x", state.myNodeNum()); }
+
+    private static String sig(String secret, String body) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] d = mac.doFinal(body.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(); for (int i = 0; i < 3; i++) sb.append(String.format("%02x", d[i]));
+            return sb.toString();
+        } catch (Exception e) { return ""; }
+    }
+
+    private BbsStore.Peer peer(int num) { for (BbsStore.Peer p : store.peers) if (p.num == num) return p; return null; }
+
+    /** Sends one protocol line to a peer, signing it if the peer has a secret. */
+    private void netSend(BbsStore.Peer pr, String line) {
+        if (!pr.secret.isBlank()) line = line + " s=" + sig(pr.secret, line);
+        byte[] b = line.getBytes(StandardCharsets.UTF_8);
+        if (b.length > MAX_BYTES) line = new String(b, 0, MAX_BYTES, StandardCharsets.UTF_8);
+        send(pr.num, line);
+    }
+
+    private void netQueue(BbsStore.Peer pr, String line, String gid) {
+        for (BbsStore.Outbox o : store.outbox) if (o.peer == pr.num && o.gid.equals(gid)) return;
+        BbsStore.Outbox o = new BbsStore.Outbox(); o.peer = pr.num; o.line = line; o.gid = gid; store.outbox.add(o);
+    }
+
+    private void handleNet(int from, String rest) {
+        BbsStore.Peer pr = peer(from);
         if (pr == null) return;
-        String[] parts = line.split("\\s+", 2); String op = parts[0].toUpperCase(); String rest = parts.length > 1 ? parts[1] : "";
+        String line = "NET " + rest;
+        if (!pr.secret.isBlank()) {
+            int i = line.lastIndexOf(" s=");
+            if (i < 0) { log("MeshNet: unsigned line from " + pr.name + " dropped"); return; }
+            String body = line.substring(0, i), given = line.substring(i + 3).trim().toLowerCase();
+            if (!sig(pr.secret, body).equals(given)) { log("MeshNet: bad signature from " + pr.name + " dropped"); return; }
+            line = body; rest = line.substring(4);
+        }
+        String[] parts = rest.split("\\s+", 2); String op = parts[0].toUpperCase(); String arg = parts.length > 1 ? parts[1] : "";
         switch (op) {
-            case "HELLO" -> { if (pr.name.isEmpty() && !rest.isBlank()) pr.name = rest.trim(); pr.lastExchange = System.currentTimeMillis(); log("MeshNet hello from " + pr.name); }
+            case "HELLO" -> {
+                List<String> name = new ArrayList<>(); Set<String> caps = new HashSet<>();
+                for (String t : arg.split("\\s+")) { if (t.startsWith("caps=")) caps.addAll(Arrays.asList(t.substring(5).split(","))); else if (!t.equals("v1")) name.add(t); }
+                if (!name.isEmpty()) pr.name = String.join(" ", name);
+                pr.caps = caps; pr.lastExchange = System.currentTimeMillis();
+                log("MeshNet hello from " + pr.name + " caps=" + caps);
+            }
             case "POST" -> {
-                String[] pp = rest.split("\\s+", 2); if (pp.length < 2) return;
-                String key = Integer.toUnsignedString(peer) + ":" + pp[0];
-                if (store.netSeen.add(key)) {
-                    int colon = pp[1].indexOf(':');
-                    BbsStore.Post p = new BbsStore.Post(); p.id = store.nextId(); p.time = System.currentTimeMillis(); p.author = peer;
-                    p.authorName = (colon > 0 ? pp[1].substring(0, colon).trim() : pr.name) + " via " + (pr.name.isEmpty() ? state.nodeName(peer) : pr.name);
-                    p.text = colon > 0 ? pp[1].substring(colon + 1).trim() : pp[1];
-                    store.posts.add(p); while (store.posts.size() > store.maxPosts) store.posts.remove(0);
-                    log("MeshNet post from " + pr.name + ": " + p.text);
-                    bridge("🌐 " + p.authorName + ": " + p.text);
-                }
-                send(peer, "NET ACK " + pp[0]);
+                String[] hp = arg.split("\\s+", 2); if (hp.length < 2) return;
+                String[] id = hp[0].split(":"); if (id.length < 3) return;
+                String gid = id[0] + ":" + id[1]; int hops; try { hops = Integer.parseInt(id[2]); } catch (NumberFormatException e) { return; }
+                netSend(pr, "NET ACK " + gid);
                 pr.lastExchange = System.currentTimeMillis();
+                if (id[0].equalsIgnoreCase(myHex()) || !store.netSeen.add(gid)) break;
+                int colon = hp[1].indexOf(':');
+                String author = colon > 0 ? hp[1].substring(0, colon).trim() : pr.name, text = colon > 0 ? hp[1].substring(colon + 1).trim() : hp[1];
+                BbsStore.Post p = new BbsStore.Post(); p.id = store.nextId(); p.time = System.currentTimeMillis(); p.author = from;
+                p.authorName = author + " via " + (pr.name.isEmpty() ? state.nodeName(from) : pr.name); p.text = text;
+                store.posts.add(p); while (store.posts.size() > store.maxPosts) store.posts.remove(0);
+                log("MeshNet post " + gid + " from " + pr.name + ": " + text);
+                bridge("🌐 " + p.authorName + ": " + text);
+                if (hops + 1 < NET_MAX_HOPS) for (BbsStore.Peer other : store.peers)
+                    if (other.num != from && !String.format("%08x", other.num).equalsIgnoreCase(id[0]) && other.caps.contains("fwd"))
+                        netQueue(other, "NET POST " + gid + ":" + (hops + 1) + " " + author + ": " + text, gid);
             }
             case "MAIL" -> {
-                String[] mp = rest.split("\\s+", 2); if (mp.length < 2) return;
-                Integer to = resolve(mp[0]);
-                int colon = mp[1].indexOf(':');
-                BbsStore.Mail x = new BbsStore.Mail(); x.id = store.nextId(); x.time = System.currentTimeMillis(); x.from = peer; x.fromName = (colon > 0 ? mp[1].substring(0, colon).trim() : "?") + "@" + (pr.name.isEmpty() ? state.nodeName(peer) : pr.name); x.text = colon > 0 ? mp[1].substring(colon + 1).trim() : mp[1];
-                if (to == null) { log("MeshNet mail for unknown user " + mp[0] + " – dropped"); return; }
+                String[] hp = arg.split("\\s+", 3); if (hp.length < 3) return;
+                String gid = hp[0];
+                netSend(pr, "NET ACK " + gid);
+                if (!store.netSeen.add(gid)) break;
+                Integer to = resolve(hp[1]);
+                int colon = hp[2].indexOf(':');
+                BbsStore.Mail x = new BbsStore.Mail(); x.id = store.nextId(); x.time = System.currentTimeMillis(); x.from = from;
+                x.fromName = (colon > 0 ? hp[2].substring(0, colon).trim() : "?") + "@" + (pr.name.isEmpty() ? state.nodeName(from) : pr.name); x.text = colon > 0 ? hp[2].substring(colon + 1).trim() : hp[2];
+                if (to == null) { log("MeshNet mail for unknown user " + hp[1] + " dropped"); break; }
                 x.to = to; store.mail.add(x); log("MeshNet mail from " + pr.name + " for " + state.nodeName(to));
             }
-            case "ACK" -> { pr.lastExchange = System.currentTimeMillis(); }
+            case "ACK" -> { String gid = arg.trim(); store.outbox.removeIf(o -> o.peer == from && o.gid.equals(gid)); pr.lastExchange = System.currentTimeMillis(); }
+            case "PING" -> netSend(pr, "NET PONG");
             default -> { }
         }
         store.save();
     }
 
-    /** Sends each peer the local posts it hasn't had yet (max 5 per exchange, oldest first) and a HELLO. Returns posts queued. */
+    /** HELLO every peer and queue up to 5 unsent local posts each; the outbox drains with pacing and retries. Returns posts queued. */
     public int netExchangeNow() {
         int queued = 0;
         for (BbsStore.Peer pr : store.peers) {
-            send(pr.num, "NET HELLO " + store.name);
+            netSend(pr, "NET HELLO v1 " + store.name + " caps=post,mail,fwd");
             int n = 0;
             for (BbsStore.Post p : store.posts) {
-                if (p.id <= pr.lastPostSent || p.author == pr.num || p.authorName.contains(" via ")) continue;   // don't echo a peer's own posts back
-                String text = "NET POST " + p.id + " " + shortName(p.authorName) + ": " + p.text;
-                send(pr.num, text.length() > 195 ? text.substring(0, 195) : text);
-                pr.lastPostSent = p.id; queued++; if (++n >= 5) break;
+                if (p.id <= pr.lastPostSent || p.author == pr.num || p.authorName.contains(" via ") || p.authorName.endsWith("(discord)") && false) continue;
+                String gid = myHex() + ":" + p.id;
+                netQueue(pr, "NET POST " + gid + ":0 " + shortName(p.authorName).replace(":", " ") + ": " + p.text, gid);
+                pr.lastPostSent = p.id; queued++; if (++n >= NET_MAX_PER_EXCHANGE) break;
             }
         }
         store.save();
         return queued;
+    }
+
+    /** Queues mail for a user on a peer board. */
+    private void netMail(BbsStore.Peer pr, String user, String fromName, String text) {
+        String gid = myHex() + ":m" + (store.netMailSeq++);
+        netQueue(pr, "NET MAIL " + gid + " " + user + " " + fromName.replace(":", " ") + ": " + text, gid);
+        store.save();
+    }
+
+    /** Called every minute: send at most two queued lines, retry un-ACKed ones after 10 min, drop after 3 attempts. */
+    private void netPump() {
+        long now = System.currentTimeMillis(); int sent = 0;
+        for (Iterator<BbsStore.Outbox> it = store.outbox.iterator(); it.hasNext(); ) {
+            BbsStore.Outbox o = it.next();
+            if (o.attempts >= NET_MAX_ATTEMPTS && now - o.last > NET_RETRY_MS) { it.remove(); log("MeshNet: gave up on " + o.gid + " to " + state.nodeName(o.peer)); continue; }
+            if (o.attempts == 0 || now - o.last >= NET_RETRY_MS) {
+                if (sent >= 2) break;
+                BbsStore.Peer pr = peer(o.peer); if (pr == null) { it.remove(); continue; }
+                netSend(pr, o.line); o.attempts++; o.last = now; sent++;
+            }
+        }
+        if (sent > 0) store.save();
     }
 
     /** Daily subscriber digest: weather and new events, sent as DMs. */
