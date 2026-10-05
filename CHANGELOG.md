@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.4 — 2026-10-04
+
+- Every disconnect now records its cause and the code that asked for it ("Disconnect button", "window closing", "firmware update", "switching to TCP…") in the log and `sessions.log`.
+- The app-log file writer reports a failure (disk full, file locked, folder gone) with a dialog instead of silently stopping.
+
+
 ## 1.8.3 — 2026-10-04
 
 - All remaining Swing file choosers (CSV/KML export, record/replay capture, nightly-export folder) replaced with native Windows dialogs. `hang.log` confirmed the freeze was `JFileChooser` waiting on the Windows shell for a drive icon (an offline mapped drive).

@@ -123,7 +123,7 @@ class FirmwareDialog extends JDialog {
                     say("Putting the radio into DFU mode…");
                     FirmwareUpdater.enterDfu(client);
                     Thread.sleep(1500);
-                    client.disconnect();
+                    client.disconnect("firmware update (DFU)");
                     Path drive = FirmwareUpdater.waitForUf2Drive(60, this::say);
                     FirmwareUpdater.flashUf2(bin, drive, this::say);
                     say("Done. The radio reboots into " + current.tag() + "; reconnect in ~20 s (auto-reconnect will pick it up).");
@@ -140,7 +140,7 @@ class FirmwareDialog extends JDialog {
                         say("Enter the serial port (e.g. COM6) the radio is on.");
                     } else {
                         say("Disconnecting so esptool can use " + port + "…");
-                        client.disconnect(); Thread.sleep(1000);
+                        client.disconnect("firmware update (esptool)"); Thread.sleep(1000);
                         int rc = FirmwareUpdater.flashEsp(esptool, port, bin, !full, this::say);
                         say(rc == 0 ? "Done. The radio reboots; reconnect in ~20 s." : "esptool exited with code " + rc + ". If it said 'failed to connect', hold BOOT, tap RESET, release BOOT, and retry.");
                     }

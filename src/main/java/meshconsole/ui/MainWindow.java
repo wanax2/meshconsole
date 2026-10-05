@@ -73,7 +73,7 @@ public class MainWindow extends JFrame {
         this.state = client.state();
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
-            @Override public void windowClosing(WindowEvent e) { client.disconnect(); client.saveDbQuietly(); dispose(); System.exit(0); }
+            @Override public void windowClosing(WindowEvent e) { client.disconnect("window closing"); client.saveDbQuietly(); dispose(); System.exit(0); }
         });
 
         JMenuBar menu = new JMenuBar();
@@ -473,13 +473,13 @@ public class MainWindow extends JFrame {
     }
 
     private void connectTcp(TcpItem t) {
-        if (client.isConnected()) client.disconnect();
+        if (client.isConnected()) client.disconnect("switching to TCP " + t.host());
         try { client.connectTcp(t.host(), t.port()); lastPortName = null; lastTcp = t; rememberTcp(t); }
         catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "TCP connect failed", JOptionPane.ERROR_MESSAGE); }
     }
 
     private void toggleConnect() {
-        if (client.isConnected()) { lastPortName = null; lastTcp = null; client.disconnect(); return; }
+        if (client.isConnected()) { lastPortName = null; lastTcp = null; client.disconnect("Disconnect button"); return; }
         Object sel = ports.getSelectedItem();
         if (sel == ADD_TCP) { connectTcp(); return; }
         if (sel instanceof TcpItem t) { connectTcp(t); return; }

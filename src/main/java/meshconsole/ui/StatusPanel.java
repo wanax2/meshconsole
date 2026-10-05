@@ -34,6 +34,7 @@ class StatusPanel extends JPanel {
     private javax.swing.Timer autoStatsTimer;
     volatile boolean autoStats = java.util.prefs.Preferences.userNodeForPackage(StatusPanel.class).getBoolean("autoStats", false);
     private long logLines;
+    private boolean logErrorShown;
     private meshconsole.mesh.MeshClient client;
 
     record NodeChoice(int num, String label) {
@@ -169,7 +170,13 @@ class StatusPanel extends JPanel {
                 }
                 if (logFile == null) logFile = new java.io.PrintWriter(new java.io.FileWriter(lf.toFile(), true), true);
                 logFile.println(stamped);
-            } catch (java.io.IOException ignored) { }
+                if (logFile.checkError()) {   // PrintWriter swallows IOExceptions; surface them once (disk full, file locked, folder gone)
+                    logFile.close(); logFile = null;
+                    if (!logErrorShown) { logErrorShown = true; toFile.setSelected(false); SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Writing meshconsole.log failed (disk full, file locked by another program, or the data folder is unavailable). On-screen logging continues; file logging is off until you re-tick it.", "Log file", JOptionPane.WARNING_MESSAGE)); }
+                }
+            } catch (java.io.IOException ex) {
+                if (!logErrorShown) { logErrorShown = true; toFile.setSelected(false); SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Cannot write meshconsole.log: " + ex.getMessage(), "Log file", JOptionPane.WARNING_MESSAGE)); }
+            }
         }
         log.append(stamped + "\n");
         if (log.getDocument().getLength() > 200_000) {

@@ -162,13 +162,18 @@ public class MeshClient implements MeshSerial.Listener {
         connListener.onConnectionChanged(true, host + ":" + port);
     }
 
-    public synchronized void disconnect() {
+    public void disconnect() { disconnect("Disconnect button"); }
+
+    /** Records WHO asked for the disconnect (button, window close, firmware dialog, reconnect…) so the logs are never ambiguous. */
+    public synchronized void disconnect(String reason) {
         if (serial != null) {
             MeshSerial s = serial;
             serial = null;
             s.close();
-            state.emitLog("Disconnected");
-            session("disconnect by user after " + (System.currentTimeMillis() - connectedAt) / 1000 + " s");
+            String caller = "";
+            for (StackTraceElement el : Thread.currentThread().getStackTrace()) if (el.getClassName().startsWith("meshconsole.ui.")) { caller = " [" + el.getClassName().substring(el.getClassName().lastIndexOf('.') + 1) + "." + el.getMethodName() + "]"; break; }
+            state.emitLog("Disconnected (" + reason + caller + ")");
+            session("disconnect by " + reason + caller + " after " + (System.currentTimeMillis() - connectedAt) / 1000 + " s");
             saveDbQuietly();
             connListener.onConnectionChanged(false, "");
         }
