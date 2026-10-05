@@ -33,3 +33,5 @@ messages_radio2.log
 firmware/
 crash.log
 hang.log
+.lock
+lib/

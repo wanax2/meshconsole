@@ -34,7 +34,7 @@ class StatusPanel extends JPanel {
     private javax.swing.Timer autoStatsTimer;
     volatile boolean autoStats = java.util.prefs.Preferences.userNodeForPackage(StatusPanel.class).getBoolean("autoStats", false);
     private long logLines;
-    private boolean logErrorShown;
+    private boolean logErrorShown, rotateWarned;
     private meshconsole.mesh.MeshClient client;
 
     record NodeChoice(int num, String label) {
@@ -166,7 +166,13 @@ class StatusPanel extends JPanel {
                 if (++logLines % 2000 == 0 && java.nio.file.Files.exists(lf) && java.nio.file.Files.size(lf) > 50L * 1024 * 1024) {
                     // rotate: .2 -> .3, .1 -> .2, current -> .1
                     if (logFile != null) { logFile.close(); logFile = null; }
-                    for (int i = 3; i >= 1; i--) { java.nio.file.Path from = i == 1 ? lf : meshconsole.DataDir.file("meshconsole.log." + (i - 1)), to = meshconsole.DataDir.file("meshconsole.log." + i); if (java.nio.file.Files.exists(from)) java.nio.file.Files.move(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
+                    try {
+                        for (int i = 3; i >= 1; i--) { java.nio.file.Path from = i == 1 ? lf : meshconsole.DataDir.file("meshconsole.log." + (i - 1)), to = meshconsole.DataDir.file("meshconsole.log." + i); if (java.nio.file.Files.exists(from)) java.nio.file.Files.move(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
+                    } catch (java.io.IOException rot) {
+                        // another process holds the file (a second instance, a backup tool): keep appending to the current file and try again later
+                        if (!rotateWarned) { rotateWarned = true; state.emitLog("Log rotation skipped (" + rot.getMessage() + ") – continuing in the current file"); }
+                        logLines -= 1000;
+                    }
                 }
                 if (logFile == null) logFile = new java.io.PrintWriter(new java.io.FileWriter(lf.toFile(), true), true);
                 logFile.println(stamped);

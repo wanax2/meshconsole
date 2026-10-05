@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.5 — 2026-10-05
+
+- **Single instance**: a second copy of Mesh Console started on the same data folder now says "already running" and exits instead of silently sharing the radio and the log files (a `.lock` file in the data folder; headless mode too).
+- Log rotation that can't rename the file (held open by another process) keeps writing to the current file and retries later instead of turning file logging off.
+
+
 ## 1.8.4 — 2026-10-04
 
 - Every disconnect now records its cause and the code that asked for it ("Disconnect button", "window closing", "firmware update", "switching to TCP…") in the log and `sessions.log`.

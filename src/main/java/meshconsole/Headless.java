@@ -31,6 +31,7 @@ public final class Headless {
             }
         }
         if (port == null && tcp == null) { System.err.println("usage: --headless (--port <serial> | --tcp host[:4403]) [--data <folder>] [--bbs]"); System.exit(2); }
+        if (!DataDir.lockInstance()) { System.err.println("Another Mesh Console is already using " + DataDir.get() + " – exiting."); System.exit(3); }
         String note = DataDir.checkVersion();
         MeshState state = new MeshState(new MessageLog(DataDir.file("messages.log")), new NodeDb(DataDir.file("nodes.json")));
         state.setSignalHistory(new meshconsole.mesh.SignalHistory(DataDir.file("signal_history.csv")));

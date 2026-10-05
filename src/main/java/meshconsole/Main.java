@@ -52,6 +52,11 @@ public class Main {
             } catch (Exception ignored) { }
         });
         for (String a : args) if (a.equals("--headless")) { Headless.run(args); return; }
+        if (args.length > 0 && !args[0].startsWith("--")) DataDir.set(Path.of(args[0]));
+        if (!DataDir.lockInstance()) {
+            javax.swing.JOptionPane.showMessageDialog(null, "Mesh Console is already running with the data folder\n" + DataDir.get() + "\n\nTwo copies would fight over the radio and the log files. Use the running one, or start this one with a different data folder.", "Already running", javax.swing.JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         startUiWatchdog();
         if (args.length > 0 && !args[0].startsWith("--")) DataDir.set(Path.of(args[0]));
         Path logFile = DataDir.file("messages.log");

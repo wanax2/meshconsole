@@ -22,6 +22,20 @@ public final class DataDir {
 
     private DataDir() { }
 
+    private static java.nio.channels.FileLock instanceLock;
+    private static java.nio.channels.FileChannel lockChannel;
+
+    /** Takes an exclusive lock on <data>/.lock so two copies of the app don't share one data folder. Returns false if another instance holds it. */
+    public static synchronized boolean lockInstance() {
+        try {
+            lockChannel = java.nio.channels.FileChannel.open(file(".lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            instanceLock = lockChannel.tryLock();
+            if (instanceLock == null) { lockChannel.close(); lockChannel = null; return false; }
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> { try { instanceLock.release(); lockChannel.close(); } catch (Exception ignored) { } }));
+            return true;
+        } catch (Exception e) { return true; }   // can't lock (read-only folder?) – don't block the user
+    }
+
     public static synchronized Path get() {
         if (dir == null) {
             String p = PREFS.get("dataDir", "");
