@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.7 — 2026-10-08
+
+- BBS replies (and MeshNet lines) are sent **once** and never re-queued by the Messages tab's auto-retry; a far caller's un-acked menu was being transmitted six times.
+- Shorter `?` menu (fits a PKI-encrypted DM with room to spare); `?2` has the full list.
+- Fix: `bbs.json` was written with a double comma in the usage-dashboard counters (strict JSON readers rejected it). The file is rewritten correctly on the next save.
+
+
 ## 1.8.6 — 2026-10-07
 
 - Status & signal shows the radio's **WiFi IP** (and the toolbar status carries it) as soon as the firmware announces it, with a hint that it is what goes into "TCP host… (add)".

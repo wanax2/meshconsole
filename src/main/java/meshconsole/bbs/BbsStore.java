@@ -148,8 +148,7 @@ public class BbsStore {
 
     private static String mapJson(Map<String, Integer> m) {
         StringBuilder sb = new StringBuilder("{"); boolean f = true;
-        for (Map.Entry<String, Integer> e : m.entrySet()) { if (!f) sb.append(','); f = false; sb.append(kv(e.getKey(), e.getValue())); }
-        if (!f) sb.setLength(sb.length() - 1);
+        for (Map.Entry<String, Integer> e : m.entrySet()) { if (!f) sb.append(','); f = false; String kv = kv(e.getKey(), e.getValue()); sb.append(kv, 0, kv.length() - 1); }   // kv() ends with a comma
         return sb.append('}').toString();
     }
 

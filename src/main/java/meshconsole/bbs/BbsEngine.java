@@ -82,7 +82,7 @@ public class BbsEngine {
         if (due(now, store.advertTime) && !today.equals(store.advertDay)) {
             store.advertDay = today; store.save();
             String text = store.advertText.isBlank() ? store.defaultAdvert() : store.advertText;
-            try { client.sendText(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
+            try { client.sendOnce(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
             catch (IOException e) { log("advert failed: " + e.getMessage()); }
         }
     }
@@ -94,7 +94,7 @@ public class BbsEngine {
     /** Sends the advertisement now (sysop). */
     public void advertiseNow() {
         String text = store.advertText.isBlank() ? store.defaultAdvert() : store.advertText;
-        try { client.sendText(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
+        try { client.sendOnce(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
         catch (IOException e) { log("advert failed: " + e.getMessage()); }
     }
 
@@ -158,7 +158,7 @@ public class BbsEngine {
     private void send(int to, String text) {
         for (String chunk : chunks(text)) {
             try {
-                client.sendText(chunk, to, 0);
+                client.sendOnce(chunk, to, 0);
                 store.repliesSent++;
                 lastReply.put(to, System.currentTimeMillis());
                 log("→ " + state.nodeName(to) + ": " + chunk);
@@ -188,7 +188,7 @@ public class BbsEngine {
         String arg = parts.length > 1 ? parts[1].trim() : "";
         String who = state.nodeName(from);
         switch (cmd) {
-            case "?", "H", "HELP", "MENU" -> { return store.name + " menu: B R P D | M mail | S T N STATS TOP WHO | W TAF METRO | E events, POLL, GB guestbook, SUB | TRIVIA GUESS ADV | NET | I PING (?2 = details)"; }
+            case "?", "H", "HELP", "MENU" -> { return store.name + ": B bulletins P post M mail | S signal T trace N nodes STATS TOP WHO | W wx TAF METRO | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
             case "?2", "HELP2" -> { return "B list(B 2 next) R 3 read P text post D 3 del | M mail, M bob hi, M board!bob hi | S signal T trace N nodes STATS TOP WHO n | W TAF METRO C call | E events POLL/V n GB text SUB WX|EVENTS | TRIVIA(A ans) GUESS(G n) ADV | NET peers"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {

@@ -57,7 +57,7 @@ public class MeshClient implements MeshSerial.Listener {
      * happens, or a DM was transmitted but never acknowledged, send it again after a pause.
      */
     private void considerRetry(ChatMessage m) {
-        if (!autoRetry || !m.outgoing || m.isBroadcast() || m.attempt >= maxAttempts) return;
+        if (!autoRetry || !m.outgoing || m.isBroadcast() || m.noRetry || m.attempt >= maxAttempts) return;
         boolean failed = m.status == ChatMessage.Status.FAILED
                 && (m.statusDetail.startsWith("MAX_RETRANSMIT") || m.statusDetail.startsWith("NO_ROUTE") || m.statusDetail.startsWith("TIMEOUT"));
         boolean sentNoAck = m.status == ChatMessage.Status.TRANSMITTED;
@@ -192,6 +192,9 @@ public class MeshClient implements MeshSerial.Listener {
 
     /** Sends a text message; returns the ChatMessage tracked for ack/nak updates. */
     public ChatMessage sendText(String text, int to, int channel) throws IOException { return sendText(text, to, channel, 0, false); }
+
+    /** Automated reply (BBS, MeshNet): one transmission, no auto-retry. */
+    public ChatMessage sendOnce(String text, int to, int channel) throws IOException { ChatMessage m = sendText(text, to, channel, 0, false); m.noRetry = true; return m; }
 
     /** replyTo = packet id of the message being replied to / reacted to (0 = none); emoji = true marks it as a reaction. */
     public ChatMessage sendText(String text, int to, int channel, int replyTo, boolean emoji) throws IOException {

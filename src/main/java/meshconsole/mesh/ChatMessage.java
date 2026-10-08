@@ -18,7 +18,9 @@ public class ChatMessage {
     public float snr;
     public int hops = -1;
     public int attempt = 1;      // 1 = first send, 2+ = automatic retries
-    public int replyId;          // packet id this message replies to (0 = none)
+    public int replyId;
+    /** Set for automated replies (BBS): sent once, never re-queued by the auto-retry. */
+    public transient boolean noRetry;          // packet id this message replies to (0 = none)
     public boolean emoji;        // true = this is a reaction (text is the emoji) to replyId
     public long ackTime;         // millis when DELIVERED/FAILED arrived (0 = pending)
     public boolean fromStoreForward;
