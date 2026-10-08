@@ -305,6 +305,7 @@ public class MainWindow extends JFrame {
         sb.append("  ·  ").append(state.nodes().size()).append(" nodes");
         if (me != null && me.battery >= 0) sb.append("  ·  batt ").append(me.battery > 100 ? "ext" : me.battery + "%");
         if (me != null) sb.append(String.format("  ·  ch util %.1f%%", me.channelUtil));
+        if (!state.wifiIp().isEmpty()) sb.append("  ·  IP ").append(state.wifiIp());
         if (!state.configComplete()) sb.append("  ·  loading config…");
         status.setText(sb.toString());
     }

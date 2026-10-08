@@ -309,6 +309,7 @@ class StatusPanel extends JPanel {
                 long abs = Math.abs(drift) / 1000;
                 sb.append("Radio clock:  ").append(abs < 2 ? "in sync with PC" : abs > 365L * 86400 ? "not set (no GPS/phone time source)" : String.format("%s%d s vs PC", drift > 0 ? "+" : "-", abs)).append('\n');
             }
+            if (!state.wifiIp().isEmpty()) sb.append("WiFi IP:      ").append(state.wifiIp()).append("   (use this for TCP host… in the port list)\n");
             sb.append("Nodes known:  ").append(state.nodes().size()).append('\n');
             if (state.encryptedSeen() > 0) sb.append("Undecodable:  ").append(state.encryptedSeen()).append(" encrypted packets\n");
             sb.append(state.configComplete() ? "" : "\n(config still loading…)\n");

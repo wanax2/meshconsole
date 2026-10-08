@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.6 — 2026-10-07
+
+- Status & signal shows the radio's **WiFi IP** (and the toolbar status carries it) as soon as the firmware announces it, with a hint that it is what goes into "TCP host… (add)".
+
+
 ## 1.8.5 — 2026-10-05
 
 - **Single instance**: a second copy of Mesh Console started on the same data folder now says "already running" and exits instead of silently sharing the radio and the log files (a `.lock` file in the data folder; headless mode too).

@@ -278,7 +278,7 @@ public class MeshState {
         synchronized (lock) {
             // keep the persistent node history; the radio's DB will refresh identity/position
             heardThisSession.clear();
-            lastUptime = -1;
+            lastUptime = -1; wifiIp = "";
             channels.clear();
             configs.clear();
             moduleConfigs.clear();
@@ -837,7 +837,17 @@ public class MeshState {
 
     public void emitAlert(String kind, String text) { fire(l -> l.onAlert(kind, text)); }
 
+    private String wifiIp = "";
+    private static final java.util.regex.Pattern IP_RX = java.util.regex.Pattern.compile("(?i)(?:wifi|ip address|got ip|local ip|ip[:= ])[^0-9]{0,24}((?:\\d{1,3}\\.){3}\\d{1,3})");
+    /** The radio's WiFi address, if its log has announced one ("WiFi … IP 192.168.1.50"); empty otherwise. */
+    public String wifiIp() { synchronized (lock) { return wifiIp; } }
+    public void noteWifiIp(String ip) { synchronized (lock) { if (!ip.equals(wifiIp)) { wifiIp = ip; } } fire(Listener::onStatusChanged); }
+
     public void emitLog(String line) {
+        if (line.contains("IP") || line.contains("ip") || line.contains("WiFi") || line.contains("wifi")) {
+            java.util.regex.Matcher m = IP_RX.matcher(line);
+            if (m.find() && !m.group(1).startsWith("0.") && !m.group(1).equals("255.255.255.255")) noteWifiIp(m.group(1));
+        }
         fire(l -> l.onLog(line));
     }
 
