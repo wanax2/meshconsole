@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.9 — 2026-10-09
+
+- BBS scheduler: the daily advert, subscriber digest and MeshNet exchange fire on the first tick **after** their set time (once per day) instead of only if a tick lands exactly on that minute — a reconnect at 08:32 cost the 09:00 advert.
+
+
 ## 1.8.8 — 2026-10-09
 
 - Fix: after a radio reboot mid-session, auto-reconnect could sit on "config still loading" indefinitely — packets were arriving, so the "no reply" safeguard never fired. The config request is now repeated every 3 s until config_complete actually arrives (up to 20 times), and a freshly rebooted radio is given 5 s to finish booting before the first ask.

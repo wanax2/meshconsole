@@ -87,8 +87,9 @@ public class BbsEngine {
         }
     }
 
+    /** True once the clock has passed hh:mm today (the caller's per-day marker stops it repeating). A busy minute no longer loses the slot. */
     private static boolean due(java.time.LocalTime now, String hhmm) {
-        try { java.time.LocalTime t = java.time.LocalTime.parse(hhmm.trim()); return now.getHour() == t.getHour() && now.getMinute() == t.getMinute(); } catch (Exception e) { return false; }
+        try { java.time.LocalTime t = java.time.LocalTime.parse(hhmm.trim()); return !now.isBefore(t); } catch (Exception e) { return false; }
     }
 
     /** Sends the advertisement now (sysop). */
