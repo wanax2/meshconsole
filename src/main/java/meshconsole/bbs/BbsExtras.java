@@ -53,6 +53,97 @@ public final class BbsExtras {
         } catch (IOException | RuntimeException e) { return "Metro alerts unavailable (" + e.getMessage() + ")"; }
     }
 
+    // ---- WMATA: stations, next trains, buses, elevators ---------------------------------------
+    private static Map<String, String> stationCodes;   // "CLARENDON" -> "K02"
+    private static long stationsLoaded;
+
+    private static synchronized Map<String, String> stations(String key) throws IOException {
+        if (stationCodes != null && System.currentTimeMillis() - stationsLoaded < 86400_000L) return stationCodes;
+        Map<?, ?> root = (Map<?, ?>) Json.parse(get("https://api.wmata.com/Rail.svc/json/jStations", "api_key", key));
+        Map<String, String> m = new LinkedHashMap<>();
+        for (Object o : (List<?>) root.get("Stations")) { Map<?, ?> st = (Map<?, ?>) o; m.putIfAbsent(Json.str(st.get("Name")).toUpperCase(), Json.str(st.get("Code"))); }
+        stationCodes = m; stationsLoaded = System.currentTimeMillis();
+        return m;
+    }
+
+    private static String findStation(Map<String, String> m, String q) {
+        String u = q.trim().toUpperCase();
+        if (m.containsKey(u)) return u;
+        for (String n : m.keySet()) if (n.startsWith(u)) return n;
+        for (String n : m.keySet()) if (n.contains(u)) return n;
+        return null;
+    }
+
+    /** NEXT <station>: next trains at a Metrorail station. */
+    public static String nextTrains(String apiKey, String station) {
+        if (apiKey == null || apiKey.isBlank()) return "Metro lookups not configured on this BBS.";
+        if (station == null || station.isBlank()) return "NEXT station – e.g. NEXT CLARENDON, NEXT ROSSLYN, NEXT METRO CENTER";
+        try {
+            Map<String, String> m = stations(apiKey);
+            String name = findStation(m, station);
+            if (name == null) return "No station like '" + station + "'.";
+            Map<?, ?> root = (Map<?, ?>) Json.parse(get("https://api.wmata.com/StationPrediction.svc/json/GetPrediction/" + m.get(name), "api_key", apiKey));
+            List<?> trains = (List<?>) root.get("Trains");
+            if (trains == null || trains.isEmpty()) return name + ": no trains predicted (closed or no service).";
+            StringBuilder sb = new StringBuilder(cap(name, 14) + ": ");
+            int n = 0;
+            for (Object o : trains) {
+                Map<?, ?> t = (Map<?, ?>) o;
+                String line = Json.str(t.get("Line")), dest = Json.str(t.get("DestinationName")), min = Json.str(t.get("Min"));
+                if (line.isEmpty() || line.equals("No") || line.equals("--")) continue;
+                String item = line + "→" + cap(dest, 10) + " " + (min.equals("ARR") || min.equals("BRD") ? min : min + "m") + "; ";
+                if (sb.length() + item.length() > 185) break;
+                sb.append(item); if (++n >= 6) break;
+            }
+            return sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return "Metro lookup failed (" + e.getMessage() + ")"; }
+    }
+
+    /** BUS <stop id>: next buses at a Metrobus stop (the 7-digit number on the stop sign). */
+    public static String nextBuses(String apiKey, String stopId) {
+        if (apiKey == null || apiKey.isBlank()) return "Metro lookups not configured on this BBS.";
+        if (stopId == null || !stopId.trim().matches("\\d{5,8}")) return "BUS stopid – the number on the bus stop sign, e.g. BUS 1001195";
+        try {
+            Map<?, ?> root = (Map<?, ?>) Json.parse(get("https://api.wmata.com/NextBusService.svc/json/jPredictions?StopID=" + stopId.trim(), "api_key", apiKey));
+            List<?> preds = (List<?>) root.get("Predictions"); String stop = Json.str(root.get("StopName"));
+            if (preds == null || preds.isEmpty()) return (stop.isEmpty() ? "Stop " + stopId : stop) + ": no buses predicted.";
+            StringBuilder sb = new StringBuilder(cap(stop.isEmpty() ? "Stop " + stopId : stop, 24) + ": ");
+            int n = 0;
+            for (Object o : preds) { Map<?, ?> t = (Map<?, ?>) o; String item = Json.str(t.get("RouteID")) + " " + cap(Json.str(t.get("DirectionText")), 12) + " " + (int) Json.num(t.get("Minutes"), 0) + "m; "; if (sb.length() + item.length() > 185) break; sb.append(item); if (++n >= 6) break; }
+            return sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return "Bus lookup failed (" + e.getMessage() + ")"; }
+    }
+
+    /** METRO BUS [route]: bus incidents, optionally for one route. */
+    public static String busIncidents(String apiKey, String route) {
+        if (apiKey == null || apiKey.isBlank()) return "Metro lookups not configured on this BBS.";
+        try {
+            Map<?, ?> root = (Map<?, ?>) Json.parse(get("https://api.wmata.com/Incidents.svc/json/BusIncidents" + (route == null || route.isBlank() ? "" : "?Route=" + URLEncoder.encode(route.trim().toUpperCase(), StandardCharsets.UTF_8)), "api_key", apiKey));
+            List<?> inc = (List<?>) root.get("BusIncidents");
+            if (inc == null || inc.isEmpty()) return "Bus: no incidents" + (route == null || route.isBlank() ? "." : " on " + route.toUpperCase() + ".");
+            StringBuilder sb = new StringBuilder("Bus: ");
+            for (Object o : inc) { Map<?, ?> m = (Map<?, ?>) o; List<?> rs = (List<?>) m.get("RoutesAffected"); String item = "[" + (rs == null ? "" : String.join(",", rs.stream().map(String::valueOf).toList())) + "] " + cap(Json.str(m.get("Description")), 70) + " "; if (sb.length() + item.length() > 185) { sb.append("(+more)"); break; } sb.append(item); }
+            return sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return "Bus incidents unavailable (" + e.getMessage() + ")"; }
+    }
+
+    /** ELEV [station]: elevator/escalator outages, optionally for one station. */
+    public static String elevators(String apiKey, String station) {
+        if (apiKey == null || apiKey.isBlank()) return "Metro lookups not configured on this BBS.";
+        try {
+            String code = "";
+            if (station != null && !station.isBlank()) { Map<String, String> m = stations(apiKey); String name = findStation(m, station); if (name == null) return "No station like '" + station + "'."; code = m.get(name); }
+            Map<?, ?> root = (Map<?, ?>) Json.parse(get("https://api.wmata.com/Incidents.svc/json/ElevatorIncidents" + (code.isEmpty() ? "" : "?StationCode=" + code), "api_key", apiKey));
+            List<?> inc = (List<?>) root.get("ElevatorIncidents");
+            if (inc == null || inc.isEmpty()) return "Elevators/escalators: no outages" + (code.isEmpty() ? " reported." : " at that station.");
+            StringBuilder sb = new StringBuilder(code.isEmpty() ? inc.size() + " outages: " : "Outages: ");
+            for (Object o : inc) { Map<?, ?> m = (Map<?, ?>) o; String item = cap(Json.str(m.get("StationName")), 12) + " " + Json.str(m.get("UnitType")).substring(0, 1) + " " + cap(Json.str(m.get("LocationDescription")), 30) + "; "; if (sb.length() + item.length() > 185) { sb.append("(+more)"); break; } sb.append(item); }
+            return sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return "Elevator status unavailable (" + e.getMessage() + ")"; }
+    }
+
+    private static String cap(String s, int n) { return s.length() > n ? s.substring(0, n - 1) + "…" : s; }
+
     /** Ham callsign → name/location via callook.info (US callsigns). */
     public static String callsign(String call) {
         try {

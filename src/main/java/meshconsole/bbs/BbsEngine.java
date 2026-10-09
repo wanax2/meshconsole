@@ -189,8 +189,8 @@ public class BbsEngine {
         String arg = parts.length > 1 ? parts[1].trim() : "";
         String who = state.nodeName(from);
         switch (cmd) {
-            case "?", "H", "HELP", "MENU" -> { return store.name + ": B bulletins P post M mail | S signal T trace N nodes STATS TOP WHO | W wx TAF METRO | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
-            case "?2", "HELP2" -> { return "B list(B 2 next) R 3 read P text post D 3 del | M mail, M bob hi, M board!bob hi | S signal T trace N nodes STATS TOP WHO n | W TAF METRO C call | E events POLL/V n GB text SUB WX|EVENTS | TRIVIA(A ans) GUESS(G n) ADV | NET peers"; }
+            case "?", "H", "HELP", "MENU" -> { return store.name + ": B bulletins P post M mail | S signal T trace N STATS TOP WHO | W TAF | METRO NEXT station BUS stop ELEV | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
+            case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
                 long up = (System.currentTimeMillis() - store.started) / 60000;
@@ -378,7 +378,14 @@ public class BbsEngine {
                 return sb.append(store.outbox.isEmpty() ? "" : store.outbox.size() + " queued. ").append("M board!name text mails a user on a peer.").toString();
             }
             case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
-            case "METRO", "WMATA" -> { bg.submit(() -> send(from, BbsExtras.metro(store.wmataKey))); return null; }
+            case "METRO", "WMATA" -> {
+                final String a = arg.trim();
+                if (a.toUpperCase().startsWith("BUS")) { final String route = a.length() > 3 ? a.substring(3).trim() : ""; bg.submit(() -> send(from, BbsExtras.busIncidents(store.wmataKey, route))); return null; }
+                bg.submit(() -> send(from, BbsExtras.metro(store.wmataKey))); return null;
+            }
+            case "NEXT", "TRAIN", "TRAINS" -> { final String st = arg; bg.submit(() -> send(from, BbsExtras.nextTrains(store.wmataKey, st))); return null; }
+            case "BUS" -> { final String stop = arg; bg.submit(() -> send(from, BbsExtras.nextBuses(store.wmataKey, stop))); return null; }
+            case "ELEV", "ELEVATOR", "ESC" -> { final String st = arg; bg.submit(() -> send(from, BbsExtras.elevators(store.wmataKey, st))); return null; }
             case "C", "CALL", "CALLSIGN" -> {
                 if (arg.isEmpty()) return "C N8HM – look up a US callsign";
                 final String call = arg.split("\\s+")[0];

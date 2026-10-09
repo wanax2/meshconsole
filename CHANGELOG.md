@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.0 — 2026-10-09
+
+BBS: WMATA transit, with the free developer.wmata.com key on the BBS tab:
+- **NEXT station** — next trains at any Metrorail station (`NEXT CLARENDON`, `NEXT METRO CENTER`), line → destination and minutes.
+- **BUS stopid** — next buses at a Metrobus stop (the number on the sign), route, direction, minutes.
+- **METRO** rail incidents (as before); **METRO BUS [route]** bus incidents; **ELEV [station]** elevator/escalator outages.
+- Station names are matched by prefix or substring; the station list is cached for a day.
+
+
 ## 1.8.10 — 2026-10-09
 
 - BBS settings are protected across versions: a `bbs.json` that fails to parse is repaired if it is the known 1.8.0–1.8.6 double-comma fault, otherwise kept as `bbs.json.broken-<date>` and **never overwritten with defaults** (the BBS tab says so); every save keeps one generation back in `bbs.json.bak`.
