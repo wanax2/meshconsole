@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.10 — 2026-10-09
+
+- BBS settings are protected across versions: a `bbs.json` that fails to parse is repaired if it is the known 1.8.0–1.8.6 double-comma fault, otherwise kept as `bbs.json.broken-<date>` and **never overwritten with defaults** (the BBS tab says so); every save keeps one generation back in `bbs.json.bak`.
+
+
 ## 1.8.9 — 2026-10-09
 
 - BBS scheduler: the daily advert, subscriber digest and MeshNet exchange fire on the first tick **after** their set time (once per day) instead of only if a tick lands exactly on that minute — a reconnect at 08:32 cost the 09:00 advert.

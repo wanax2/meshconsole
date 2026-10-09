@@ -53,12 +53,22 @@ public class BbsStore {
     private int nextId = 1;
     private final Path file;
 
+    /** True when the file existed but could not be read; save() then refuses to overwrite it with defaults. */
+    public boolean loadFailed;
+
     public BbsStore(Path file) {
         this.file = file;
         if (!Files.exists(file)) return;
         try {
-            Object root = Json.parse(Files.readString(file, StandardCharsets.UTF_8));
-            if (!(root instanceof Map<?, ?> m)) return;
+            String text = Files.readString(file, StandardCharsets.UTF_8);
+            Object root;
+            try { root = Json.parse(text); }
+            catch (RuntimeException bad) {
+                // repair the known 1.8.0–1.8.6 fault (double commas) and try once more
+                String fixed = text.replace(",,", ",").replace(",}", "}").replace(",]", "]");
+                root = Json.parse(fixed);
+            }
+            if (!(root instanceof Map<?, ?> m)) { loadFailed = true; quarantine(); return; }
             if (m.get("name") != null) name = Json.str(m.get("name"));
             if (m.get("welcome") != null) welcome = Json.str(m.get("welcome"));
             enabled = Boolean.TRUE.equals(m.get("enabled")); channelTrigger = Boolean.TRUE.equals(m.get("channelTrigger"));
@@ -104,12 +114,20 @@ public class BbsStore {
                 Mail x = new Mail(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.delivered = (long) Json.num(p.get("delivered"), 0);
                 x.from = (int) (long) Json.num(p.get("from"), 0); x.to = (int) (long) Json.num(p.get("to"), 0); x.fromName = Json.str(p.get("fromName")); x.text = Json.str(p.get("text")); mail.add(x);
             }
-        } catch (RuntimeException | IOException ignored) { }
+        } catch (RuntimeException | IOException e) { loadFailed = true; quarantine(); }
     }
 
     public synchronized int nextId() { return nextId++; }
 
+    private void quarantine() {
+        try {
+            Path keep = file.resolveSibling(file.getFileName() + ".broken-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")));
+            Files.copy(file, keep, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) { }
+    }
+
     public synchronized void save() {
+        if (loadFailed) return;   // never overwrite a file we couldn't read with defaults; the original is kept as bbs.json.broken-*
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
           .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay));
@@ -142,6 +160,7 @@ public class BbsStore {
         try {
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
             Files.writeString(tmp, sb.toString(), StandardCharsets.UTF_8);
+            if (Files.exists(file)) Files.copy(file, file.resolveSibling(file.getFileName() + ".bak"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);   // one generation back
             Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ignored) { }
     }

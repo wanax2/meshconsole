@@ -26,6 +26,7 @@ class BbsPanel extends JPanel {
     private final JTextArea activity = new JTextArea();
     private final JLabel stats = new JLabel(" ");
     private final AnalysisPanel.BarChart dash = new AnalysisPanel.BarChart();
+    private boolean loadWarned;
     private final JLabel dashText = new JLabel(" ");
 
     private class PostModel extends AbstractTableModel {
@@ -164,6 +165,7 @@ class BbsPanel extends JPanel {
     }
 
     void reload() {
+        if (store.loadFailed && !loadWarned) { loadWarned = true; SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "bbs.json could not be read, so the BBS is showing defaults. The original was kept as bbs.json.broken-<date> in the data folder and will NOT be overwritten; send it to the developer or restore bbs.json.bak, then restart.", "BBS settings", JOptionPane.WARNING_MESSAGE)); }
         enabled.setSelected(store.enabled);
         java.util.List<String> days = new java.util.ArrayList<>(store.callsPerDay.keySet());
         int[] bars = new int[Math.min(30, days.size())];
