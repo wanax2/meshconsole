@@ -80,8 +80,8 @@ public class BbsEngine {
         if (!store.outbox.isEmpty()) netPump();
         if (!store.advertOn) return;
         if (due(now, store.advertTime) && !today.equals(store.advertDay)) {
+            String text = store.nextAdvert();
             store.advertDay = today; store.save();
-            String text = store.advertText.isBlank() ? store.defaultAdvert() : store.advertText;
             try { client.sendOnce(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
             catch (IOException e) { log("advert failed: " + e.getMessage()); }
         }
@@ -94,7 +94,7 @@ public class BbsEngine {
 
     /** Sends the advertisement now (sysop). */
     public void advertiseNow() {
-        String text = store.advertText.isBlank() ? store.defaultAdvert() : store.advertText;
+        String text = store.nextAdvert(); store.save();
         try { client.sendOnce(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
         catch (IOException e) { log("advert failed: " + e.getMessage()); }
     }

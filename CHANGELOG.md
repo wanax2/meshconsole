@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.1 — 2026-10-09
+
+- BBS advert rotates: put several messages in the advert box separated by a line containing only `---`; one goes out per day, in order (and "Send next now" steps through them). A counter shows how many and the longest in bytes.
+
+
 ## 1.9.0 — 2026-10-09
 
 BBS: WMATA transit, with the free developer.wmata.com key on the BBS tab:

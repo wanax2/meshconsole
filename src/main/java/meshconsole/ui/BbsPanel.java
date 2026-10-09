@@ -71,10 +71,16 @@ class BbsPanel extends JPanel {
         JButton clearEvents = new JButton("Clear past events"); clearEvents.addActionListener(e -> { long now = System.currentTimeMillis(); store.events.removeIf(ev -> ev.when > 0 && ev.when < now); store.save(); reload(); });
         r2b.add(postEvent); r2b.add(clearEvents);
         JPanel r2c = row();
-        JCheckBox advOn = new JCheckBox("Advertise daily at", store.advertOn); JTextField advTime = new JTextField(store.advertTime, 5); JTextField advText = new JTextField(store.advertText.isBlank() ? store.defaultAdvert() : store.advertText, 50);
-        r2c.add(advOn); r2c.add(advTime); r2c.add(new JLabel("text:")); r2c.add(advText);
+        JCheckBox advOn = new JCheckBox("Advertise daily at", store.advertOn); JTextField advTime = new JTextField(store.advertTime, 5);
+        JTextArea advText = new JTextArea(store.advertText.isBlank() ? store.defaultAdvert() : store.advertText, 3, 60); advText.setLineWrap(true); advText.setWrapStyleWord(true);
+        advText.setToolTipText("Several messages separated by a line containing only --- rotate: one per day, in order. Each must fit 200 bytes.");
+        JLabel advCount = new JLabel();
+        Runnable countAdverts = () -> { java.util.List<String> v = new java.util.ArrayList<>(); for (String part : advText.getText().split("(?m)^\\s*---\\s*$")) if (!part.isBlank()) v.add(part.trim()); int longest = 0; for (String x : v) longest = Math.max(longest, x.getBytes(java.nio.charset.StandardCharsets.UTF_8).length); advCount.setText(v.size() + " message" + (v.size() == 1 ? "" : "s") + (v.size() > 1 ? " rotating" : "") + ", longest " + longest + "/200 bytes" + (longest > 200 ? "  ← too long, will be cut" : "")); };
+        advText.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() { public void insertUpdate(javax.swing.event.DocumentEvent e) { countAdverts.run(); } public void removeUpdate(javax.swing.event.DocumentEvent e) { countAdverts.run(); } public void changedUpdate(javax.swing.event.DocumentEvent e) { countAdverts.run(); } });
+        countAdverts.run();
+        r2c.add(advOn); r2c.add(advTime); r2c.add(new JLabel("text (--- on its own line separates rotating messages):")); r2c.add(new JScrollPane(advText)); r2c.add(advCount);
         JButton advSave = new JButton("Save advert"); advSave.addActionListener(e -> { store.advertOn = advOn.isSelected(); store.advertTime = advTime.getText().trim(); store.advertText = advText.getText().trim(); store.save(); });
-        JButton advNow = new JButton("Send now"); advNow.addActionListener(e -> { store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
+        JButton advNow = new JButton("Send next now"); advNow.addActionListener(e -> { store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
         r2c.add(advSave); r2c.add(advNow);
         // ---- 2.1: MOTD, poll, sysop password, digest time
         JPanel r2d = row();

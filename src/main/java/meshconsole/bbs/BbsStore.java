@@ -18,7 +18,16 @@ public class BbsStore {
     public final Set<Integer> advHasSa = new HashSet<>();
     public String wmataKey = "", discordWebhook = "", station = "KDCA";
     public boolean advertOn = false; public String advertTime = "09:00", advertText = "", advertDay = "";
+    public int advertIndex;
     public String defaultAdvert() { return name + " BBS is online: DM this node ? for bulletins, mail, weather, your signal report & games. 73"; }
+    /** advertText may hold several messages separated by a line of "---"; one is sent per day, in rotation. */
+    public java.util.List<String> advertVariants() {
+        java.util.List<String> l = new java.util.ArrayList<>();
+        for (String part : advertText.split("(?m)^\\s*---\\s*$")) if (!part.isBlank()) l.add(part.trim().replaceAll("\\s*\\n\\s*", " "));
+        if (l.isEmpty()) l.add(defaultAdvert());
+        return l;
+    }
+    public String nextAdvert() { java.util.List<String> l = advertVariants(); String a = l.get(Math.floorMod(advertIndex, l.size())); advertIndex++; return a; }
     // ---- 2.1 additions
     public final Map<String, Integer> callsPerDay = new TreeMap<>();      // yyyy-MM-dd → calls
     public final Map<String, Integer> cmdCounts = new TreeMap<>();        // command → count
@@ -103,7 +112,7 @@ public class BbsStore {
             if (m.get("netSeen") instanceof List<?> ns) for (Object o : ns) netSeen.add(String.valueOf(o));
             if (m.get("netTime") != null) netTime = Json.str(m.get("netTime")); if (m.get("netDay") != null) netDay = Json.str(m.get("netDay"));
             netOn = Boolean.TRUE.equals(m.get("netOn"));
-            advertOn = Boolean.TRUE.equals(m.get("advertOn")); if (m.get("advertTime") != null) advertTime = Json.str(m.get("advertTime")); if (m.get("advertText") != null) advertText = Json.str(m.get("advertText")); if (m.get("advertDay") != null) advertDay = Json.str(m.get("advertDay"));
+            advertOn = Boolean.TRUE.equals(m.get("advertOn")); advertIndex = (int) Json.num(m.get("advertIndex"), 0); if (m.get("advertTime") != null) advertTime = Json.str(m.get("advertTime")); if (m.get("advertText") != null) advertText = Json.str(m.get("advertText")); if (m.get("advertDay") != null) advertDay = Json.str(m.get("advertDay"));
             if (m.get("events") instanceof List<?> es) for (Object o : es) if (o instanceof Map<?, ?> p) { Event x = new Event(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.when = (long) Json.num(p.get("when"), 0); x.text = Json.str(p.get("text")); events.add(x); }
             if (m.get("trivia") instanceof Map<?, ?> tm) for (Map.Entry<?, ?> e : tm.entrySet()) try { trivia.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
             if (m.get("callers") instanceof List<?> cs) for (Object o : cs) if (o instanceof Map<?, ?> p) {
@@ -130,7 +139,7 @@ public class BbsStore {
         if (loadFailed) return;   // never overwrite a file we couldn't read with defaults; the original is kept as bbs.json.broken-*
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
-          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay));
+          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay)).append(kv("advertIndex", advertIndex));
         sb.append("\"callsPerDay\":").append(mapJson(callsPerDay)).append(",\"cmdCounts\":").append(mapJson(cmdCounts)).append(",\"hourCounts\":").append(Arrays.toString(hourCounts)).append(",\n");
         sb.append("\"subs\":{"); boolean sf = true; for (Map.Entry<Integer, Set<String>> e : subs.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":["); boolean ff = true; for (String v : e.getValue()) { if (!ff) sb.append(','); ff = false; sb.append('"').append(v).append('"'); } sb.append(']'); } sb.append("},\n");
         sb.append("\"pollOptions\":["); sf = true; for (String o : pollOptions) { if (!sf) sb.append(','); sf = false; sb.append(kv("x", o), 4, kv("x", o).length() - 1); } sb.append("],\"pollVotes\":{"); sf = true; for (Map.Entry<Integer, Integer> e : pollVotes.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); } sb.append("},\n");
