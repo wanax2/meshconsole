@@ -45,7 +45,8 @@ public class MeshSerial implements AutoCloseable {
     private volatile boolean running;
     /** When set, every frame in both directions is logged as protobuf text. */
     public volatile boolean traceFrames;
-    private volatile boolean gotAnyFrame;
+    private volatile boolean gotAnyFrame, gotConfigComplete;
+    private volatile long rebootSeenAt;
     private int configRetries;
     private Runnable onClose;
     private Thread reader;
@@ -133,13 +134,15 @@ public class MeshSerial implements AutoCloseable {
                 fail("heartbeat failed: " + e.getMessage());
             }
         }, 20, 20, TimeUnit.SECONDS);
-        // If the radio rebooted when the port opened (ESP32 boards do this), the first request was
-        // lost: keep asking until something arrives.
+        // The first config request is lost when the radio is still booting (ESP32 boards reboot on port open, and a
+        // radio that rebooted mid-session answers packets before it answers config). Re-ask until config_complete
+        // actually arrives, regardless of what else is coming in – and give a freshly rebooted radio 5 s first.
         heartbeat.scheduleAtFixedRate(() -> {
-            if (gotAnyFrame || configRetries >= 10) return;
+            if (gotConfigComplete || configRetries >= 20) return;
+            if (System.currentTimeMillis() - rebootSeenAt < 5000) return;
             configRetries++;
             try {
-                listener.onDebugText("[serial] no reply yet, re-requesting config (" + configRetries + ")");
+                listener.onDebugText(gotAnyFrame ? "[serial] radio is talking but config never completed – re-requesting (" + configRetries + ")" : "[serial] no reply yet, re-requesting config (" + configRetries + ")");
                 send(ToRadio.newBuilder().setWantConfigId(configNonce).build());
             } catch (IOException e) {
                 fail("write failed: " + e.getMessage());
@@ -244,6 +247,8 @@ public class MeshSerial implements AutoCloseable {
                             try {
                                 FromRadio fr = FromRadio.parseFrom(Arrays.copyOf(payload, len));
                                 gotAnyFrame = true;
+                                if (fr.hasConfigCompleteId()) gotConfigComplete = true;
+                                if (fr.hasRebooted() && fr.getRebooted()) { gotConfigComplete = false; rebootSeenAt = System.currentTimeMillis(); }
                                 if (traceFrames) listener.onDebugText("[rx " + len + " B] " + shortText(fr));
                                 listener.onFromRadio(fr);
                             } catch (InvalidProtocolBufferException e) {

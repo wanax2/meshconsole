@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.8 — 2026-10-09
+
+- Fix: after a radio reboot mid-session, auto-reconnect could sit on "config still loading" indefinitely — packets were arriving, so the "no reply" safeguard never fired. The config request is now repeated every 3 s until config_complete actually arrives (up to 20 times), and a freshly rebooted radio is given 5 s to finish booting before the first ask.
+
+
 ## 1.8.7 — 2026-10-08
 
 - BBS replies (and MeshNet lines) are sent **once** and never re-queued by the Messages tab's auto-retry; a far caller's un-acked menu was being transmitted six times.
