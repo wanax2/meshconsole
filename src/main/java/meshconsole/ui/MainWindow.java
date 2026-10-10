@@ -349,6 +349,7 @@ public class MainWindow extends JFrame {
         for (int i = 0; i < ports.getItemCount(); i++) {
             if (!(ports.getItemAt(i) instanceof PortItem pi)) continue;
             String d = pi.port().getDescriptivePortName().toLowerCase();
+            if (d.contains("active management") || d.contains("amt")) continue;   // the laptop's own Intel management port is never a radio
             if (d.contains("rak") || d.contains("meshtastic") || d.contains("wisblock") || d.contains("usb serial")) { pick = i; break; }
             // built-in / virtual ports that are never a radio
             if (pick < 0 && !d.contains("active management") && !d.contains("sol") && !d.contains("communications port") && !d.contains("bluetooth")) pick = i;

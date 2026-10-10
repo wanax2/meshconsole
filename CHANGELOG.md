@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.3 — 2026-10-10
+
+- Fix: the Settings tab kept showing the previous radio's values after switching to another radio in the same session (it populated once and never again). It now re-populates whenever the connected node changes and shows "Loading settings from …" until the new config has arrived.
+- The laptop's Intel AMT "SOL" port is never auto-selected as a radio.
+
+
 ## 1.9.2 — 2026-10-09
 
 - **Auto-connect at startup**: with Auto-reconnect ticked, the app connects to the radio used last time (COM port or TCP host) a couple of seconds after launch, if it is present. Upgrading no longer leaves the board sitting at "Not connected" until someone presses the button.

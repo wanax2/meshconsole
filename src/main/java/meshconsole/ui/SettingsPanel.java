@@ -249,14 +249,18 @@ class SettingsPanel extends JPanel {
 
         state.addListener(new MeshState.Listener() {
             @Override public void onStatusChanged() {
-                if (state.configComplete()) SwingUtilities.invokeLater(SettingsPanel.this::populateIfFresh);
+                SwingUtilities.invokeLater(SettingsPanel.this::populateIfFresh);
             }
         });
     }
 
     private boolean populated;
+    private int populatedFrom;   // node number the fields were last filled from
 
     private void populateIfFresh() {
+        int now = state.myNodeNum();
+        if (now != populatedFrom) { populated = false; populatedFrom = now; }   // a different radio (or a reconnect) – the old values are not this radio's
+        if (!state.configComplete()) { if (now != 0) loaded.setText("Loading settings from " + state.nodeName(now) + "…"); else loaded.setText("Settings not loaded – connect to a radio."); return; }
         if (!populated) populate();
     }
 
