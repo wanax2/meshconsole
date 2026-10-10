@@ -215,6 +215,22 @@ public class MainWindow extends JFrame {
         refreshPorts();
         setSize(1150, 760);
         setLocationRelativeTo(null);
+        // Auto-connect at startup to the radio used last time, when auto-reconnect is on and it is present.
+        String last = PREFS.get("lastRadio", "");
+        if (autoReconnect.isSelected() && !last.isEmpty()) {
+            Timer t = new Timer(2500, e -> {
+                if (client.isConnected()) return;
+                refreshPorts();
+                for (int i = 0; i < ports.getItemCount(); i++) {
+                    Object it = ports.getItemAt(i);
+                    boolean match = (it instanceof PortItem pi && last.equals("serial:" + pi.port().getSystemPortName()))
+                                 || (it instanceof TcpItem ti && last.equals("tcp:" + ti.host() + ":" + ti.port()));
+                    if (match) { ports.setSelectedIndex(i); status.setText("Auto-connecting to " + it + "…"); toggleConnect(); return; }
+                }
+                status.setText("Last radio (" + last.substring(last.indexOf(':') + 1) + ") not present – pick a port and Connect");
+            });
+            t.setRepeats(false); t.start();
+        }
     }
 
     public void setSignalHistory(meshconsole.mesh.SignalHistory h) { statusPanel.setHistory(h); }
@@ -475,7 +491,7 @@ public class MainWindow extends JFrame {
 
     private void connectTcp(TcpItem t) {
         if (client.isConnected()) client.disconnect("switching to TCP " + t.host());
-        try { client.connectTcp(t.host(), t.port()); lastPortName = null; lastTcp = t; rememberTcp(t); }
+        try { client.connectTcp(t.host(), t.port()); lastPortName = null; lastTcp = t; rememberTcp(t); PREFS.put("lastRadio", "tcp:" + t.host() + ":" + t.port()); }
         catch (IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "TCP connect failed", JOptionPane.ERROR_MESSAGE); }
     }
 
@@ -487,6 +503,7 @@ public class MainWindow extends JFrame {
         if (!(sel instanceof PortItem pi)) { refreshPorts(); return; }
         try {
             lastPortName = pi.port().getSystemPortName();
+            PREFS.put("lastRadio", "serial:" + lastPortName);
             client.connect(pi.port());
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Connect failed", JOptionPane.ERROR_MESSAGE);

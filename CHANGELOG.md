@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.2 — 2026-10-09
+
+- **Auto-connect at startup**: with Auto-reconnect ticked, the app connects to the radio used last time (COM port or TCP host) a couple of seconds after launch, if it is present. Upgrading no longer leaves the board sitting at "Not connected" until someone presses the button.
+
+
 ## 1.9.1 — 2026-10-09
 
 - BBS advert rotates: put several messages in the advert box separated by a line containing only `---`; one goes out per day, in order (and "Send next now" steps through them). A counter shows how many and the longest in bytes.
