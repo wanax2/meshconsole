@@ -56,9 +56,9 @@ class BbsPanel extends JPanel {
         JPanel r2 = row(); r2.add(channelTrigger); r2.add(trigger); r2.add(new JLabel("   Cooldown per node (s):")); r2.add(cooldown); r2.add(new JLabel("   Keep posts:")); r2.add(maxPosts);
         JButton save = new JButton("Save settings"); save.addActionListener(e -> applySettings()); r2.add(save);
         JPanel r2b = row();
-        JTextField wmata = new JTextField(store.wmataKey, 14), discord = new JTextField(store.discordWebhook, 28), station = new JTextField(store.station, 5);
+        JTextField wmata = new JPasswordField(store.wmataKey, 14), discord = new JTextField(store.discordWebhook, 28), station = new JTextField(store.station, 5);
         r2b.add(new JLabel("Weather station:")); r2b.add(station); r2b.add(new JLabel("WMATA API key (developer.wmata.com):")); r2b.add(wmata); r2b.add(new JLabel("Discord webhook (bulletins mirror):")); r2b.add(discord);
-        JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.station = station.getText().trim().toUpperCase(); store.wmataKey = wmata.getText().trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
+        JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.station = station.getText().trim().toUpperCase(); store.wmataKey = new String(((JPasswordField) wmata).getPassword()).trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
         JButton postEvent = new JButton("Post event…");
         postEvent.addActionListener(e -> {
             JTextField when = new JTextField("", 12), text = new JTextField("", 30);
@@ -78,10 +78,11 @@ class BbsPanel extends JPanel {
         Runnable countAdverts = () -> { java.util.List<String> v = new java.util.ArrayList<>(); for (String part : advText.getText().split("(?m)^\\s*---\\s*$")) if (!part.isBlank()) v.add(part.trim()); int longest = 0; for (String x : v) longest = Math.max(longest, x.getBytes(java.nio.charset.StandardCharsets.UTF_8).length); advCount.setText(v.size() + " message" + (v.size() == 1 ? "" : "s") + (v.size() > 1 ? " rotating" : "") + ", longest " + longest + "/200 bytes" + (longest > 200 ? "  ← too long, will be cut" : "")); };
         advText.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() { public void insertUpdate(javax.swing.event.DocumentEvent e) { countAdverts.run(); } public void removeUpdate(javax.swing.event.DocumentEvent e) { countAdverts.run(); } public void changedUpdate(javax.swing.event.DocumentEvent e) { countAdverts.run(); } });
         countAdverts.run();
-        r2c.add(advOn); r2c.add(advTime); r2c.add(new JLabel("text (--- on its own line separates rotating messages):")); r2c.add(new JScrollPane(advText)); r2c.add(advCount);
+        r2c.add(advOn); r2c.add(advTime); r2c.add(new JLabel("text (--- on its own line separates rotating messages):")); r2c.add(new JScrollPane(advText));
+        JPanel r2c2 = row();
         JButton advSave = new JButton("Save advert"); advSave.addActionListener(e -> { store.advertOn = advOn.isSelected(); store.advertTime = advTime.getText().trim(); store.advertText = advText.getText().trim(); store.save(); });
-        JButton advNow = new JButton("Send next now"); advNow.addActionListener(e -> { store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
-        r2c.add(advSave); r2c.add(advNow);
+        JButton advNow = new JButton("Send next advert now"); advNow.addActionListener(e -> { store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
+        r2c2.add(advSave); r2c2.add(advNow); r2c2.add(advCount);
         // ---- 2.1: MOTD, poll, sysop password, digest time
         JPanel r2d = row();
         JTextField motd = new JTextField(store.motd, 30), pw = new JPasswordField(store.sysopPassword, 10), digest = new JTextField(store.digestTime, 5);
@@ -116,7 +117,7 @@ class BbsPanel extends JPanel {
         JButton saveBot = new JButton("Save"); saveBot.addActionListener(e -> { store.discordBotToken = new String(((JPasswordField) botTok).getPassword()).trim(); store.discordChannelId = botCh.getText().trim(); store.save(); }); r2f.add(saveBot);
         JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> signal · <b>T</b> traceroute · <b>STATS</b> · <b>TOP</b> · <b>WHO n</b> · <b>W/TAF</b> · <b>METRO</b> alerts · <b>METRO BUS [route]</b> · <b>NEXT station</b> trains · <b>BUS stopid</b> · <b>ELEV [station]</b> · <b>C call</b> · <b>E</b> events · <b>POLL / V n</b> · <b>GB</b> guestbook · <b>SUB WX|EVENTS</b> digest · <b>TRIVIA/GUESS/ADV</b> · <b>NET</b> peers · <b>SYSOP pw</b> then <b>X …</b> admin by DM</html>"));
         JPanel r4 = row(); r4.add(stats);
-        top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r2d); top.add(r2e); top.add(r2f); top.add(r3); top.add(r4);
+        top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r2c2); top.add(r2d); top.add(r2e); top.add(r2f); top.add(r3); top.add(r4);
         add(top, BorderLayout.NORTH);
 
         postTable.setRowHeight(20); mailTable.setRowHeight(20);

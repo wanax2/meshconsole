@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.4 — 2026-10-10
+
+- Two instances on different data folders (`meshconsole.bat C:\other_folder`) now keep separate "last radio" and TCP-host lists, so auto-connect doesn't make them fight over one radio.
+- BBS tab: the advert buttons ("Save advert", "Send next advert now") and the message counter are on their own row so they can't wrap out of view; the WMATA key is masked.
+
+
 ## 1.9.3 — 2026-10-10
 
 - Fix: the Settings tab kept showing the previous radio's values after switching to another radio in the same session (it populated once and never again). It now re-populates whenever the connected node changes and shows "Loading settings from …" until the new config has arrived.

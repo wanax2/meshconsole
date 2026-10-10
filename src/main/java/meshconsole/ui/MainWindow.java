@@ -61,7 +61,8 @@ public class MainWindow extends JFrame {
 
     record TcpItem(String host, int port) { @Override public String toString() { return "TCP  " + host + (port == 4403 ? "" : ":" + port); } }
     static final Object ADD_TCP = new Object() { @Override public String toString() { return "TCP host… (add)"; } };
-    private static final java.util.prefs.Preferences PREFS = java.util.prefs.Preferences.userNodeForPackage(MainWindow.class);
+    /** Per-data-folder preferences (last radio, TCP hosts) so two instances on different folders don't share them. */
+    private static final java.util.prefs.Preferences PREFS = java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).node("data-" + Integer.toHexString(meshconsole.DataDir.get().toString().toLowerCase().hashCode()));
 
     record PortItem(SerialPort port) {
         @Override public String toString() { return port.getSystemPortName() + "  —  " + port.getDescriptivePortName(); }
