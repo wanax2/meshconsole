@@ -22,7 +22,7 @@ public class RadioDb {
 
     public RadioDb(Path file) {
         this.file = file;
-        if (!Files.exists(file)) return;
+        if (!Files.exists(file)) { publishMine(); return; }
         try {
             Object root = Json.parse(Files.readString(file, StandardCharsets.UTF_8));
             if (root instanceof List<?> arr) for (Object o : arr) if (o instanceof Map<?, ?> m) {
@@ -36,13 +36,19 @@ public class RadioDb {
                 map.put(r.num, r);
             }
         } catch (RuntimeException | IOException ignored) { }
+        publishMine();
     }
 
     public synchronized List<Radio> all() { return new ArrayList<>(map.values()); }
+    /** Publishes the set of own node numbers to MeshState so their packets can be excluded from statistics. */
+    public synchronized void publishMine() { meshconsole.mesh.MeshState.myRadios.clear(); meshconsole.mesh.MeshState.myRadios.addAll(map.keySet()); }
     public synchronized Radio get(int num) { return map.get(num); }
 
     /** Registers or refreshes the connected radio's technical facts; keeps user-entered fields. */
     public synchronized Radio touch(int num, String nodeName, String hardware, String firmware, int txPower, String role) throws IOException {
+        try { return touch0(num, nodeName, hardware, firmware, txPower, role); } finally { publishMine(); }
+    }
+    private Radio touch0(int num, String nodeName, String hardware, String firmware, int txPower, String role) throws IOException {
         Radio r = map.computeIfAbsent(num, k -> { Radio x = new Radio(); x.num = k; x.firstConnected = System.currentTimeMillis(); return x; });
         if (r.name.isEmpty() && nodeName != null && !nodeName.isEmpty()) r.name = nodeName;
         if (hardware != null && !hardware.isEmpty()) r.hardware = hardware;
@@ -61,8 +67,8 @@ public class RadioDb {
         save();
     }
 
-    public synchronized void put(Radio r) throws IOException { map.put(r.num, r); save(); }
-    public synchronized void remove(int num) throws IOException { map.remove(num); save(); }
+    public synchronized void put(Radio r) throws IOException { map.put(r.num, r); save(); publishMine(); }
+    public synchronized void remove(int num) throws IOException { map.remove(num); save(); publishMine(); }
 
     private void save() throws IOException {
         StringBuilder sb = new StringBuilder("[\n");

@@ -106,6 +106,10 @@ public class MainWindow extends JFrame {
         autoStats.setToolTipText("Sends a telemetry request to the radio itself. Off by default: it coincided with reboots on a T-Deck.");
         autoStats.addActionListener(e -> { java.util.prefs.Preferences.userNodeForPackage(StatusPanel.class).putBoolean("autoStats", autoStats.isSelected()); StatusPanel sp = (StatusPanel) tabs.getComponentAt(0); sp.autoStats = autoStats.isSelected(); });
         view.add(autoStats);
+        JCheckBoxMenuItem ignoreMine = new JCheckBoxMenuItem("Ignore my other radios in signal stats and analysis", meshconsole.mesh.MeshState.ignoreMyRadios);
+        ignoreMine.setToolTipText("Packets from nodes listed on My radios are kept out of the live chart, signal history, coverage and Analysis (they still appear on Nodes and Map). Untick for an A/B test between your own radios.");
+        ignoreMine.addActionListener(e -> { meshconsole.mesh.MeshState.ignoreMyRadios = ignoreMine.isSelected(); java.util.prefs.Preferences.userNodeForPackage(meshconsole.mesh.MeshState.class).putBoolean("ignoreMyRadios", ignoreMine.isSelected()); });
+        view.add(ignoreMine);
         menu.add(view);
         JMenuItem fw = new JMenuItem("Firmware update…");
         fw.addActionListener(e -> new FirmwareDialog(this, client, lastPortName).setVisible(true));

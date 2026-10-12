@@ -492,7 +492,7 @@ public class MeshState {
                 if (p.hasRxRssi() && p.getRxRssi() != 0) { n.rssi = p.getRxRssi(); n.rssiSum += p.getRxRssi(); n.rssiCount++; }
                 if (hops >= 0) n.hopsAway = hops;
                 n.viaMqtt = p.getViaMqtt();
-                if (p.hasRxRssi() && p.getRxRssi() != 0 && !p.getViaMqtt()) {
+                if (p.hasRxRssi() && p.getRxRssi() != 0 && !p.getViaMqtt() && !(ignoreMyRadios && myRadios.contains(from))) {
                     SignalSample sample = new SignalSample(now, from, p.getRxRssi(), p.getRxSnr(), hops, lora == null ? 0 : lora.getChannelNum(), myNodeNum);
                     signal.addLast(sample);
                     while (signal.size() > SIGNAL_HISTORY) signal.removeFirst();
@@ -836,6 +836,11 @@ public class MeshState {
     public void notifyNodesChanged() { fire(Listener::onNodesChanged); }
 
     public void emitAlert(String kind, String text) { fire(l -> l.onAlert(kind, text)); }
+
+    /** Node numbers of the user's own radios (from My radios). With ignoreMyRadios on, their packets are kept out of signal stats, charts and analysis. */
+    public static final java.util.Set<Integer> myRadios = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    public static volatile boolean ignoreMyRadios = java.util.prefs.Preferences.userNodeForPackage(MeshState.class).getBoolean("ignoreMyRadios", true);
+    public static boolean isMine(int num) { return myRadios.contains(num); }
 
     private String wifiIp = "";
     private static final java.util.regex.Pattern IP_RX = java.util.regex.Pattern.compile("(?i)(?:wifi|ip address|got ip|local ip|ip[:= ])[^0-9]{0,24}((?:\\d{1,3}\\.){3}\\d{1,3})");

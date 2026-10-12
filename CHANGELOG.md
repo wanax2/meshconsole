@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.5 — 2026-10-11
+
+- **Own radios excluded from statistics**: packets from nodes listed on My radios are kept out of the live chart, signal history, coverage and Analysis (they still show on Nodes, marked "(mine)", and on the Map). View → "Ignore my other radios…" turns it off for an A/B test between your own radios.
+
+
 ## 1.9.4 — 2026-10-10
 
 - Two instances on different data folders (`meshconsole.bat C:\other_folder`) now keep separate "last radio" and TCP-host lists, so auto-connect doesn't make them fight over one radio.

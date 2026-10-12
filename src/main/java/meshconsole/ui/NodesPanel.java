@@ -37,7 +37,7 @@ class NodesPanel extends JPanel {
             NodeEntry me = state.myNode();
             boolean isMe = n.num == state.myNodeNum();
             return switch (c) {
-                case 0 -> (isMe ? "★ " : "") + n.displayName();
+                case 0 -> (isMe ? "★ " : meshconsole.mesh.MeshState.isMine(n.num) ? "(mine) " : "") + n.displayName();
                 case 1 -> n.shortName;
                 case 2 -> n.idString();
                 case 3 -> isMe ? "(this radio)" : Fmt.ago(n.lastHeardMillis());
