@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.6 — 2026-10-14
+
+- Messages: the right-click menu always opens; when React/Reply can't be used it says why ("no packet id on this message" or "not connected") instead of silently doing nothing. Reactions are logged when sent.
+
+
 ## 1.9.5 — 2026-10-11
 
 - **Own radios excluded from statistics**: packets from nodes listed on My radios are kept out of the live chart, signal history, coverage and Analysis (they still show on Nodes, marked "(mine)", and on the Map). View → "Ignore my other radios…" turns it off for an A/B test between your own radios.
