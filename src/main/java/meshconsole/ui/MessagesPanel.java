@@ -296,10 +296,17 @@ class MessagesPanel extends JPanel {
         menu.addSeparator();
         boolean canReact = m.packetId != 0 && client.isConnected();
         if (!canReact) { JMenuItem why = new JMenuItem(m.packetId == 0 ? "(no packet id on this message – can't react or reply)" : "(not connected to a radio)"); why.setEnabled(false); menu.add(why); }
-        JMenu react = new JMenu("React"); react.setEnabled(canReact);
-        for (String emo : REACTIONS) { JMenuItem it = new JMenuItem(emo); it.addActionListener(a -> react(m, emo)); react.add(it); }
-        JMenuItem custom = new JMenuItem("Other…"); custom.addActionListener(a -> { String s = JOptionPane.showInputDialog(this, "Emoji:"); if (s != null && !s.isBlank()) react(m, s.trim()); }); react.add(custom);
-        menu.add(react);
+        // Reactions directly in the menu (a submenu opens on hover and is easy to miss or push off-screen)
+        java.awt.Font emojiFont = new java.awt.Font(System.getProperty("os.name", "").toLowerCase().contains("win") ? "Segoe UI Emoji" : "Dialog", java.awt.Font.PLAIN, 16);
+        JPanel strip = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 2, 2)); strip.setOpaque(false);
+        for (String emo : REACTIONS) {
+            JButton b = new JButton(emo); b.setFont(emojiFont); b.setMargin(new java.awt.Insets(2, 6, 2, 6)); b.setFocusable(false); b.setEnabled(canReact);
+            b.setToolTipText("React " + emo); b.addActionListener(a -> { menu.setVisible(false); react(m, emo); }); strip.add(b);
+        }
+        JButton other = new JButton("…"); other.setFont(emojiFont); other.setMargin(new java.awt.Insets(2, 6, 2, 6)); other.setFocusable(false); other.setEnabled(canReact);
+        other.setToolTipText("React with any emoji"); other.addActionListener(a -> { menu.setVisible(false); String s = JOptionPane.showInputDialog(this, "Emoji:"); if (s != null && !s.isBlank()) react(m, s.trim()); }); strip.add(other);
+        JLabel reactLabel = new JLabel("  React:"); reactLabel.setEnabled(canReact); strip.add(reactLabel, 0);
+        menu.add(strip);
         JMenuItem reply = new JMenuItem("Reply…"); reply.setEnabled(canReact); reply.addActionListener(a -> replyTo(m)); menu.add(reply);
         JMenuItem dm = new JMenuItem("Direct message " + state.nodeName(m.from) + "…"); dm.setEnabled(!m.outgoing); dm.addActionListener(a -> selectDestination(m.from)); menu.add(dm);
         JMenuItem copy = new JMenuItem("Copy text"); copy.addActionListener(a -> java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(m.text), null)); menu.add(copy);

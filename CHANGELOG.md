@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.7 — 2026-10-16
+
+- Messages: reactions are a row of emoji buttons directly in the right-click menu (no hover submenu), drawn in an emoji-capable font on Windows. Click one and it's sent.
+
+
 ## 1.9.6 — 2026-10-14
 
 - Messages: the right-click menu always opens; when React/Reply can't be used it says why ("no packet id on this message" or "not connected") instead of silently doing nothing. Reactions are logged when sent.
