@@ -226,6 +226,20 @@ public final class BbsExtras {
         "Highmark Stadium wind chill advisory in effect. Also it is October in Arlington.",
         "Jim Kelly wore 12. Thurman Thomas wore 34. Bruce Smith wore 78. Hop limit is 3. Some numbers you just know.",
         "Wide right? Never heard of it. Try NEXT ROSSLYN for a train that arrives.",
+        "Bills Mafia rules of the mesh: be kind, leave a bulletin, and if a folding table is involved, we weren't there.",
+        "Nathan Peterman started a game once. This board has also had bad days. We move on.",
+        "Fourth and 1. Josh Allen is going to run it. Everyone knows. Nobody can stop it. Like LongFast on slot 20.",
+        "The 13 seconds happened. We acknowledge it the way we acknowledge the cell site at 860 MHz: with a filter.",
+        "Thurman Thomas lost his helmet before Super Bowl XXVI. This board checks its antenna connector every morning.",
+        "Stefon Diggs caught 1,000 yards in a Buffalo winter. The 1W catches 300 nodes in an Arlington one.",
+        "Pat McAfee once said the Bills fans are 'the most insane'. Correct. Also the most on-time with NEXT ROSSLYN.",
+        "Ralph Wilson Stadium. The Ralph. Rich Stadium before that. Highmark now. The wind hasn't changed its name.",
+        "Von Miller, Tre'Davious White, Dawson Knox: fine people. Knox is on the trivia bank. Try TRIVIA.",
+        "Bills-Dolphins week. This board rebroadcasts everything except Dolphins fans.",
+        "Chicken wing count at Highmark on game day: classified. Higher than the node count on this mesh.",
+        "OJ ran for 2,003 yards in 1973. We're done talking about OJ.",
+        "The Bills' fight song is 'Shout'. The mesh's fight song is the airtime warning at 25%.",
+        "'Circle the wagons' - Chris Berman, every Sunday, 1990-1993. This board circles the wagons at hop 3.",
     };
     public static String bills() { return BILLS[new Random().nextInt(BILLS.length)]; }
 
@@ -239,6 +253,16 @@ public final class BbsExtras {
         "Gilbert Perreault wore 11. Hop limit is 3. Some numbers go up in the rafters anyway.",
         "Blue and gold since 1970. Not black and red. We don't talk about the goat head.",
         "Buffalo: two major-league teams, zero championships, infinite loyalty. Also two cavity filters.",
+        "Tage Thompson's shot comes off the stick at 100 mph. The G2 hears it at -102 dBm.",
+        "Ryan Miller stood on his head in 2010. The yagi stood backwards for a day. Both forgiven.",
+        "Pat LaFontaine, 148 points, 1992-93. The same year Amherst Central graduated its best class.",
+        "'May Day! May Day!' - Brad May, 1993, overtime. The board's auto-reconnect sounds the same.",
+        "The Sabres' goat-head logo (1996-2006) is the yagi pointed the wrong way of hockey logos.",
+        "Rob Ray fought everyone. The cavity filter fights the cell site. Both undefeated at home.",
+        "Daniel Briere, Chris Drury, the 2006-07 Sabres: the best team never to win it. Relatable.",
+        "Alexander Mogilny, number 89, left Russia for Buffalo. Your packet left Petworth for Lyon Village. Both long trips.",
+        "KeyBank Center sits where The Aud's parking lot was. Progress, of a kind. Like firmware 2.7.26.",
+        "A Sabres playoff game in May means lake-effect snow in the parking lot. The board does not make the rules.",
     };
     public static String sabres() { return SABRES[new Random().nextInt(SABRES.length)]; }
 
@@ -255,6 +279,19 @@ public final class BbsExtras {
         "Shea's, the Albright-Knox, the grain elevators, Wright's Darwin Martin House. More hops than you'd think.",
         "'City of Good Neighbors.' This board tries. Leave a bulletin.",
         "Mighty Taco. Pizza with the cup-and-char pepperoni. Chiavetta's chicken at every fire hall. None of it ships to 22201.",
+        "Blizzard of '77. Buffalo closed for a week. The mesh would have been fine; nobody owned a radio.",
+        "Ted's Hot Dogs, charcoal, since 1927. The only correct hot dog. Arlington has opinions; Buffalo has Ted's.",
+        "Wegmans started in Rochester. Buffalo forgives this because Wegmans.",
+        "Dyngus Day, the Monday after Easter: polka, pussy willows, and a parade. Buffalo's second-biggest holiday after any Bills win.",
+        "The Peace Bridge to Canada: 20 minutes, one toll, and a Tim Hortons on both sides.",
+        "'Talking Proud', 1980. The city's theme song. Nobody can sing it. Everybody knows it.",
+        "Delaware Park, Olmsted's, is bigger than the National Mall is wide. Buffalo built it for the trees.",
+        "Paula's Donuts. Fourteen Buffalo breakfasts to one DC brunch. The board has done the math.",
+        "Buffalo Chicken Wing Festival, Labor Day weekend: 2 million wings. Zero nodes. They'd be too busy to text.",
+        "The Skyway, the grain elevators, Canalside in winter: ugly to outsiders, home to everyone else. Like a T-Deck.",
+        "Chef's on Seneca Street. Spaghetti Parm. If you know, say so in the guestbook.",
+        "SPoT Coffee, Elmwood Avenue. The Starbucks of the 716. Every table has a Bills jersey at it.",
+        "Amherst, NY: Boulevard Mall, the Northtown Center, Sweet Home, Williamsville, and one anatomic pathologist on a mesh in Virginia.",
     };
     public static String buffalo() { return BUFFALO[new Random().nextInt(BUFFALO.length)]; }
 

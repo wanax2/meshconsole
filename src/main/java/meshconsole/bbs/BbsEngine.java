@@ -153,7 +153,7 @@ public class BbsEngine {
         String motd = store.motd;
         if (motd.isBlank()) { java.time.LocalDate d = java.time.LocalDate.now(); if (d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY && (d.getMonthValue() >= 9 || d.getMonthValue() <= 1)) motd = "It's Sunday. Go Bills."; }
         if (!motd.isBlank() && !today.equals(cl.lastMotdDay) && text.trim().startsWith("?")) { cl.lastMotdDay = today; reply = "MOTD: " + motd + "\n" + reply; }
-        if (new Random().nextInt(25) == 0 && reply.length() < 180 && !reply.contains("Bills")) reply = reply + " Go Bills.";
+        if (new Random().nextInt(12) == 0 && reply.length() < 178 && !reply.contains("Bills") && !reply.contains("Sabres")) reply = reply + (new Random().nextBoolean() ? " Go Bills." : " Go Sabres.");
         store.commandsServed++;
         send(m.from, reply);
         store.save();

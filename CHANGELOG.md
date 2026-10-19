@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.11 — 2026-10-19
+
+- BBS: twice the Buffalo — 26 `GO BILLS` lines, 19 `GO SABRES`, 25 `716`, all under 200 bytes, all lighter. The sign-off on a reply ("Go Bills." or "Go Sabres.") now lands about one reply in twelve.
+
+
 ## 1.9.10 — 2026-10-19
 
 - BBS: `GO SABRES` (French Connection, No Goal, Hasek, The Aud, Rick Jeanneret) and `716` / `BUFFALO` (wings, beef on weck, sponge candy, loganberry, lake effect, the Erie Canal, Amherst Central '92); five more trivia questions. Still sly.
