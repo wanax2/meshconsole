@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.8 — 2026-10-18
+
+- **Export settings** (File menu): a shared export folder used by every instance, and a per-instance label; exports are named `meshconsole-<label>-<date>.zip` (label defaults to the data folder's name, e.g. `meshconsole-mesh_data_nova-20261018-212751.zip`).
+- BBS: a leading "DM " is ignored (`DM TRIVIA` works like `TRIVIA`).
+
+
 ## 1.9.7 — 2026-10-16
 
 - Messages: reactions are a row of emoji buttons directly in the right-click menu (no hover submenu), drawn in an emoji-capable font on Windows. Click one and it's sent.

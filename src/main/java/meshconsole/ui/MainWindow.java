@@ -83,6 +83,7 @@ public class MainWindow extends JFrame {
         dataDir.addActionListener(e -> chooseDataFolder());
         JMenuItem openDir = new JMenuItem("Open data folder");
         openDir.addActionListener(e -> { try { Desktop.getDesktop().open(meshconsole.DataDir.get().toFile()); } catch (Exception ex) { JOptionPane.showMessageDialog(this, ex.getMessage()); } });
+        JMenuItem exportCfg = new JMenuItem("Export settings (folder, label)…"); exportCfg.addActionListener(e -> exportSettings()); file.add(exportCfg);
         JMenuItem export = new JMenuItem("Export all logs as zip…");
         export.addActionListener(e -> exportLogs());
         file.add(dataDir); file.add(openDir); file.addSeparator(); file.add(export);
@@ -409,18 +410,12 @@ public class MainWindow extends JFrame {
 
     private void exportLogs() {
         // No JFileChooser here: on Windows it enumerates every mapped drive and can block for minutes if one is offline.
-        Object[] opts = {"Export to data folder\\exports", "Choose a folder…", "Cancel"};
-        int choice = JOptionPane.showOptionDialog(this, "<html>Zip all logs (message log, node DB, histories, alerts, app log, crash/hang logs).<br>Packet captures (.mcap) are not included.</html>", "Export all logs",
+        Object[] opts = {"Export to " + meshconsole.DataDir.exportDir(), "Export settings…", "Cancel"};
+        int choice = JOptionPane.showOptionDialog(this, "<html>Zip all logs (message log, node DB, histories, alerts, app log, crash/hang logs).<br>Packet captures (.mcap) are not included.<br>File name: meshconsole-<b>" + meshconsole.DataDir.exportLabel() + "</b>-&lt;date&gt;.zip</html>", "Export all logs",
                 JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opts, opts[0]);
         if (choice == 2 || choice < 0) return;
-        java.nio.file.Path target = meshconsole.DataDir.file("exports");
-        if (choice == 1) {
-            java.awt.FileDialog fd = new java.awt.FileDialog(this, "Folder to save the export in (pick any file in it, or type a name)", java.awt.FileDialog.SAVE);
-            fd.setDirectory(meshconsole.DataDir.get().toString()); fd.setFile("meshconsole-export.zip");
-            fd.setVisible(true);
-            if (fd.getDirectory() == null) return;
-            target = java.nio.file.Path.of(fd.getDirectory());
-        }
+        if (choice == 1) { exportSettings(); return; }
+        java.nio.file.Path target = meshconsole.DataDir.exportDir();
         statusPanel.flushLog();
         final java.nio.file.Path dir = target;
         JDialog progress = new JDialog(this, "Exporting…", false);
@@ -443,6 +438,22 @@ public class MainWindow extends JFrame {
                 SwingUtilities.invokeLater(() -> { progress.dispose(); JOptionPane.showMessageDialog(this, ex.getMessage(), "Export failed", JOptionPane.ERROR_MESSAGE); });
             }
         }, "export").start();
+    }
+
+    /** Shared export folder (all instances) and this instance's label for the file name. */
+    private void exportSettings() {
+        JTextField dir = new JTextField(meshconsole.DataDir.exportDir().toString(), 36);
+        JTextField label = new JTextField(meshconsole.DataDir.exportLabel(), 16);
+        JButton pick = new JButton("Browse…");
+        pick.addActionListener(e -> { java.nio.file.Path f = NativeFiles.folder(this, "Export folder", meshconsole.DataDir.exportDir()); if (f != null) dir.setText(f.toString()); });
+        JPanel form = new JPanel(new GridBagLayout()); GridBagConstraints c = new GridBagConstraints(); c.insets = new Insets(3, 4, 3, 4); c.anchor = GridBagConstraints.WEST;
+        c.gridx = 0; c.gridy = 0; form.add(new JLabel("Export folder (shared by every Mesh Console instance):"), c);
+        c.gridx = 1; form.add(dir, c); c.gridx = 2; form.add(pick, c);
+        c.gridx = 0; c.gridy = 1; form.add(new JLabel("Label for this instance's files (meshconsole-<label>-<date>.zip):"), c);
+        c.gridx = 1; form.add(label, c);
+        if (JOptionPane.showConfirmDialog(this, form, "Export settings", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        meshconsole.DataDir.setExportDir(dir.getText().isBlank() ? null : java.nio.file.Path.of(dir.getText().trim()));
+        meshconsole.DataDir.setExportLabel(label.getText());
     }
 
     private void chooseDataFolder() {

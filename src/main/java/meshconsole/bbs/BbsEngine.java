@@ -184,6 +184,7 @@ public class BbsEngine {
     // ---- commands -----------------------------------------------------------
 
     String command(int from, String text) {
+        if (text.regionMatches(true, 0, "DM ", 0, 3)) text = text.substring(3).trim();   // people type "DM TRIVIA" after reading the advert
         String[] parts = text.split("\\s+", 2);
         String cmd = parts[0].toUpperCase(Locale.ROOT);
         String arg = parts.length > 1 ? parts[1].trim() : "";

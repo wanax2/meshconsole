@@ -78,9 +78,21 @@ public final class DataDir {
      * Zips every data file (plus tile-cache-free extras such as captures in the folder) into
      * <name>.zip in the target directory. Name defaults to meshconsole-data-YYYYMMDD-HHmmss.
      */
+    /** Shared across instances: where exports go (empty = <data>/exports). */
+    private static final java.util.prefs.Preferences GLOBAL = java.util.prefs.Preferences.userRoot().node("meshconsole-global");
+    public static Path exportDir() { String d = GLOBAL.get("exportDir", ""); return d.isBlank() ? file("exports") : Path.of(d); }
+    public static void setExportDir(Path p) { GLOBAL.put("exportDir", p == null ? "" : p.toString()); }
+    /** Per data folder: the label used in export file names (default: the data folder's own name). */
+    public static String exportLabel() {
+        String l = java.util.prefs.Preferences.userRoot().node("meshconsole-data-" + Integer.toHexString(get().toString().toLowerCase().hashCode())).get("exportLabel", "");
+        return l.isBlank() ? get().getFileName().toString() : l;
+    }
+    public static void setExportLabel(String l) { java.util.prefs.Preferences.userRoot().node("meshconsole-data-" + Integer.toHexString(get().toString().toLowerCase().hashCode())).put("exportLabel", l == null ? "" : l.trim()); }
+
     public static Path exportZip(Path targetDir, boolean includeCaptures) throws IOException {
         Files.createDirectories(targetDir);
-        String name = "meshconsole-data-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".zip";
+        String label = exportLabel().replaceAll("[^A-Za-z0-9._-]+", "_");
+        String name = "meshconsole-" + label + "-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".zip";
         Path zip = targetDir.resolve(name);
         try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(Files.newOutputStream(zip))) {
             for (String f : FILES) {
