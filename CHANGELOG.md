@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.9 — 2026-10-18
+
+- BBS: `GO BILLS` (also `BILLS`) — twelve lines of Buffalo Bills material, one at random; six sly Bills questions in the trivia bank; a Sunday-in-season MOTD when none is set; and, one reply in twenty-five, a quiet "Go Bills." on the end. The sysop is from Amherst, NY. The mesh is in Virginia. The board doesn't care.
+
+
 ## 1.9.8 — 2026-10-18
 
 - **Export settings** (File menu): a shared export folder used by every instance, and a per-instance label; exports are named `meshconsole-<label>-<date>.zip` (label defaults to the data folder's name, e.g. `meshconsole-mesh_data_nova-20261018-212751.zip`).

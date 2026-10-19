@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'meshconsole'
-version = '1.9.8'
+version = '1.9.9'
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(17) }

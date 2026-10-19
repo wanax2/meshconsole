@@ -150,7 +150,10 @@ public class BbsEngine {
         try { reply = dm ? command(m.from, text) : store.name + " here – DM me ? for commands"; }
         catch (RuntimeException e) { reply = "error: " + e.getMessage(); }
         if (reply == null) { store.commandsServed++; store.save(); return; }   // answered asynchronously
-        if (!store.motd.isBlank() && !today.equals(cl.lastMotdDay) && text.trim().startsWith("?")) { cl.lastMotdDay = today; reply = "MOTD: " + store.motd + "\n" + reply; }
+        String motd = store.motd;
+        if (motd.isBlank()) { java.time.LocalDate d = java.time.LocalDate.now(); if (d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY && (d.getMonthValue() >= 9 || d.getMonthValue() <= 1)) motd = "It's Sunday. Go Bills."; }
+        if (!motd.isBlank() && !today.equals(cl.lastMotdDay) && text.trim().startsWith("?")) { cl.lastMotdDay = today; reply = "MOTD: " + motd + "\n" + reply; }
+        if (new Random().nextInt(25) == 0 && reply.length() < 180 && !reply.contains("Bills")) reply = reply + " Go Bills.";
         store.commandsServed++;
         send(m.from, reply);
         store.save();
@@ -191,7 +194,7 @@ public class BbsEngine {
         String who = state.nodeName(from);
         switch (cmd) {
             case "?", "H", "HELP", "MENU" -> { return store.name + ": B bulletins P post M mail | S signal T trace N STATS TOP WHO | W TAF | METRO NEXT station BUS stop ELEV | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
-            case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET"; }
+            case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET | GO BILLS"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
                 long up = (System.currentTimeMillis() - store.started) / 60000;
@@ -377,6 +380,10 @@ public class BbsEngine {
                 StringBuilder sb = new StringBuilder("MeshNet peers: ");
                 for (BbsStore.Peer pr : store.peers) sb.append(pr.name.isEmpty() ? state.nodeName(pr.num) : pr.name).append(pr.lastExchange > 0 ? " (" + meshconsole.ui.FmtBridge.ago(pr.lastExchange) + " ago)" : " (never)").append("; ");
                 return sb.append(store.outbox.isEmpty() ? "" : store.outbox.size() + " queued. ").append("M board!name text mails a user on a peer.").toString();
+            }
+            case "BILLS", "GOBILLS", "GO" -> {
+                if (cmd.equals("GO") && !arg.trim().equalsIgnoreCase("BILLS")) return "Go where? (GO BILLS is the only destination this board recognises.)";
+                return BbsExtras.bills();
             }
             case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
             case "METRO", "WMATA" -> {

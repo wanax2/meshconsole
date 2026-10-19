@@ -199,7 +199,30 @@ public final class BbsExtras {
         new Trivia("Meshtastic's public key crypto is based on which curve?", "curve25519", new String[]{"x25519", "25519"}),
         new Trivia("Highest spreading factor LoRa supports?", "12", new String[]{"sf12"}),
         new Trivia("Which Meshtastic app shows 'Delivered to mesh'?", "android", new String[]{"phone", "the android app"}),
+        new Trivia("Only NFL team to play in four straight Super Bowls?", "bills", new String[]{"buffalo", "buffalo bills", "the bills"}),
+        new Trivia("The Bills' stadium is in which NY town?", "orchard park", new String[]{"orchardpark", "orchard"}),
+        new Trivia("Jim Kelly's jersey number?", "12", new String[]{"twelve"}),
+        new Trivia("The Bills' no-huddle offense of the early 90s was called the ___ offense", "k-gun", new String[]{"k gun", "kgun"}),
+        new Trivia("Marv Levy: 'Where would you rather be than right ___, right now?'", "here", new String[]{}),
+        new Trivia("How many hops from Orchard Park NY to this board? (hint: it's the hop limit)", "3", new String[]{"three"}),
     };
+
+    /** Sly Buffalo Bills material. The sysop is from Amherst, NY; the mesh is in Virginia; the board doesn't care. */
+    public static final String[] BILLS = {
+        "GO BILLS. Where would you rather be than right here, right now? - Marv Levy",
+        "Bills Mafia, Lyon Village chapter. Yes, in 22201. Yes, we know.",
+        "Four straight Super Bowls. Nobody else has done it. We don't talk about the scores.",
+        "Scott Norwood is a good man and we will hear no more about it.",
+        "Josh Allen hurdles linebackers. This board hurdles a cell site at 860 MHz. Same energy.",
+        "The table is set. (We do not jump through it. On this board.)",
+        "Orchard Park, NY: 900 miles and three hops from here. Longest path on the mesh.",
+        "Music City Miracle: forward lateral. The board stands by this.",
+        "K-Gun offense, 1990. Kelly, Thomas, Reed, Lofton. Still the best thing on a 915 MHz channel.",
+        "Highmark Stadium wind chill advisory in effect. Also it is October in Arlington.",
+        "Jim Kelly wore 12. Thurman Thomas wore 34. Bruce Smith wore 78. Hop limit is 3. Some numbers you just know.",
+        "Wide right? Never heard of it. Try NEXT ROSSLYN for a train that arrives.",
+    };
+    public static String bills() { return BILLS[new Random().nextInt(BILLS.length)]; }
 
     /** Five-room text adventure; state is the room index. */
     public static final String[] ROOMS = {
