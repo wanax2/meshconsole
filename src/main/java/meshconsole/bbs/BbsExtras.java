@@ -205,6 +205,11 @@ public final class BbsExtras {
         new Trivia("The Bills' no-huddle offense of the early 90s was called the ___ offense", "k-gun", new String[]{"k gun", "kgun"}),
         new Trivia("Marv Levy: 'Where would you rather be than right ___, right now?'", "here", new String[]{}),
         new Trivia("How many hops from Orchard Park NY to this board? (hint: it's the hop limit)", "3", new String[]{"three"}),
+        new Trivia("The Sabres' 1970s top line, Perreault-Martin-Robert, was nicknamed the ___ Connection", "french", new String[]{"the french connection", "french connection"}),
+        new Trivia("Sabres goalie known as The Dominator?", "hasek", new String[]{"dominik hasek", "dominic hasek"}),
+        new Trivia("Buffalo wings were invented at which bar in 1964?", "anchor bar", new String[]{"anchor", "the anchor bar"}),
+        new Trivia("Roast beef on a kummelweck roll with horseradish is called beef on ___", "weck", new String[]{"beef on weck", "kummelweck"}),
+        new Trivia("Buffalo's long-gone hockey arena, 1940-1996, was nicknamed The ___", "aud", new String[]{"the aud", "auditorium", "memorial auditorium"}),
     };
 
     /** Sly Buffalo Bills material. The sysop is from Amherst, NY; the mesh is in Virginia; the board doesn't care. */
@@ -223,6 +228,35 @@ public final class BbsExtras {
         "Wide right? Never heard of it. Try NEXT ROSSLYN for a train that arrives.",
     };
     public static String bills() { return BILLS[new Random().nextInt(BILLS.length)]; }
+
+    public static final String[] SABRES = {
+        "GO SABRES. The French Connection: Perreault, Martin, Robert. Still the best line on any channel.",
+        "No Goal. 1999. Brett Hull's skate was in the crease. This board has reviewed the tape.",
+        "Dominik Hasek, The Dominator. Six Vezinas, two Harts, one glove on the ice.",
+        "The Aud, Memorial Auditorium, 1940-1996. Orange seats, blue seats, gold seats. Three hops of nostalgia.",
+        "Rick Jeanneret: 'Top shelf where mama hides the cookies!' This board hides its cookies in bbs.json.",
+        "Sabres playoff drought: we count it in LongFast packets now. It's a big number.",
+        "Gilbert Perreault wore 11. Hop limit is 3. Some numbers go up in the rafters anyway.",
+        "Blue and gold since 1970. Not black and red. We don't talk about the goat head.",
+        "Buffalo: two major-league teams, zero championships, infinite loyalty. Also two cavity filters.",
+    };
+    public static String sabres() { return SABRES[new Random().nextInt(SABRES.length)]; }
+
+    public static final String[] BUFFALO = {
+        "Buffalo wings were invented at the Anchor Bar, 1964. Everything since has been a rebroadcast.",
+        "Beef on weck: roast beef, kummelweck roll, horseradish. Ask for it anywhere else and watch the face.",
+        "Lake-effect snow: 7 feet in four days, November 2014. The mesh ran fine. Nobody could get to it.",
+        "Sponge candy. If you know, you know. If you don't, you've never been to Buffalo in December.",
+        "Loganberry. A drink, a color, a state of mind. Not available south of Erie, PA.",
+        "Tim Hortons before it was a chain: 1964, Hamilton. Buffalo adopted it anyway.",
+        "Niagara Falls is 20 minutes away and the locals never go. It's still there.",
+        "Amherst Central Tigers. Class of '92 is on the mesh. Three hops and thirty years.",
+        "The Erie Canal, 1825, ended in Buffalo. First long-haul store-and-forward network in the state.",
+        "Shea's, the Albright-Knox, the grain elevators, Wright's Darwin Martin House. More hops than you'd think.",
+        "'City of Good Neighbors.' This board tries. Leave a bulletin.",
+        "Mighty Taco. Pizza with the cup-and-char pepperoni. Chiavetta's chicken at every fire hall. None of it ships to 22201.",
+    };
+    public static String buffalo() { return BUFFALO[new Random().nextInt(BUFFALO.length)]; }
 
     /** Five-room text adventure; state is the room index. */
     public static final String[] ROOMS = {

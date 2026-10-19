@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.10 — 2026-10-19
+
+- BBS: `GO SABRES` (French Connection, No Goal, Hasek, The Aud, Rick Jeanneret) and `716` / `BUFFALO` (wings, beef on weck, sponge candy, loganberry, lake effect, the Erie Canal, Amherst Central '92); five more trivia questions. Still sly.
+
+
 ## 1.9.9 — 2026-10-18
 
 - BBS: `GO BILLS` (also `BILLS`) — twelve lines of Buffalo Bills material, one at random; six sly Bills questions in the trivia bank; a Sunday-in-season MOTD when none is set; and, one reply in twenty-five, a quiet "Go Bills." on the end. The sysop is from Amherst, NY. The mesh is in Virginia. The board doesn't care.

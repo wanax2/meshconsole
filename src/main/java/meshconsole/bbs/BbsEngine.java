@@ -194,7 +194,7 @@ public class BbsEngine {
         String who = state.nodeName(from);
         switch (cmd) {
             case "?", "H", "HELP", "MENU" -> { return store.name + ": B bulletins P post M mail | S signal T trace N STATS TOP WHO | W TAF | METRO NEXT station BUS stop ELEV | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
-            case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET | GO BILLS"; }
+            case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET | GO BILLS, GO SABRES, 716"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
                 long up = (System.currentTimeMillis() - store.started) / 60000;
@@ -382,9 +382,13 @@ public class BbsEngine {
                 return sb.append(store.outbox.isEmpty() ? "" : store.outbox.size() + " queued. ").append("M board!name text mails a user on a peer.").toString();
             }
             case "BILLS", "GOBILLS", "GO" -> {
-                if (cmd.equals("GO") && !arg.trim().equalsIgnoreCase("BILLS")) return "Go where? (GO BILLS is the only destination this board recognises.)";
+                String a = arg.trim().toUpperCase();
+                if (cmd.equals("GO") && a.equals("SABRES")) return BbsExtras.sabres();
+                if (cmd.equals("GO") && !a.equals("BILLS")) return "Go where? This board recognises GO BILLS and GO SABRES. Also NEXT ROSSLYN, if you must.";
                 return BbsExtras.bills();
             }
+            case "SABRES", "GOSABRES" -> { return BbsExtras.sabres(); }
+            case "BUFFALO", "716" -> { return BbsExtras.buffalo(); }
             case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
             case "METRO", "WMATA" -> {
                 final String a = arg.trim();
