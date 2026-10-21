@@ -229,6 +229,16 @@ class MapPanel extends JPanel {
                             }, "set-position").start();
                         });
                         menu.add(wp); menu.add(fix);
+                        JMenuItem beam = new JMenuItem("Antenna beam overlay…");
+                        beam.addActionListener(a -> {
+                            java.util.prefs.Preferences pr = beamPrefs();
+                            JTextField bearing = new JTextField(pr.get("bearing", "60"), 5), width = new JTextField(pr.get("width", "50"), 5), label = new JTextField(pr.get("label", "yagi"), 10);
+                            JCheckBox on = new JCheckBox("Show", pr.getBoolean("on", true));
+                            JPanel form = new JPanel(new GridLayout(0, 2, 4, 4)); form.add(new JLabel("Bearing (° true):")); form.add(bearing); form.add(new JLabel("Beam width (°, -3 dB):")); form.add(width); form.add(new JLabel("Label:")); form.add(label); form.add(on);
+                            if (JOptionPane.showConfirmDialog(MapPanel.this, form, "Antenna beam overlay (drawn from my position)", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+                            pr.put("bearing", bearing.getText().trim()); pr.put("width", width.getText().trim()); pr.put("label", label.getText().trim()); pr.putBoolean("on", on.isSelected()); repaint();
+                        });
+                        menu.add(beam);
                         menu.show(MapView.this, e.getX(), e.getY());
                         return;
                     }
@@ -300,6 +310,8 @@ class MapPanel extends JPanel {
             repaint();
         }
 
+        java.util.prefs.Preferences beamPrefs() { return java.util.prefs.Preferences.userRoot().node("meshconsole-beam-" + Integer.toHexString(meshconsole.DataDir.get().toString().toLowerCase().hashCode())); }
+
         Point toScreen(double lat, double lon) {
             double cx = lonToX(centerLon, zoom), cy = latToY(centerLat, zoom);
             return new Point((int) Math.round(lonToX(lon, zoom) - cx + getWidth() / 2.0),
@@ -329,6 +341,21 @@ class MapPanel extends JPanel {
             NodeEntry me = state.myNode();
             Point mePt = (me != null && me.hasPosition) ? toScreen(me.lat, me.lon) : null;
             long now = System.currentTimeMillis();
+
+            // antenna beam overlay: a wedge from my position along the configured bearing, 15 km long
+            java.util.prefs.Preferences bp = beamPrefs();
+            if (mePt != null && bp.getBoolean("on", false)) {
+                try {
+                    double brg = Double.parseDouble(bp.get("bearing", "60")), wid = Double.parseDouble(bp.get("width", "50"));
+                    double kmLen = 15; Point far = toScreen(me.lat + kmLen / 111.0 * Math.cos(Math.toRadians(brg)), me.lon + kmLen / (111.0 * Math.cos(Math.toRadians(me.lat))) * Math.sin(Math.toRadians(brg)));
+                    double rpx = Math.hypot(far.x - mePt.x, far.y - mePt.y);
+                    java.awt.geom.Arc2D wedge = new java.awt.geom.Arc2D.Double(mePt.x - rpx, mePt.y - rpx, 2 * rpx, 2 * rpx, 90 - brg - wid / 2, wid, java.awt.geom.Arc2D.PIE);
+                    g.setColor(new Color(60, 120, 220, 40)); g.fill(wedge);
+                    g.setColor(new Color(40, 90, 200, 160)); g.setStroke(new BasicStroke(1.5f)); g.draw(wedge);
+                    g.drawLine(mePt.x, mePt.y, far.x, far.y);
+                    g.setColor(new Color(20, 60, 160)); g.drawString(bp.get("label", "yagi") + " " + (int) brg + "°", far.x + 4, far.y);
+                } catch (NumberFormatException ignored) { }
+            }
 
             if (showGrid.isSelected()) {
                 for (meshconsole.analysis.Analysis.Cell cell : meshconsole.analysis.Analysis.coverageGrid(state.coverage(), 100)) {

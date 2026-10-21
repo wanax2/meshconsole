@@ -82,6 +82,7 @@ public class BbsEngine {
         if (store.netOn && due(now, store.netTime) && !today.equals(store.netDay) && !store.peers.isEmpty()) { store.netDay = today; store.save(); int n = netExchangeNow(); log("MeshNet daily exchange: " + n + " post(s) sent"); }
         if (System.currentTimeMillis() - lastDiscordPoll > 5 * 60_000L) { lastDiscordPoll = System.currentTimeMillis(); pollDiscord(); }
         if (!store.outbox.isEmpty()) netPump();
+        if (store.nwsBroadcast && System.currentTimeMillis() - lastNwsCheck > 10 * 60_000L) { lastNwsCheck = System.currentTimeMillis(); checkNws(); }
         if (!store.advertOn) return;
         if (due(now, store.advertTime) && !today.equals(store.advertDay)) {
             String text = store.nextAdvert();
@@ -199,7 +200,7 @@ public class BbsEngine {
         String arg = parts.length > 1 ? parts[1].trim() : "";
         String who = state.nodeName(from);
         switch (cmd) {
-            case "?", "H", "HELP", "MENU" -> { return store.name + ": B bulletins P post M mail | S signal T trace N STATS TOP WHO | W TAF | METRO NEXT station BUS stop ELEV | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
+            case "?", "H", "HELP", "MENU" -> { return store.name + ": B P M mail | S T N STATS TOP WHO | W TAF ALERTS SUN ISS SOLAR | METRO NEXT station BUS stop ELEV SCORE | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
             case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET | GO BILLS, GO SABRES, 716"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
@@ -395,6 +396,11 @@ public class BbsEngine {
             }
             case "SABRES", "GOSABRES" -> { return BbsExtras.sabres(); }
             case "BUFFALO", "716" -> { return BbsExtras.buffalo(); }
+            case "ALERTS", "ALERT", "NWS", "WARN" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, BbsExtras.alertsLine(la, lo))); return null; }
+            case "SCORE", "SCORES" -> { bg.submit(() -> send(from, BbsExtras.scores())); return null; }
+            case "SUN", "MOON", "SUNSET", "SUNRISE" -> { NodeEntry me0 = state.myNode(); return BbsExtras.sun(me0 != null && me0.hasPosition ? me0.lat : 0, me0 != null && me0.hasPosition ? me0.lon : 0); }
+            case "ISS" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, BbsExtras.iss(la, lo))); return null; }
+            case "SOLAR", "HF", "PROP" -> { bg.submit(() -> send(from, BbsExtras.solar())); return null; }
             case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
             case "METRO", "WMATA" -> {
                 final String a = arg.trim();
@@ -660,7 +666,26 @@ public class BbsEngine {
         });
     }
 
-    private long lastDiscordPoll;
+    private long lastDiscordPoll, lastNwsCheck;
+
+    /** Broadcasts each new NWS *warning* (not watches/advisories) for the board's location once, on the primary channel. */
+    private void checkNws() {
+        NodeEntry me = state.myNode(); if (me == null || !me.hasPosition) return;
+        final double la = me.lat, lo = me.lon;
+        bg.submit(() -> {
+            try {
+                for (BbsExtras.Alert a : BbsExtras.nwsAlerts(la, lo)) {
+                    if (!a.event().toLowerCase().contains("warning")) continue;
+                    if (!store.nwsSeen.add(a.id())) continue;
+                    String text = "NWS " + a.event().toUpperCase() + (a.ends().length() >= 16 ? " until " + a.ends().substring(11, 16) : "") + ": " + a.headline();
+                    if (text.getBytes(StandardCharsets.UTF_8).length > 195) text = text.substring(0, 190) + "…";
+                    client.sendOnce(text, ChatMessage.BROADCAST, 0);
+                    log("NWS warning broadcast: " + text); store.save();
+                }
+                while (store.nwsSeen.size() > 200) store.nwsSeen.remove(store.nwsSeen.iterator().next());
+            } catch (Exception e) { log("NWS check failed: " + e.getMessage()); }
+        });
+    }
 
     private BbsStore.Post post(String arg) {
         try { int id = Integer.parseInt(arg.replace("#", "").trim()); for (BbsStore.Post p : store.posts) if (p.id == id) return p; } catch (NumberFormatException ignored) { }

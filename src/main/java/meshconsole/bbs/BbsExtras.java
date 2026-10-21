@@ -144,6 +144,106 @@ public final class BbsExtras {
 
     private static String cap(String s, int n) { return s.length() > n ? s.substring(0, n - 1) + "…" : s; }
 
+    // ---- NWS alerts ---------------------------------------------------------------------------
+    public record Alert(String id, String event, String headline, String ends, String severity) { }
+    public static List<Alert> nwsAlerts(double lat, double lon) throws IOException {
+        Map<?, ?> root = (Map<?, ?>) Json.parse(get(String.format(java.util.Locale.ROOT, "https://api.weather.gov/alerts/active?point=%.4f,%.4f", lat, lon), "Accept", "application/geo+json"));
+        List<Alert> out = new ArrayList<>();
+        for (Object o : (List<?>) root.get("features")) {
+            Map<?, ?> f = (Map<?, ?>) o; Map<?, ?> pr = (Map<?, ?>) f.get("properties"); if (pr == null) continue;
+            out.add(new Alert(Json.str(f.get("id")), Json.str(pr.get("event")), Json.str(pr.get("headline")), Json.str(pr.get("ends")), Json.str(pr.get("severity"))));
+        }
+        return out;
+    }
+    public static String alertsLine(double lat, double lon) {
+        if (lat == 0) return "No position set on this board.";
+        try {
+            List<Alert> al = nwsAlerts(lat, lon);
+            if (al.isEmpty()) return "NWS: no active alerts for this area.";
+            StringBuilder sb = new StringBuilder("NWS: ");
+            for (Alert a : al) { String item = a.event() + (a.ends().length() >= 16 ? " until " + a.ends().substring(11, 16) : "") + "; "; if (sb.length() + item.length() > 190) { sb.append("(+more)"); break; } sb.append(item); }
+            return sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return "NWS alerts unavailable (" + e.getMessage() + ")"; }
+    }
+
+    // ---- scores (ESPN public scoreboard) -------------------------------------------------------
+    private static String espn(String sport, String league, String team) {
+        try {
+            Map<?, ?> root = (Map<?, ?>) Json.parse(get("https://site.api.espn.com/apis/site/v2/sports/" + sport + "/" + league + "/scoreboard"));
+            for (Object e : (List<?>) root.get("events")) {
+                Map<?, ?> ev = (Map<?, ?>) e; Map<?, ?> comp = (Map<?, ?>) ((List<?>) ev.get("competitions")).get(0);
+                List<?> cs = (List<?>) comp.get("competitors"); boolean ours = false;
+                for (Object c : cs) if (Json.str(((Map<?, ?>) ((Map<?, ?>) c).get("team")).get("displayName")).contains(team)) ours = true;
+                if (!ours) continue;
+                Map<?, ?> st = (Map<?, ?>) ((Map<?, ?>) comp.get("status")).get("type");
+                StringBuilder sb = new StringBuilder();
+                for (Object c : cs) { Map<?, ?> cm = (Map<?, ?>) c; sb.append(Json.str(((Map<?, ?>) cm.get("team")).get("abbreviation"))).append(' ').append(Json.str(cm.get("score"))).append(sb.length() < 10 ? " - " : ""); }
+                return sb + "  " + Json.str(st.get("shortDetail"));
+            }
+            return team + ": no game today.";
+        } catch (IOException | RuntimeException e) { return team + " score unavailable (" + e.getMessage() + ")"; }
+    }
+    public static String scores() { return "Bills: " + espn("football", "nfl", "Bills") + " | Sabres: " + espn("hockey", "nhl", "Sabres"); }
+
+    // ---- sun, moon, ISS -------------------------------------------------------------------------
+    public static String sun(double lat, double lon) {
+        if (lat == 0) return "No position set on this board.";
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+        double[] rs = sunRiseSet(lat, lon, now.toLocalDate());
+        String rise = rs[0] < 0 ? "none" : hhmm(rs[0], now), set = rs[1] < 0 ? "none" : hhmm(rs[1], now);
+        double phase = moonPhase(now); String name = phase < 0.03 || phase > 0.97 ? "new" : phase < 0.22 ? "waxing crescent" : phase < 0.28 ? "first quarter" : phase < 0.47 ? "waxing gibbous" : phase < 0.53 ? "full" : phase < 0.72 ? "waning gibbous" : phase < 0.78 ? "last quarter" : "waning crescent";
+        return String.format("Sunrise %s, sunset %s (local). Moon: %s, %.0f%% lit.", rise, set, name, 50 * (1 - Math.cos(2 * Math.PI * phase)));
+    }
+    private static String hhmm(double utcHours, java.time.ZonedDateTime ref) {
+        java.time.ZonedDateTime t = ref.withZoneSameInstant(java.time.ZoneOffset.UTC).toLocalDate().atStartOfDay(java.time.ZoneOffset.UTC).plusSeconds((long) (utcHours * 3600)).withZoneSameInstant(ref.getZone());
+        return String.format("%02d:%02d", t.getHour(), t.getMinute());
+    }
+    /** NOAA-style approximation; returns {rise, set} in UTC hours, -1 when the sun doesn't rise/set. */
+    static double[] sunRiseSet(double lat, double lon, java.time.LocalDate d) {
+        int n = d.getDayOfYear(); double lngHour = lon / 15;
+        double[] out = new double[2];
+        for (int i = 0; i < 2; i++) {
+            double t = n + ((i == 0 ? 6 : 18) - lngHour) / 24;
+            double M = (0.9856 * t) - 3.289;
+            double L = M + (1.916 * Math.sin(Math.toRadians(M))) + (0.020 * Math.sin(Math.toRadians(2 * M))) + 282.634; L = (L + 360) % 360;
+            double RA = Math.toDegrees(Math.atan(0.91764 * Math.tan(Math.toRadians(L)))); RA = (RA + 360) % 360;
+            RA = RA + (Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90); RA /= 15;
+            double sinDec = 0.39782 * Math.sin(Math.toRadians(L)), cosDec = Math.cos(Math.asin(sinDec));
+            double cosH = (Math.cos(Math.toRadians(90.833)) - (sinDec * Math.sin(Math.toRadians(lat)))) / (cosDec * Math.cos(Math.toRadians(lat)));
+            if (cosH > 1 || cosH < -1) { out[i] = -1; continue; }
+            double H = i == 0 ? 360 - Math.toDegrees(Math.acos(cosH)) : Math.toDegrees(Math.acos(cosH)); H /= 15;
+            double T = H + RA - (0.06571 * t) - 6.622; double UT = T - lngHour; out[i] = ((UT % 24) + 24) % 24;
+        }
+        return out;
+    }
+    static double moonPhase(java.time.ZonedDateTime now) {
+        double days = (now.toEpochSecond() - 947182440L) / 86400.0;   // new moon 2000-01-06 18:14 UTC
+        double p = (days / 29.530588853) % 1; return p < 0 ? p + 1 : p;
+    }
+    public static String iss(double lat, double lon) {
+        try {
+            Map<?, ?> m = (Map<?, ?>) Json.parse(get("https://api.wheretheiss.at/v1/satellites/25544"));
+            double ilat = Json.num(m.get("latitude"), 0), ilon = Json.num(m.get("longitude"), 0), alt = Json.num(m.get("altitude"), 0);
+            String vis = Json.str(m.get("visibility"));
+            double km = lat == 0 ? Double.NaN : meshconsole.analysis.Metar.distanceKm(lat, lon, ilat, ilon);
+            String where = String.format("%.0f%s %.0f%s", Math.abs(ilat), ilat >= 0 ? "N" : "S", Math.abs(ilon), ilon >= 0 ? "E" : "W");
+            return "ISS now at " + where + ", " + (int) alt + " km up, " + (Double.isNaN(km) ? "" : (int) km + " km from here, ") + "in " + vis + (km < 1500 ? " – look up!" : ".");
+        } catch (IOException | RuntimeException e) { return "ISS position unavailable (" + e.getMessage() + ")"; }
+    }
+
+    // ---- HF propagation (hamqsl.com) ------------------------------------------------------------
+    public static String solar() {
+        try {
+            String xml = get("https://www.hamqsl.com/solarxml.php");
+            String sfi = tag(xml, "solarflux"), k = tag(xml, "kindex"), a = tag(xml, "aindex"), ss = tag(xml, "sunspots"), xray = tag(xml, "xray"), geo = tag(xml, "geomagfield");
+            StringBuilder sb = new StringBuilder("SFI " + sfi + " SN " + ss + " A " + a + " K " + k + " X-ray " + xray + " geomag " + geo + ". Day: ");
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("<band name=\"([^\"]+)\" time=\"day\">([^<]+)</band>").matcher(xml);
+            while (m.find()) sb.append(m.group(1)).append(' ').append(m.group(2)).append(", ");
+            String s = sb.toString().replaceAll(", $", ""); return s.length() > 195 ? s.substring(0, 192) + "…" : s;
+        } catch (IOException | RuntimeException e) { return "Solar data unavailable (" + e.getMessage() + ")"; }
+    }
+    private static String tag(String xml, String t) { java.util.regex.Matcher m = java.util.regex.Pattern.compile("<" + t + ">\\s*([^<]*?)\\s*</" + t + ">").matcher(xml); return m.find() ? m.group(1) : "?"; }
+
     /** Ham callsign → name/location via callook.info (US callsigns). */
     public static String callsign(String call) {
         try {

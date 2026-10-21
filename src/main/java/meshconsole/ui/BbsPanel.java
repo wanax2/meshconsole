@@ -111,11 +111,14 @@ class BbsPanel extends JPanel {
             store.save(); reload();
         }); r2e.add(savePeers);
         JButton netNow = new JButton("Exchange now"); netNow.addActionListener(e -> { if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first."); return; } int n = engine.netExchangeNow(); JOptionPane.showMessageDialog(this, "Sent HELLO to " + store.peers.size() + " peer(s) and " + n + " post(s)."); }); r2e.add(netNow);
+        JCheckBox nws = new JCheckBox("Broadcast NWS warnings for this location (once per warning, primary channel)", store.nwsBroadcast);
+        nws.addActionListener(e -> { store.nwsBroadcast = nws.isSelected(); store.save(); });
+        r2e.add(nws);
         JPanel r2f = row();
         JTextField botTok = new JPasswordField(store.discordBotToken, 14), botCh = new JTextField(store.discordChannelId, 14);
         r2f.add(new JLabel("Discord → board (bot token / channel id; messages starting '!post' become bulletins):")); r2f.add(botTok); r2f.add(botCh);
         JButton saveBot = new JButton("Save"); saveBot.addActionListener(e -> { store.discordBotToken = new String(((JPasswordField) botTok).getPassword()).trim(); store.discordChannelId = botCh.getText().trim(); store.save(); }); r2f.add(saveBot);
-        JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> signal · <b>T</b> traceroute · <b>STATS</b> · <b>TOP</b> · <b>WHO n</b> · <b>W/TAF</b> · <b>METRO</b> alerts · <b>METRO BUS [route]</b> · <b>NEXT station</b> trains · <b>BUS stopid</b> · <b>ELEV [station]</b> · <b>C call</b> · <b>E</b> events · <b>POLL / V n</b> · <b>GB</b> guestbook · <b>SUB WX|EVENTS</b> digest · <b>TRIVIA/GUESS/ADV</b> · <b>NET</b> peers · <b>SYSOP pw</b> then <b>X …</b> admin by DM</html>"));
+        JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> signal · <b>T</b> traceroute · <b>STATS</b> · <b>TOP</b> · <b>WHO n</b> · <b>W/TAF</b> · <b>METRO</b> alerts · <b>METRO BUS [route]</b> · <b>NEXT station</b> trains · <b>BUS stopid</b> · <b>ELEV [station]</b> · <b>ALERTS</b> NWS · <b>SCORE</b> Bills/Sabres · <b>SUN</b> · <b>ISS</b> · <b>SOLAR</b> HF · <b>C call</b> · <b>E</b> events · <b>POLL / V n</b> · <b>GB</b> guestbook · <b>SUB WX|EVENTS</b> digest · <b>TRIVIA/GUESS/ADV</b> · <b>NET</b> peers · <b>SYSOP pw</b> then <b>X …</b> admin by DM</html>"));
         JPanel r4 = row(); r4.add(stats);
         top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r2c2); top.add(r2d); top.add(r2e); top.add(r2f); top.add(r3); top.add(r4);
         add(top, BorderLayout.NORTH);

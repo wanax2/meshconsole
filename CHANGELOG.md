@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.10.1 — 2026-10-21
+
+BBS services:
+- **ALERTS** — active National Weather Service alerts for the board's location. With "Broadcast NWS warnings" ticked on the BBS tab, each new *warning* (not watches/advisories) is broadcast once on the primary channel — a 200-byte public service.
+- **SCORE** — Bills and Sabres, today's game, live score and status (ESPN public scoreboard).
+- **SUN** / **MOON** — sunrise, sunset (local time) and moon phase, computed on the board; **ISS** — where the station is right now and how far from here (wheretheiss.at); **SOLAR** — SFI, sunspots, A/K index, X-ray, geomagnetic field and daytime band conditions (hamqsl.com).
+Map:
+- **Antenna beam overlay** (right-click → Antenna beam overlay…): a wedge from your position along a bearing with a beam width, labelled, 15 km long — the yagi on the map. Per data folder, so each instance draws its own.
+
+
 ## 1.10.0 — 2026-10-21
 
 - **Analysis → Radio vs radio**: pick two radios (or this instance's radio and another instance's data folder), a window and a hop limit; a compass rose shows, per 30° sector, how many dB better radio B hears the nodes both radios heard, with a per-node table. The tool for aiming a yagi.
