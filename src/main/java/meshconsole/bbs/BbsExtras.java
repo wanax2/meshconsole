@@ -178,6 +178,27 @@ public final class BbsExtras {
     // ---- games -------------------------------------------------------------------------------
 
     public record Trivia(String q, String a, String[] alts) { }
+
+    /** Built-in bank plus the lines of <data>/trivia.txt (question|answer|alt1;alt2), re-read when the file changes. */
+    private static List<Trivia> bank; private static long bankStamp = -1;
+    public static synchronized List<Trivia> trivia() {
+        java.nio.file.Path f = meshconsole.DataDir.file("trivia.txt");
+        long stamp = 0; try { stamp = java.nio.file.Files.exists(f) ? java.nio.file.Files.getLastModifiedTime(f).toMillis() : 0; } catch (IOException ignored) { }
+        if (bank != null && stamp == bankStamp) return bank;
+        List<Trivia> l = new ArrayList<>(Arrays.asList(TRIVIA));
+        if (stamp > 0) try {
+            for (String line : java.nio.file.Files.readAllLines(f, StandardCharsets.UTF_8)) {
+                line = line.trim(); if (line.isEmpty() || line.startsWith("#")) continue;
+                String[] p = line.split("\\|");
+                if (p.length < 2) continue;
+                String[] alts = p.length > 2 ? p[2].split(";") : new String[0];
+                for (int i = 0; i < alts.length; i++) alts[i] = alts[i].trim().toLowerCase();
+                l.add(new Trivia(p[0].trim(), p[1].trim().toLowerCase(), alts));
+            }
+        } catch (IOException ignored) { }
+        bank = l; bankStamp = stamp; return bank;
+    }
+
     public static final Trivia[] TRIVIA = {
         new Trivia("What frequency band does US Meshtastic use?", "915", new String[]{"915mhz", "915 mhz", "902-928"}),
         new Trivia("LoRa stands for Long ___?", "range", new String[]{"long range"}),

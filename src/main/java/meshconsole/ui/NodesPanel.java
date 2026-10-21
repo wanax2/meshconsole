@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.function.IntConsumer;
 
 class NodesPanel extends JPanel {
+    /** Set by the main window: (node, mine) → add/remove on My radios. */
+    java.util.function.BiConsumer<NodeEntry, Boolean> onMarkMine;
     private final Coalesce nodesCoalesce = new Coalesce(1000, NodesPanel.this::reload);
     private final MeshClient client;
     private final MeshState state;
@@ -220,6 +222,11 @@ class NodesPanel extends JPanel {
         JMenuItem map = new JMenuItem("Show on map"); map.setEnabled(n.hasPosition); map.addActionListener(a -> onShowOnMap.accept(n.num)); m.add(map);
         m.addSeparator();
         JMenuItem watch = new JMenuItem(n.watched ? "Stop watching" : "Watch (alert when lost / back)"); watch.addActionListener(a -> { n.watched = !n.watched; state.notifyNodesChanged(); }); m.add(watch);
+        boolean mine = meshconsole.mesh.MeshState.isMine(n.num);
+        JMenuItem mineItem = new JMenuItem(mine ? "Not one of my radios" : "This is one of my radios (exclude from stats)");
+        mineItem.setToolTipText("Marks this node as yours in this instance: its packets are kept out of signal statistics, charts and analysis (View menu toggles the exclusion).");
+        mineItem.addActionListener(a -> { if (onMarkMine != null) onMarkMine.accept(n, !mine); });
+        m.add(mineItem);
         JMenuItem fav = new JMenuItem(n.isFavorite ? "★ Remove favourite on radio" : "★ Favourite on radio"); fav.addActionListener(a -> { try { client.setFavoriteOnRadio(n.num, !n.isFavorite); } catch (IOException ex) { error(ex); } }); m.add(fav);
         JMenuItem copy = new JMenuItem("Copy !id"); copy.addActionListener(a -> java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(n.idString()), null)); m.add(copy);
         m.show(table, e.getX(), e.getY());

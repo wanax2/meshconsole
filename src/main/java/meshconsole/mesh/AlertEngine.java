@@ -13,7 +13,8 @@ public class AlertEngine {
     public volatile int utilPct = 30;
     private final Set<Integer> silentFlagged = new HashSet<>();
     private final Set<Integer> batteryFlagged = new HashSet<>();
-    private boolean utilFlagged;
+    private long utilHourStart = System.currentTimeMillis();
+    private int utilChecks, utilOver; private float utilPeak;
     private final Set<Integer> watchedSilent = new HashSet<>();
 
     public AlertEngine(MeshState state) { this.state = state; }
@@ -25,9 +26,12 @@ public class AlertEngine {
         int me = state.myNodeNum();
         for (NodeEntry n : state.nodes()) {
             if (n.num == me) {
-                if (n.channelUtil >= utilPct) {
-                    if (!utilFlagged) { utilFlagged = true; state.emitAlert("UTIL", String.format("Channel utilisation %.0f%% – the mesh is congested", n.channelUtil)); }
-                } else if (n.channelUtil > 0 && n.channelUtil < utilPct - 5) utilFlagged = false;
+                // Congestion is summarised once an hour instead of alerting on every reading above the threshold.
+                if (n.channelUtil > 0) { utilChecks++; if (n.channelUtil >= utilPct) utilOver++; utilPeak = Math.max(utilPeak, n.channelUtil); }
+                if (now - utilHourStart >= 3600_000L) {
+                    if (utilOver > 0) state.emitAlert("UTIL", String.format("Congested %d of the last %d readings (peak %.0f%%, threshold %d%%)", utilOver, utilChecks, utilPeak, utilPct));
+                    utilHourStart = now; utilChecks = 0; utilOver = 0; utilPeak = 0;
+                }
                 continue;
             }
             long last = n.lastHeardMillis();

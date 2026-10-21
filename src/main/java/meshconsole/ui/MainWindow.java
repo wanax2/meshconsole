@@ -303,6 +303,13 @@ public class MainWindow extends JFrame {
         tabs.insertTab("Schedule", null, schedulePanel, null, tabs.indexOfComponent(alertsPanel));
         new Timer(60_000, e -> { scheduler.tick(); if (bbs != null) bbs.tick(); }).start();
         java.util.List<Integer> mine = new java.util.ArrayList<>(); for (meshconsole.analysis.RadioDb.Radio r : analysisPanel.radioDb().all()) mine.add(r.num); witnessPanel.addMyNodes(mine);
+        nodesPanel.onMarkMine = (n, isMine) -> {
+            try {
+                if (isMine) analysisPanel.radioDb().touch(n.num, n.displayName(), n.hwModel, "", 0, "");
+                else analysisPanel.radioDb().remove(n.num);
+                state.notifyNodesChanged();
+            } catch (java.io.IOException ex) { JOptionPane.showMessageDialog(this, ex.getMessage(), "My radios", JOptionPane.ERROR_MESSAGE); }
+        };
         sysop = new SysopWindow(bbs, state);
         applyBbsVisibility(java.util.prefs.Preferences.userNodeForPackage(MainWindow.class).getBoolean("showBbs", false));
         Runnable syncToggle = () -> { bbsToggle.setSelected(bbs.store().enabled); bbsToggle.setText(bbs.store().enabled ? "BBS: ON" : "BBS: OFF"); bbsToggle.setBackground(bbs.store().enabled ? new Color(40, 120, 70) : null); bbsToggle.setForeground(bbs.store().enabled ? Color.WHITE : null); bbsToggle.setOpaque(bbs.store().enabled); };

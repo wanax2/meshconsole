@@ -15,6 +15,7 @@ public class BbsStore {
     public final List<Event> events = new ArrayList<>();
     public final Map<Integer, Integer> trivia = new HashMap<>();      // node → points
     public final Map<Integer, Integer> guessTarget = new HashMap<>(), guessTries = new HashMap<>(), advRoom = new HashMap<>(), triviaQ = new HashMap<>();
+    public final Map<Integer, Long> triviaAsked = new HashMap<>();
     public final Set<Integer> advHasSa = new HashSet<>();
     public String wmataKey = "", discordWebhook = "", station = "KDCA";
     public boolean advertOn = false; public String advertTime = "09:00", advertText = "", advertDay = "";
@@ -46,7 +47,7 @@ public class BbsStore {
     public int netMailSeq = 1;
     public final List<Peer> peers = new ArrayList<>(); public final Set<String> netSeen = new HashSet<>(); public String netTime = "04:00", netDay = "";
     public boolean netOn = false;
-    public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; public int lastPostSeen; public String lastMotdDay = ""; }
+    public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; public int lastPostSeen; public String lastMotdDay = ""; public int repliesSent, repliesAcked; }
     public final Map<Integer, Caller> callers = new LinkedHashMap<>();
     public long callsToday; public String callsDay = "";
     public static class Mail { public int id; public long time, delivered; public int from, to; public String fromName = "", text = ""; }
@@ -58,7 +59,7 @@ public class BbsStore {
     public final Set<Integer> banned = new HashSet<>();
     public final List<Post> posts = new ArrayList<>();
     public final List<Mail> mail = new ArrayList<>();
-    public long commandsServed, repliesSent, started;
+    public long commandsServed, repliesSent, repliesAcked, started;
     private int nextId = 1;
     private final Path file;
 
@@ -90,7 +91,7 @@ public class BbsStore {
                 Post x = new Post(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.author = (int) (long) Json.num(p.get("author"), 0);
                 x.authorName = Json.str(p.get("authorName")); x.text = Json.str(p.get("text")); posts.add(x);
             }
-            callsToday = (long) Json.num(m.get("callsToday"), 0); callsDay = Json.str(m.get("callsDay"));
+            callsToday = (long) Json.num(m.get("callsToday"), 0); repliesAcked = (long) Json.num(m.get("repliesAcked"), 0); callsDay = Json.str(m.get("callsDay"));
             if (m.get("wmataKey") != null) wmataKey = Json.str(m.get("wmataKey"));
             if (m.get("discordWebhook") != null) discordWebhook = Json.str(m.get("discordWebhook"));
             if (m.get("station") != null) station = Json.str(m.get("station"));
@@ -117,7 +118,7 @@ public class BbsStore {
             if (m.get("trivia") instanceof Map<?, ?> tm) for (Map.Entry<?, ?> e : tm.entrySet()) try { trivia.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
             if (m.get("callers") instanceof List<?> cs) for (Object o : cs) if (o instanceof Map<?, ?> p) {
                 Caller x = new Caller(); x.num = (int) (long) Json.num(p.get("num"), 0); x.name = Json.str(p.get("name")); x.first = (long) Json.num(p.get("first"), 0); x.last = (long) Json.num(p.get("last"), 0);
-                x.commands = (int) Json.num(p.get("commands"), 0); x.lastCommand = Json.str(p.get("lastCommand")); x.lastPostSeen = (int) Json.num(p.get("lastPostSeen"), 0); x.lastMotdDay = Json.str(p.get("lastMotdDay")); if (x.num != 0) callers.put(x.num, x);
+                x.commands = (int) Json.num(p.get("commands"), 0); x.lastCommand = Json.str(p.get("lastCommand")); x.lastPostSeen = (int) Json.num(p.get("lastPostSeen"), 0); x.lastMotdDay = Json.str(p.get("lastMotdDay")); x.repliesSent = (int) Json.num(p.get("repliesSent"), 0); x.repliesAcked = (int) Json.num(p.get("repliesAcked"), 0); if (x.num != 0) callers.put(x.num, x);
             }
             if (m.get("mail") instanceof List<?> ms) for (Object o : ms) if (o instanceof Map<?, ?> p) {
                 Mail x = new Mail(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.delivered = (long) Json.num(p.get("delivered"), 0);
@@ -139,7 +140,7 @@ public class BbsStore {
         if (loadFailed) return;   // never overwrite a file we couldn't read with defaults; the original is kept as bbs.json.broken-*
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
-          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay)).append(kv("advertIndex", advertIndex));
+          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("repliesAcked", repliesAcked)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay)).append(kv("advertIndex", advertIndex));
         sb.append("\"callsPerDay\":").append(mapJson(callsPerDay)).append(",\"cmdCounts\":").append(mapJson(cmdCounts)).append(",\"hourCounts\":").append(Arrays.toString(hourCounts)).append(",\n");
         sb.append("\"subs\":{"); boolean sf = true; for (Map.Entry<Integer, Set<String>> e : subs.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":["); boolean ff = true; for (String v : e.getValue()) { if (!ff) sb.append(','); ff = false; sb.append('"').append(v).append('"'); } sb.append(']'); } sb.append("},\n");
         sb.append("\"pollOptions\":["); sf = true; for (String o : pollOptions) { if (!sf) sb.append(','); sf = false; sb.append(kv("x", o), 4, kv("x", o).length() - 1); } sb.append("],\"pollVotes\":{"); sf = true; for (Map.Entry<Integer, Integer> e : pollVotes.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); } sb.append("},\n");
@@ -161,7 +162,7 @@ public class BbsStore {
         for (Post p : posts) { if (!f) sb.append(",\n"); f = false; sb.append("  {").append(kv("id", p.id)).append(kv("time", p.time)).append("\"author\":").append(Integer.toUnsignedLong(p.author)).append(',').append(kv("authorName", p.authorName)).append(kv("text", p.text)); sb.setLength(sb.length() - 1); sb.append('}'); }
         sb.append("\n],\n\"callers\":[\n");
         f = true;
-        for (Caller c : callers.values()) { if (!f) sb.append(",\n"); f = false; sb.append("  {\"num\":").append(Integer.toUnsignedLong(c.num)).append(',').append(kv("name", c.name)).append(kv("first", c.first)).append(kv("last", c.last)).append(kv("commands", c.commands)).append(kv("lastCommand", c.lastCommand)).append(kv("lastPostSeen", c.lastPostSeen)).append(kv("lastMotdDay", c.lastMotdDay)); sb.setLength(sb.length() - 1); sb.append('}'); }
+        for (Caller c : callers.values()) { if (!f) sb.append(",\n"); f = false; sb.append("  {\"num\":").append(Integer.toUnsignedLong(c.num)).append(',').append(kv("name", c.name)).append(kv("first", c.first)).append(kv("last", c.last)).append(kv("commands", c.commands)).append(kv("lastCommand", c.lastCommand)).append(kv("lastPostSeen", c.lastPostSeen)).append(kv("lastMotdDay", c.lastMotdDay)).append(kv("repliesSent", c.repliesSent)).append(kv("repliesAcked", c.repliesAcked)); sb.setLength(sb.length() - 1); sb.append('}'); }
         sb.append("\n],\n\"mail\":[\n");
         f = true;
         for (Mail m : mail) { if (!f) sb.append(",\n"); f = false; sb.append("  {").append(kv("id", m.id)).append(kv("time", m.time)).append(kv("delivered", m.delivered)).append("\"from\":").append(Integer.toUnsignedLong(m.from)).append(",\"to\":").append(Integer.toUnsignedLong(m.to)).append(',').append(kv("fromName", m.fromName)).append(kv("text", m.text)); sb.setLength(sb.length() - 1); sb.append('}'); }

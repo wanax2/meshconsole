@@ -180,6 +180,30 @@ class SettingsPanel extends JPanel {
         }));
         box.add(sec);
 
+        JPanel ra = section("Remote admin (who may configure THIS radio over the mesh)");
+        ra.add(new JLabel("<html>Pick one of your other nodes; its public key is added to this radio's security.admin_key. Afterwards, connect to that other node and use the config editor's <b>Target</b> selector to edit this radio from there.</html>"));
+        JComboBox<String> manager = new JComboBox<>();
+        JButton refreshMgr = new JButton("↻"); refreshMgr.addActionListener(e -> { manager.removeAllItems(); for (NodeEntry n : state.nodes()) if (n.num != state.myNodeNum() && n.publicKey.length > 0 && (meshconsole.mesh.MeshState.isMine(n.num) || n.isFavorite)) manager.addItem(n.displayName() + " (" + n.idString() + ")"); if (manager.getItemCount() == 0) manager.addItem("(no other node of yours with a known key – mark one as mine on the Nodes tab first)"); });
+        refreshMgr.doClick();
+        ra.add(new JLabel("Manager node:")); ra.add(manager); ra.add(refreshMgr);
+        ra.add(button("Allow this node to manage me", () -> {
+            String sel = String.valueOf(manager.getSelectedItem()); int i = sel.lastIndexOf("(!"); if (i < 0) return;
+            int num = (int) Long.parseLong(sel.substring(i + 2, sel.length() - 1), 16);
+            NodeEntry n = state.node(num); if (n == null || n.publicKey.length == 0) return;
+            Config base = state.config(Config.PayloadVariantCase.SECURITY);
+            Config.SecurityConfig.Builder b = base == null ? Config.SecurityConfig.newBuilder() : base.getSecurity().toBuilder();
+            com.google.protobuf.ByteString key = com.google.protobuf.ByteString.copyFrom(n.publicKey);
+            if (!b.getAdminKeyList().contains(key)) {
+                java.util.List<com.google.protobuf.ByteString> keys = new java.util.ArrayList<>(b.getAdminKeyList());
+                while (keys.size() >= 3) keys.remove(0);   // the firmware holds at most three admin keys
+                keys.add(key);
+                b.clearAdminKey(); b.addAllAdminKey(keys);
+            }
+            client.setConfig(Config.newBuilder().setSecurity(b).build());
+            state.emitLog("Admin key added: " + n.displayName() + " may now configure this radio remotely");
+        }));
+        box.add(ra);
+
         // ---- mqtt
         JPanel mq = section("MQTT module (stored on the radio)");
         mq.add(mqttEnabled);

@@ -220,6 +220,7 @@ class AnalysisPanel extends JPanel {
         tabs.addTab("My radios", rd);
 
         tabs.addTab("Path / LOS", new PathPanel(state));
+        tabs.addTab("Radio vs radio", new ComparePanel(state));
 
         // ---- report
         JPanel rp = new JPanel(new BorderLayout(6, 6));

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.10.0 — 2026-10-21
+
+- **Analysis → Radio vs radio**: pick two radios (or this instance's radio and another instance's data folder), a window and a hop limit; a compass rose shows, per 30° sector, how many dB better radio B hears the nodes both radios heard, with a per-node table. The tool for aiming a yagi.
+- **Nodes → right-click → "This is one of my radios"**: marks any node as yours in this instance so it is excluded from signal statistics and analysis (and "Not one of my radios" to undo).
+- **Trivia from `trivia.txt`** in the data folder — one `question|answer|alt1;alt2` per line, re-read when the file changes — on top of the built-in bank; an unanswered question expires after 24 h.
+- **Congestion alerts digested**: one line per hour ("Congested 7 of the last 12 readings, peak 38%") instead of an alert on every reading above the threshold.
+- **Settings → Remote admin**: pick one of your other nodes and add its public key to this radio's admin keys in one click, so that node can configure this one over the mesh via the config editor's Target selector.
+- **BBS reply delivery**: replies acknowledged are counted per caller and overall ("replies acked 41/46 (89%)" on the dashboard).
+
+
 ## 1.9.11 — 2026-10-19
 
 - BBS: twice the Buffalo — 26 `GO BILLS` lines, 19 `GO SABRES`, 25 `716`, all under 200 bytes, all lighter. The sign-off on a reply ("Go Bills." or "Go Sabres.") now lands about one reply in twelve.

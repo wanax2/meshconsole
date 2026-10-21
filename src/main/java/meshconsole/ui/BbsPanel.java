@@ -182,7 +182,7 @@ class BbsPanel extends JPanel {
         java.util.List<java.util.Map.Entry<String, Integer>> top = new java.util.ArrayList<>(store.cmdCounts.entrySet()); top.sort((a, b) -> b.getValue() - a.getValue());
         StringBuilder tc = new StringBuilder(); for (int i = 0; i < Math.min(6, top.size()); i++) tc.append(top.get(i).getKey()).append(' ').append(top.get(i).getValue()).append("  ");
         long week = System.currentTimeMillis() - 7L * 86400_000L; int weekly = 0; for (BbsStore.Caller c : store.callers.values()) if (c.last > week) weekly++;
-        dashText.setText("  " + store.callers.size() + " callers all time, " + weekly + " this week · busiest hour " + String.format("%02d:00", busiest) + " · top commands: " + (tc.length() == 0 ? "–" : tc));
+        dashText.setText("  " + store.callers.size() + " callers all time, " + weekly + " this week · busiest hour " + String.format("%02d:00", busiest) + " · replies acked " + store.repliesAcked + "/" + store.repliesSent + (store.repliesSent > 0 ? String.format(" (%.0f%%)", 100.0 * store.repliesAcked / store.repliesSent) : "") + " · top commands: " + (tc.length() == 0 ? "–" : tc));
         posts.rows = new ArrayList<>(store.posts); posts.fireTableDataChanged();
         mail.rows = new ArrayList<>(store.mail); mail.fireTableDataChanged();
         stats.setText((store.enabled ? "Running" : "Stopped") + "  ·  " + store.posts.size() + " posts, " + store.mail.size() + " mail, " + store.commandsServed + " commands served, " + store.repliesSent + " replies, " + store.banned.size() + " banned");

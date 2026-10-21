@@ -30,6 +30,7 @@ public class BbsEngine {
     };
     private long lastMailSweep;
     private final Map<Integer, Long> pendingTrace = new HashMap<>();
+    private final Map<Integer, Integer> pendingAck = new java.util.concurrent.ConcurrentHashMap<>();   // packet id → caller, for delivery stats
     private final java.util.concurrent.ExecutorService bg = java.util.concurrent.Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "bbs-net"); t.setDaemon(true); return t; });
 
     public BbsEngine(MeshClient client, BbsStore store) {
@@ -38,8 +39,11 @@ public class BbsEngine {
         this.store = store;
         store.started = System.currentTimeMillis();
         state.addListener(new MeshState.Listener() {
-            @Override public void onMessage(ChatMessage m, boolean isNew) { if (isNew && !m.outgoing) handle(m); }
             @Override public void onNodesChanged() { deliverPendingMail(); }
+            @Override public void onMessage(ChatMessage m, boolean isNew) {
+                if (isNew && !m.outgoing) handle(m);
+                else if (m.outgoing && m.status == ChatMessage.Status.DELIVERED) { Integer to = pendingAck.remove(m.packetId); if (to != null) { BbsStore.Caller cl = store.callers.get(to); if (cl != null) { cl.repliesAcked++; store.repliesAcked++; } } }
+            }
             @Override public void onTracerouteResult(int node, String summary) {
                 if (pendingTrace.remove(node) != null) {
                     String s = summary.replace("Traceroute ", "").replace("   |   ", " | ");
@@ -162,8 +166,10 @@ public class BbsEngine {
     private void send(int to, String text) {
         for (String chunk : chunks(text)) {
             try {
-                client.sendOnce(chunk, to, 0);
+                ChatMessage sent = client.sendOnce(chunk, to, 0);
                 store.repliesSent++;
+                BbsStore.Caller cl = store.callers.get(to); if (cl != null) cl.repliesSent++;
+                if (sent != null) pendingAck.put(sent.packetId, to);
                 lastReply.put(to, System.currentTimeMillis());
                 log("→ " + state.nodeName(to) + ": " + chunk);
             } catch (IOException e) { log("send failed: " + e.getMessage()); return; }
@@ -411,14 +417,19 @@ public class BbsEngine {
                 return sb.toString().trim();
             }
             case "TRIVIA", "Q" -> {
-                int qi = new Random().nextInt(BbsExtras.TRIVIA.length);
-                store.triviaQ.put(from, qi);
-                return "Q: " + BbsExtras.TRIVIA[qi].q() + "  (answer with A your-answer)";
+                List<BbsExtras.Trivia> bank = BbsExtras.trivia();
+                int qi = new Random().nextInt(bank.size());
+                store.triviaQ.put(from, qi); store.triviaAsked.put(from, System.currentTimeMillis());
+                return "Q: " + bank.get(qi).q() + "  (answer with A your-answer)";
             }
             case "A", "ANSWER" -> {
                 Integer qi = store.triviaQ.get(from);
                 if (qi == null) return "No question pending – send TRIVIA first.";
-                BbsExtras.Trivia t = BbsExtras.TRIVIA[qi];
+                Long asked = store.triviaAsked.get(from);
+                if (asked != null && System.currentTimeMillis() - asked > 86400_000L) { store.triviaQ.remove(from); return "That question expired (24 h). TRIVIA for a fresh one."; }
+                List<BbsExtras.Trivia> bank = BbsExtras.trivia();
+                if (qi >= bank.size()) { store.triviaQ.remove(from); return "The question bank changed – TRIVIA for a fresh one."; }
+                BbsExtras.Trivia t = bank.get(qi);
                 String ans = arg.trim().toLowerCase().replace(".", "");
                 boolean ok = ans.equals(t.a()) || Arrays.asList(t.alts()).contains(ans) || ans.contains(t.a());
                 store.triviaQ.remove(from);
