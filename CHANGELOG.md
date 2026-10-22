@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.3 — 2026-10-22
+
+- Trivia bank grown from 31 to 85 questions: more Meshtastic/LoRa and antenna questions, a ham-radio set (Morse, Q-codes, bands, licence classes, solar indices), a DC/Arlington set (Metro, bridges, the Beltway, 22201), and a few computing-history ones. Answers accept common alternates.
+
+
 ## 1.10.2 — 2026-10-22
 
 - **Daily export per instance**: the Schedule tab's settings are now kept per data folder, so each instance has its own nightly export (and report/traceroute/beacon) schedule. Leave the export folder blank and each instance writes to `<shared export folder>\<its label>\` (e.g. `C:\mesh_exports\DC\meshconsole-DC-<date>.zip`). Scheduled jobs fire on the first tick after their time rather than only on the exact minute, and a time already passed at launch waits for tomorrow.
