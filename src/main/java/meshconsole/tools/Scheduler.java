@@ -14,7 +14,8 @@ import java.util.prefs.Preferences;
 
 /** Timed jobs: daily report, weekly traceroutes to a watch-list, nightly export, periodic beacon. */
 public class Scheduler {
-    private static final Preferences P = Preferences.userNodeForPackage(Scheduler.class);
+    /** Per data folder, so two instances keep separate schedules and export folders. */
+    private static final Preferences P = Preferences.userRoot().node("meshconsole-sched-" + Integer.toHexString(DataDir.get().toString().toLowerCase().hashCode()));
     private final MeshClient client;
     private final MeshState state;
     private final Supplier<String> reportHtml;
@@ -24,6 +25,11 @@ public class Scheduler {
     public boolean exportOn = P.getBoolean("exportOn", false); public String exportDir = P.get("exportDir", ""); public String exportTime = P.get("exportTime", "03:00");
     public boolean traceOn = P.getBoolean("traceOn", false); public int traceWeekday = P.getInt("traceWeekday", 7); public String traceTime = P.get("traceTime", "12:00");
     public boolean beaconOn = P.getBoolean("beaconOn", false); public int beaconMinutes = P.getInt("beaconMinutes", 60); public String beaconText = P.get("beaconText", "test from 22201"); public int beaconTo = (int) P.getLong("beaconTo", 0xFFFFFFFFL);
+    { // at startup: a time already passed today is not "due" – the next run is tomorrow
+        long day0 = System.currentTimeMillis() / 86400_000L; LocalTime now0 = LocalTime.now();
+        if (due(now0, reportTime)) lastReportDay = day0;
+        if (due(now0, exportTime)) lastExportDay = day0;
+    }
 
     public Scheduler(MeshClient client, Supplier<String> reportHtml) { this.client = client; this.state = client.state(); this.reportHtml = reportHtml; }
 
@@ -41,9 +47,10 @@ public class Scheduler {
             try { java.nio.file.Files.writeString(DataDir.file("mesh_report.html"), reportHtml.get(), java.nio.charset.StandardCharsets.UTF_8); state.emitLog("Scheduled report written to mesh_report.html"); }
             catch (IOException e) { state.emitLog("Scheduled report failed: " + e.getMessage()); }
         }
-        if (exportOn && !exportDir.isBlank() && due(now, exportTime) && lastExportDay != day) {
+        if (exportOn && due(now, exportTime) && lastExportDay != day) {
             lastExportDay = day;
-            try { Path z = DataDir.exportZip(Path.of(exportDir), false); state.emitLog("Scheduled export: " + z); }
+            Path dir = exportDir.isBlank() ? DataDir.exportDir().resolve(DataDir.exportLabel().replaceAll("[^A-Za-z0-9._-]+", "_")) : Path.of(exportDir);   // blank = <shared export folder>/<this instance's label>/
+            try { Path z = DataDir.exportZip(dir, false); state.emitLog("Scheduled export: " + z); }
             catch (IOException e) { state.emitLog("Scheduled export failed: " + e.getMessage()); }
         }
         if (traceOn && client.isConnected() && java.time.LocalDate.now().getDayOfWeek().getValue() == traceWeekday && due(now, traceTime) && lastTraceWeek != week) {
@@ -60,6 +67,6 @@ public class Scheduler {
     }
 
     private static boolean due(LocalTime now, String hhmm) {
-        try { LocalTime t = LocalTime.parse(hhmm.trim()); return now.getHour() == t.getHour() && now.getMinute() == t.getMinute(); } catch (Exception e) { return false; }
+        try { LocalTime t = LocalTime.parse(hhmm.trim()); return !now.isBefore(t); } catch (Exception e) { return false; }   // first tick after the time, once per day (the per-day marker stops repeats)
     }
 }

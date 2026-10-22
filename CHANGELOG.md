@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.2 — 2026-10-22
+
+- **Daily export per instance**: the Schedule tab's settings are now kept per data folder, so each instance has its own nightly export (and report/traceroute/beacon) schedule. Leave the export folder blank and each instance writes to `<shared export folder>\<its label>\` (e.g. `C:\mesh_exports\DC\meshconsole-DC-<date>.zip`). Scheduled jobs fire on the first tick after their time rather than only on the exact minute, and a time already passed at launch waits for tomorrow.
+
+
 ## 1.10.1 — 2026-10-21
 
 BBS services:
