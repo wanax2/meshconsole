@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.5 — 2026-10-24
+
+- **Station G3**: Tools → Firmware update knows the `station-g3` build (and `t-beam-1w`). Settings gains a G3 section, shown when a G3 is connected: tick the jumpers as they are on the board (PA PL1, PA PL2, LNA P) and it shows the amplifier level and the expected output at the antenna port for the current `tx_power` (the manufacturer's 915 MHz table, interpolated), with a warning past 30 dBm, and two buttons — set tx_power for ~30 dBm at this level, or ~26 dBm for a 10 dBi yagi. Supply and antenna cautions on the panel.
+
+
 ## 1.10.4 — 2026-10-22
 
 - Trivia: 141 questions. Thirty on computing history (Hopper's moth, the 4004, the Altair, Bell Labs, the Lisa, GNU, Linux 0.01, Mariner 1's hyphen, the Morris worm, Spacewar!, Babbage and Lovelace, Brooks, Dijkstra on BASIC, K&R's "Hello, World") and twenty-six for nerds (42, 0x1F, port 22, 418, sudo, vim, RAID 0, Kirk's home state, the TARDIS, Neuromancer, PEBKAC, the Konami code, Voyager's record, a googol).

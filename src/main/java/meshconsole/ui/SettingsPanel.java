@@ -180,6 +180,30 @@ class SettingsPanel extends JPanel {
         }));
         box.add(sec);
 
+        // ---- Station G3: jumpers decide the PA level and LNA; tx_power is the SX1262 drive, not the antenna output
+        g3Box = section("Station G3 – amplifier levels (shown when the connected radio is a G3)");
+        g3Box.add(new JLabel("<html><b>Antenna on before power.</b> Supply: 9–19 V barrel (25 W+) or 15 V USB-C PD; the MCU's USB-C is data only. "
+                + "Two motherboard jumpers set the PA level, LNA P sets the LNA (<i>installed = LNA off</i>). tx_power below is the chip's drive into the PA; the antenna output is the table.</html>"));
+        g3pl1 = new JCheckBox("PA PL1 installed", false); g3pl2 = new JCheckBox("PA PL2 installed", true); g3lna = new JCheckBox("LNA P installed (LNA OFF)", false);
+        g3Out = new JLabel(" ");
+        JPanel jr = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); jr.add(g3pl1); jr.add(g3pl2); jr.add(g3lna); jr.add(new JLabel("   Level / expected output:")); jr.add(g3Out);
+        g3Box.add(jr);
+        Runnable g3calc = () -> {
+            int level = (g3pl2.isSelected() ? 2 : 1) + (g3pl1.isSelected() ? 2 : 0);
+            int tx = (int) txPower.getValue();
+            double out = g3Output(level, tx);
+            g3Out.setText(String.format("level %d, tx_power %d → about %.1f dBm at the antenna port (±2 dB)%s%s", level, tx, out, out > 30.5 ? "  ⚠ over 30 dBm / 1 W" : "", g3lna.isSelected() ? "   · LNA off" : "   · LNA on"));
+        };
+        for (JCheckBox cb : new JCheckBox[]{g3pl1, g3pl2, g3lna}) cb.addActionListener(e -> g3calc.run());
+        txPower.addChangeListener(e -> g3calc.run());
+        JPanel jb = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        jb.add(button("Set tx_power for ~30 dBm at this level", () -> { int level = (g3pl2.isSelected() ? 2 : 1) + (g3pl1.isSelected() ? 2 : 0); txPower.setValue(new int[]{0, 18, 16, 15, 14}[level]); g3calc.run(); }));
+        jb.add(button("…for ~26 dBm (10 dBi yagi, 36 dBm EIRP)", () -> { int level = (g3pl2.isSelected() ? 2 : 1) + (g3pl1.isSelected() ? 2 : 0); txPower.setValue(new int[]{0, 12, 11, 10, 9}[level]); g3calc.run(); }));
+        jb.add(new JLabel("<html><i>Level 4 needs ≥10 V. Reboots on transmit = supply too small. Weak RX at a noisy site: try LNA P installed (LNA off) for a day.</i></html>"));
+        g3Box.add(jb);
+        g3calc.run();
+        box.add(g3Box);
+
         JPanel ra = section("Remote admin (who may configure THIS radio over the mesh)");
         ra.add(new JLabel("<html>Pick one of your other nodes; its public key is added to this radio's security.admin_key. Afterwards, connect to that other node and use the config editor's <b>Target</b> selector to edit this radio from there.</html>"));
         JComboBox<String> manager = new JComboBox<>();
@@ -279,6 +303,18 @@ class SettingsPanel extends JPanel {
     }
 
     private boolean populated;
+    private JPanel g3Box; private JCheckBox g3pl1, g3pl2, g3lna; private JLabel g3Out;
+
+    /** Manufacturer's typical G3 output at 915 MHz (dBm) by PA level and SX1262 tx setting; interpolated between the published points. */
+    static double g3Output(int level, int tx) {
+        int[] txs = {7, 14, 15, 16, 18, 22};
+        double[][] tbl = {{21.7, 27.7, 28.4, 29.2, 30.5, 32.8}, {22.2, 28.4, 29.2, 30.0, 31.4, 34.1}, {23.1, 29.4, 30.2, 31.0, 32.6, 35.6}, {23.3, 29.7, 30.6, 31.5, 33.3, 36.8}};
+        double[] row = tbl[Math.max(1, Math.min(4, level)) - 1];
+        if (tx <= txs[0]) return row[0] - (txs[0] - tx) * 0.9;
+        if (tx >= txs[5]) return row[5];
+        for (int i = 0; i < 5; i++) if (tx >= txs[i] && tx <= txs[i + 1]) return row[i] + (row[i + 1] - row[i]) * (tx - txs[i]) / (double) (txs[i + 1] - txs[i]);
+        return row[0];
+    }
     private int populatedFrom;   // node number the fields were last filled from
 
     private void populateIfFresh() {
@@ -292,6 +328,7 @@ class SettingsPanel extends JPanel {
         if (state.myNodeNum() == 0) { loaded.setText("Settings not loaded – connect to a radio."); return; }
         populated = state.config(Config.PayloadVariantCase.LORA) != null;   // keep re-populating until the LoRa section has actually arrived
         loaded.setText("Loaded from " + state.nodeName(state.myNodeNum()) + ".");
+        if (g3Box != null) { NodeEntry me = state.myNode(); g3Box.setVisible(me != null && "STATION_G3".equalsIgnoreCase(me.hwModel)); }
         NodeEntry me = state.myNode();
         if (me != null) {
             longName.setText(me.longName); shortName.setText(me.shortName);

@@ -29,7 +29,7 @@ public final class FirmwareUpdater {
     public static Family family(String hw) {
         String h = hw.toUpperCase();
         if (h.matches(".*(RAK4631|RAK3401|RAK2560|RAK11310|T_ECHO|TRACKER_T1000_E|T114|WIO_TRACKER|NRF52|NANO_G2|XIAO_BLE|MESH_POCKET|HELTEC_MESH_NODE|RAK_WISMESH|CANARYONE|PROMICRO|SEEED_WIO|FEATHER_NRF|THINKNODE_M1|SEEED_SOLAR|MESHTAB).*")) return Family.NRF52;
-        if (h.matches(".*(STATION_G2|T_DECK|HELTEC_V3|HELTEC_V4|HELTEC_WIRELESS|HELTEC_VISION|TBEAM_S3|T_WATCH|S3|XIAO_S3|UNPHONE|CHATTER|SENSECAP|PICOMPUTER|CROWPANEL|M5STACK_CORES3|TLORA_T3S3|TLORA_C6|WIPHONE|MESH_TAB).*")) return Family.ESP32S3;
+        if (h.matches(".*(STATION_G2|STATION_G3|T_DECK|HELTEC_V3|HELTEC_V4|HELTEC_WIRELESS|HELTEC_VISION|TBEAM_S3|T_WATCH|S3|XIAO_S3|UNPHONE|CHATTER|SENSECAP|PICOMPUTER|CROWPANEL|M5STACK_CORES3|TLORA_T3S3|TLORA_C6|WIPHONE|MESH_TAB).*")) return Family.ESP32S3;
         if (h.matches(".*(HT_CT62|C3|SEEED_XIAO_C3).*")) return Family.ESP32C3;
         if (h.matches(".*(TBEAM|TLORA|HELTEC_V2|HELTEC_V1|STATION_G1|DIY_V1|NANO_G1|M5STACK|DR_DEV|LILYGO|HELTEC_WSL|BETAFPV).*")) return Family.ESP32;
         if (h.matches(".*(RP2040|RPI_PICO|PICO).*")) return Family.RP2040;
@@ -39,7 +39,7 @@ public final class FirmwareUpdater {
     /** The name Meshtastic uses for the board's firmware files (best guess; the user can override). */
     public static String target(String hw) {
         return switch (hw.toUpperCase()) {
-            case "RAK4631" -> "rak4631"; case "RAK3401" -> "rak3401"; case "STATION_G2" -> "station-g2"; case "T_DECK" -> "t-deck"; case "T_DECK_PRO" -> "t-deck-pro";
+            case "RAK4631" -> "rak4631"; case "RAK3401" -> "rak3401"; case "STATION_G2" -> "station-g2"; case "STATION_G3" -> "station-g3"; case "TBEAM_1_WATT" -> "t-beam-1w"; case "T_DECK" -> "t-deck"; case "T_DECK_PRO" -> "t-deck-pro";
             case "HELTEC_V3" -> "heltec-v3"; case "HELTEC_V4" -> "heltec-v4"; case "TRACKER_T1000_E" -> "tracker-t1000-e"; case "T_ECHO" -> "t-echo";
             case "HELTEC_MESH_NODE_T114" -> "heltec-mesh-node-t114"; case "TBEAM" -> "tbeam"; case "TBEAM_S3_CORE" -> "tbeam-s3-core"; case "HELTEC_WIRELESS_TRACKER" -> "heltec-wireless-tracker";
             default -> hw.toLowerCase().replace('_', '-');
