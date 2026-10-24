@@ -270,6 +270,10 @@ class StatusPanel extends JPanel {
                     sb.append("Battery:      ").append(me.battery > 100 ? "external power" : me.battery + " %")
                       .append(String.format("  (%.2f V)", me.voltage)).append('\n');
                 }
+                if (me.powerChannels > 0 && !Float.isNaN(me.powerVolts[0])) {
+                    float v = me.powerVolts[0], a = Float.isNaN(me.powerAmps[0]) ? Float.NaN : me.powerAmps[0] / 1000f;   // firmware reports mA
+                    sb.append("Supply:       ").append(String.format("%.2f V", v)).append(Float.isNaN(a) ? "" : String.format("  %.2f A  %.1f W", a, v * a)).append(String.format("  (%s ago)", Fmt.ago(me.powerTime))).append('\n');
+                }
                 sb.append("Channel util: ").append(String.format("%.1f %%   air-util TX %.2f %%", me.channelUtil, me.airUtilTx)).append('\n');
                 if (me.hasPosition) sb.append("Position:     ").append(String.format("%.5f, %.5f  alt %d m", me.lat, me.lon, me.altitude)).append('\n');
             }

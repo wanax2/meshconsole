@@ -44,6 +44,8 @@ class SettingsPanel extends JPanel {
     private final JCheckBox ethOn = new JCheckBox("Ethernet enabled");
     private final JLabel wifiNote = new JLabel(" ");
     private final JCheckBox debugLogApi = new JCheckBox("Stream firmware debug log to this app (security.debug_log_api_enabled)");
+    private final JCheckBox paFanOff = new JCheckBox("PA fan off"), rxBoost = new JCheckBox("Chip RX boost (+2 dB)");
+    private final JCheckBox powerTelemetry = new JCheckBox("Report supply voltage/current (INA219 power telemetry)");
     // mqtt
     private final JCheckBox mqttEnabled = new JCheckBox("MQTT module enabled");
     private final JTextField mqttAddress = new JTextField(22), mqttUser = new JTextField(12), mqttRoot = new JTextField(10);
@@ -103,6 +105,9 @@ class SettingsPanel extends JPanel {
         lora2.add(new JLabel("TX power dBm (0=max):")); lora2.add(txPower);
         lora2.add(new JLabel("Override MHz (0=off):")); lora2.add(overrideFreq);
         lora2.add(txEnabled);
+        lora2.add(paFanOff); lora2.add(rxBoost);
+        paFanOff.setToolTipText("lora.pa_fan_disabled – the PA fan on Station G2/G3 and T-Beam 1W");
+        rxBoost.setToolTipText("lora.sx126x_rx_boosted_gain – about +2 dB from the SX1262's own LNA, a few mA more; worth keeping on behind a filter");
         lora2.add(button("Save LoRa", () -> {
             Config base = state.config(Config.PayloadVariantCase.LORA);
             if (base == null) throw new IOException("LoRa settings have not been received from this radio yet – wait for the config to load (or press Reload from radio), then save.");
@@ -115,7 +120,9 @@ class SettingsPanel extends JPanel {
              .setConfigOkToMqtt(okToMqtt.isSelected())
              .setIgnoreMqtt(ignoreMqtt.isSelected())
              .setTxPower((Integer) txPower.getValue())
-             .setTxEnabled(txEnabled.isSelected());
+             .setTxEnabled(txEnabled.isSelected())
+             .setPaFanDisabled(paFanOff.isSelected())
+             .setSx126XRxBoostedGain(rxBoost.isSelected());
             try { b.setOverrideFrequency(Float.parseFloat(overrideFreq.getText().trim())); } catch (NumberFormatException e) { b.setOverrideFrequency(0); }
             client.setConfig(Config.newBuilder().setLora(b).build());
         }));
@@ -224,6 +231,18 @@ class SettingsPanel extends JPanel {
         g3Box.add(new JLabel("<html><i>Pins from the board definition (PA PL1 = GPIO 9, primary LNA enable = GPIO 10, active low). The setting lives until the radio reboots; tick re-apply to send it again on connect. Verify with Read back and with the yagi's SNR.</i></html>"));
         g3calc.run();
         box.add(g3Box);
+
+        JPanel pw = section("Power monitor & radio control");
+        pw.add(powerTelemetry);
+        pw.add(button("Save power telemetry", () -> {
+            ModuleConfig base = state.moduleConfig(ModuleConfig.PayloadVariantCase.TELEMETRY);
+            ModuleConfig.TelemetryConfig.Builder b = base == null ? ModuleConfig.TelemetryConfig.newBuilder() : base.getTelemetry().toBuilder();
+            b.setPowerMeasurementEnabled(powerTelemetry.isSelected()); if (b.getPowerUpdateInterval() == 0) b.setPowerUpdateInterval(300);
+            client.setModuleConfig(ModuleConfig.newBuilder().setTelemetry(b).build());
+            state.emitLog("Power telemetry " + (powerTelemetry.isSelected() ? "enabled (INA219 on I2C, every 5 min; shows on Status as Supply)" : "disabled"));
+        }));
+        pw.add(new JLabel("<html><i>Station G3: the INA219 on the motherboard reports the supply rail – watch the current on transmit to check the supply is big enough. the TX enabled box off in the LoRa row makes a radio receive-only (a pure listener never needs an EIRP calculation and never desenses the radio next to it).</i></html>"));
+        box.add(pw);
 
         JPanel ra = section("Remote admin (who may configure THIS radio over the mesh)");
         ra.add(new JLabel("<html>Pick one of your other nodes; its public key is added to this radio's security.admin_key. Afterwards, connect to that other node and use the config editor's <b>Target</b> selector to edit this radio from there.</html>"));
@@ -349,6 +368,7 @@ class SettingsPanel extends JPanel {
         if (state.myNodeNum() == 0) { loaded.setText("Settings not loaded – connect to a radio."); return; }
         populated = state.config(Config.PayloadVariantCase.LORA) != null;   // keep re-populating until the LoRa section has actually arrived
         loaded.setText("Loaded from " + state.nodeName(state.myNodeNum()) + ".");
+        { ModuleConfig t = state.moduleConfig(ModuleConfig.PayloadVariantCase.TELEMETRY); if (t != null) powerTelemetry.setSelected(t.getTelemetry().getPowerMeasurementEnabled()); }
         if (g3Box != null) {
             NodeEntry me = state.myNode(); boolean g3 = me != null && "STATION_G3".equalsIgnoreCase(me.hwModel); g3Box.setVisible(g3);
             java.util.prefs.Preferences pr = java.util.prefs.Preferences.userNodeForPackage(SettingsPanel.class);
@@ -370,7 +390,7 @@ class SettingsPanel extends JPanel {
             hopLimit.setValue(Math.max(1, Math.min(7, l.getHopLimit() == 0 ? 3 : l.getHopLimit())));
             txPower.setValue(Math.max(0, Math.min(40, l.getTxPower())));
             overrideFreq.setText(l.getOverrideFrequency() == 0 ? "0" : String.valueOf(l.getOverrideFrequency()));
-            txEnabled.setSelected(l.getTxEnabled());
+            txEnabled.setSelected(l.getTxEnabled()); paFanOff.setSelected(l.getPaFanDisabled()); rxBoost.setSelected(l.getSx126XRxBoostedGain());
             freqSlot.setValue(l.getChannelNum());
             okToMqtt.setSelected(l.getConfigOkToMqtt());
             ignoreMqtt.setSelected(l.getIgnoreMqtt());

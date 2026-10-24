@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.7 — 2026-10-24
+
+- Settings, LoRa row: **PA fan off** (`pa_fan_disabled`, Station G2/G3 and T-Beam 1W fans) and **Chip RX boost** (`sx126x_rx_boosted_gain`, ~+2 dB from the SX1262's own LNA).
+- Settings → Power monitor: enable INA219 **power telemetry**; the Status tab then shows **Supply: V, A, W** for the connected radio (the G3's motherboard monitor — watch the current on transmit).
+- Receive-only reminder: TX enabled off makes a pure listener (no EIRP question, no desense of the neighbouring radio).
+
+
 ## 1.10.6 — 2026-10-24
 
 - **Station G3 amplifier control from the client.** With the PA PL1 and LNA P jumpers removed, the G3 panel can drive the amplifier lines over Meshtastic's Remote Hardware module: pick the PA level pair (PL1 low/high) and LNA on/off, **Enable GPIO control on radio** once (turns the module on with undefined-pin access; the radio reboots), then **Apply**. **Read back** asks the radio for the pin states and logs them. "Re-apply on every connect" resends the setting after the radio reboots, since GPIO writes don't persist. Pins from the board definition: PA PL1 = GPIO 9 (high = high level pair), primary LNA enable = GPIO 10 (low = on).
