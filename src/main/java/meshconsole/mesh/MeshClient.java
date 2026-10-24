@@ -361,6 +361,29 @@ public class MeshClient implements MeshSerial.Listener {
         state.emitLog("Config " + c.getPayloadVariantCase() + " written (radio may reboot to apply it)" + (c.hasLora() ? ": " + MeshState.loraSummary(c.getLora()) : ""));
     }
 
+    // ---- Remote Hardware: drive GPIO pins on the connected radio (Station G3 PA level / LNA with the jumpers removed) ----
+    /** Enables the Remote Hardware module on this radio with undefined-pin access, so GPIO writes are accepted. Reboots the radio. */
+    public void enableRemoteHardware() throws IOException {
+        ModuleConfig.RemoteHardwareConfig rh = ModuleConfig.RemoteHardwareConfig.newBuilder().setEnabled(true).setAllowUndefinedPinAccess(true).build();
+        setModuleConfig(ModuleConfig.newBuilder().setRemoteHardware(rh).build());
+    }
+
+    /** Sets the given GPIO pins (mask bit n = GPIO n) high (value bit set) or low on the connected radio. Needs the Remote Hardware module enabled. */
+    public void writeGpio(long mask, long value) throws IOException {
+        org.meshtastic.proto.RemoteHardware.HardwareMessage hm = org.meshtastic.proto.RemoteHardware.HardwareMessage.newBuilder()
+                .setType(org.meshtastic.proto.RemoteHardware.HardwareMessage.Type.WRITE_GPIOS).setGpioMask(mask).setGpioValue(value).build();
+        Data d = Data.newBuilder().setPortnum(PortNum.REMOTE_HARDWARE_APP).setPayload(hm.toByteString()).build();
+        sendTo(state.myNodeNum(), d, false, String.format("GPIO write: mask 0x%x value 0x%x", mask, value));
+    }
+
+    /** Asks the radio for the state of the given GPIO pins; the reply arrives as a REMOTE_HARDWARE_APP packet (READ_GPIOS_REPLY), logged by MeshState. */
+    public void readGpio(long mask) throws IOException {
+        org.meshtastic.proto.RemoteHardware.HardwareMessage hm = org.meshtastic.proto.RemoteHardware.HardwareMessage.newBuilder()
+                .setType(org.meshtastic.proto.RemoteHardware.HardwareMessage.Type.READ_GPIOS).setGpioMask(mask).build();
+        Data d = Data.newBuilder().setPortnum(PortNum.REMOTE_HARDWARE_APP).setPayload(hm.toByteString()).setWantResponse(true).build();
+        sendTo(state.myNodeNum(), d, false, String.format("GPIO read requested: mask 0x%x", mask));
+    }
+
     public void setModuleConfig(ModuleConfig c) throws IOException {
         ModuleConfig before = state.moduleConfig(c.getPayloadVariantCase());
         com.google.protobuf.Descriptors.FieldDescriptor fd = c.getDescriptorForType().findFieldByName(c.getPayloadVariantCase().name().toLowerCase());

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.6 — 2026-10-24
+
+- **Station G3 amplifier control from the client.** With the PA PL1 and LNA P jumpers removed, the G3 panel can drive the amplifier lines over Meshtastic's Remote Hardware module: pick the PA level pair (PL1 low/high) and LNA on/off, **Enable GPIO control on radio** once (turns the module on with undefined-pin access; the radio reboots), then **Apply**. **Read back** asks the radio for the pin states and logs them. "Re-apply on every connect" resends the setting after the radio reboots, since GPIO writes don't persist. Pins from the board definition: PA PL1 = GPIO 9 (high = high level pair), primary LNA enable = GPIO 10 (low = on).
+
+
 ## 1.10.5 — 2026-10-24
 
 - **Station G3**: Tools → Firmware update knows the `station-g3` build (and `t-beam-1w`). Settings gains a G3 section, shown when a G3 is connected: tick the jumpers as they are on the board (PA PL1, PA PL2, LNA P) and it shows the amplifier level and the expected output at the antenna port for the current `tx_power` (the manufacturer's 915 MHz table, interpolated), with a warning past 30 dBm, and two buttons — set tx_power for ~30 dBm at this level, or ~26 dBm for a 10 dBi yagi. Supply and antenna cautions on the panel.

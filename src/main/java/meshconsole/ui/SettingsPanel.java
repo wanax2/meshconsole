@@ -201,6 +201,27 @@ class SettingsPanel extends JPanel {
         jb.add(button("…for ~26 dBm (10 dBi yagi, 36 dBm EIRP)", () -> { int level = (g3pl2.isSelected() ? 2 : 1) + (g3pl1.isSelected() ? 2 : 0); txPower.setValue(new int[]{0, 12, 11, 10, 9}[level]); g3calc.run(); }));
         jb.add(new JLabel("<html><i>Level 4 needs ≥10 V. Reboots on transmit = supply too small. Weak RX at a noisy site: try LNA P installed (LNA off) for a day.</i></html>"));
         g3Box.add(jb);
+        // ---- software control of the amplifier lines (jumpers removed): GPIO 9 = PA PL1 (HIGH = high level pair), GPIO 10 = LNA enable (LOW = on)
+        JPanel sw = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        sw.add(new JLabel("<html><b>Drive from here</b> (jumpers PA PL1 and LNA P removed; PA PL2 as installed above):</html>"));
+        JComboBox<String> levelPick = new JComboBox<>(new String[]{"PL1 low → level 1 (PL2 out) / level 2 (PL2 in)", "PL1 high → level 3 (PL2 out) / level 4 (PL2 in)"});
+        JCheckBox lnaOn = new JCheckBox("LNA on", true);
+        JCheckBox reapply = new JCheckBox("Re-apply on every connect", java.util.prefs.Preferences.userNodeForPackage(SettingsPanel.class).getBoolean("g3reapply", false));
+        sw.add(levelPick); sw.add(lnaOn); sw.add(reapply);
+        sw.add(button("Enable GPIO control on radio (one-time, reboots)", () -> {
+            try { client.enableRemoteHardware(); state.emitLog("Remote Hardware module enabled with undefined-pin access – radio reboots; reconnect, then Apply"); }
+            catch (java.io.IOException ex) { state.emitLog("Enable failed: " + ex.getMessage()); }
+        }));
+        sw.add(button("Apply", () -> {
+            long mask = (1L << 9) | (1L << 10); long value = (levelPick.getSelectedIndex() == 1 ? (1L << 9) : 0) | (lnaOn.isSelected() ? 0 : (1L << 10));
+            java.util.prefs.Preferences pr = java.util.prefs.Preferences.userNodeForPackage(SettingsPanel.class);
+            pr.putLong("g3mask", mask); pr.putLong("g3value", value); pr.putBoolean("g3reapply", reapply.isSelected());
+            try { client.writeGpio(mask, value); g3pl1.setSelected(levelPick.getSelectedIndex() == 1); g3lna.setSelected(!lnaOn.isSelected()); g3calc.run(); }
+            catch (java.io.IOException ex) { state.emitLog("GPIO write failed: " + ex.getMessage()); }
+        }));
+        sw.add(button("Read back", () -> { try { client.readGpio((1L << 9) | (1L << 10)); } catch (java.io.IOException ex) { state.emitLog("GPIO read failed: " + ex.getMessage()); } }));
+        g3Box.add(sw);
+        g3Box.add(new JLabel("<html><i>Pins from the board definition (PA PL1 = GPIO 9, primary LNA enable = GPIO 10, active low). The setting lives until the radio reboots; tick re-apply to send it again on connect. Verify with Read back and with the yagi's SNR.</i></html>"));
         g3calc.run();
         box.add(g3Box);
 
@@ -303,7 +324,7 @@ class SettingsPanel extends JPanel {
     }
 
     private boolean populated;
-    private JPanel g3Box; private JCheckBox g3pl1, g3pl2, g3lna; private JLabel g3Out;
+    private JPanel g3Box; private JCheckBox g3pl1, g3pl2, g3lna; private JLabel g3Out; private boolean g3Applied;
 
     /** Manufacturer's typical G3 output at 915 MHz (dBm) by PA level and SX1262 tx setting; interpolated between the published points. */
     static double g3Output(int level, int tx) {
@@ -319,7 +340,7 @@ class SettingsPanel extends JPanel {
 
     private void populateIfFresh() {
         int now = state.myNodeNum();
-        if (now != populatedFrom) { populated = false; populatedFrom = now; }   // a different radio (or a reconnect) – the old values are not this radio's
+        if (now != populatedFrom) { populated = false; populatedFrom = now; g3Applied = false; }   // a different radio (or a reconnect) – the old values are not this radio's
         if (!state.configComplete()) { if (now != 0) loaded.setText("Loading settings from " + state.nodeName(now) + "…"); else loaded.setText("Settings not loaded – connect to a radio."); return; }
         if (!populated) populate();
     }
@@ -328,7 +349,14 @@ class SettingsPanel extends JPanel {
         if (state.myNodeNum() == 0) { loaded.setText("Settings not loaded – connect to a radio."); return; }
         populated = state.config(Config.PayloadVariantCase.LORA) != null;   // keep re-populating until the LoRa section has actually arrived
         loaded.setText("Loaded from " + state.nodeName(state.myNodeNum()) + ".");
-        if (g3Box != null) { NodeEntry me = state.myNode(); g3Box.setVisible(me != null && "STATION_G3".equalsIgnoreCase(me.hwModel)); }
+        if (g3Box != null) {
+            NodeEntry me = state.myNode(); boolean g3 = me != null && "STATION_G3".equalsIgnoreCase(me.hwModel); g3Box.setVisible(g3);
+            java.util.prefs.Preferences pr = java.util.prefs.Preferences.userNodeForPackage(SettingsPanel.class);
+            if (g3 && pr.getBoolean("g3reapply", false) && pr.getLong("g3mask", 0) != 0 && !g3Applied) {
+                g3Applied = true;
+                new Thread(() -> { try { Thread.sleep(3000); client.writeGpio(pr.getLong("g3mask", 0), pr.getLong("g3value", 0)); state.emitLog("G3 amplifier lines re-applied on connect"); } catch (Exception ignored) { } }).start();
+            }
+        }
         NodeEntry me = state.myNode();
         if (me != null) {
             longName.setText(me.longName); shortName.setText(me.shortName);

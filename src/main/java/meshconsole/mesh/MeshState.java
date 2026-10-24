@@ -653,7 +653,17 @@ public class MeshState {
                         default -> emitLog("S&F " + sf.getRr() + " from " + nodeName(from));
                     }
                 }
-                case TRACEROUTE_APP -> handleTraceroute(p, d);
+                case REMOTE_HARDWARE_APP -> {
+                try {
+                    org.meshtastic.proto.RemoteHardware.HardwareMessage hm = org.meshtastic.proto.RemoteHardware.HardwareMessage.parseFrom(d.getPayload());
+                    if (hm.getType() == org.meshtastic.proto.RemoteHardware.HardwareMessage.Type.READ_GPIOS_REPLY || hm.getType() == org.meshtastic.proto.RemoteHardware.HardwareMessage.Type.GPIOS_CHANGED) {
+                        StringBuilder sb = new StringBuilder("GPIO state from " + nodeName(p.getFrom()) + ":");
+                        for (int b = 0; b < 48; b++) if ((hm.getGpioMask() >> b & 1) != 0) sb.append(" GPIO").append(b).append('=').append((hm.getGpioValue() >> b & 1) != 0 ? "HIGH" : "LOW");
+                        emitLog(sb.toString()); lastGpio = hm.getGpioValue(); lastGpioMask = hm.getGpioMask(); fire(Listener::onStatusChanged);
+                    }
+                } catch (InvalidProtocolBufferException e) { emitLog("Remote hardware message: unparseable"); }
+            }
+            case TRACEROUTE_APP -> handleTraceroute(p, d);
                 case NEIGHBORINFO_APP -> {
                     NeighborInfo ni = NeighborInfo.parseFrom(d.getPayload());
                     StringBuilder sb = new StringBuilder("Neighbors of " + nodeName(ni.getNodeId()) + ":");
@@ -842,6 +852,7 @@ public class MeshState {
     public static volatile boolean ignoreMyRadios = java.util.prefs.Preferences.userNodeForPackage(MeshState.class).getBoolean("ignoreMyRadios", true);
     public static boolean isMine(int num) { return myRadios.contains(num); }
 
+    public volatile long lastGpio, lastGpioMask;
     private String wifiIp = "";
     private static final java.util.regex.Pattern IP_RX = java.util.regex.Pattern.compile("(?i)(?:wifi|ip address|got ip|local ip|ip[:= ])[^0-9]{0,24}((?:\\d{1,3}\\.){3}\\d{1,3})");
     /** The radio's WiFi address, if its log has announced one ("WiFi … IP 192.168.1.50"); empty otherwise. */
