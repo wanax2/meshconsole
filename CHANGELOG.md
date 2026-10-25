@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.4 — 2026-10-25
+
+- Headless: `--export HH:MM` (nightly zip of all logs), `--export-dir <folder>`, `--label <name>` (used in the file name).
+- `pi/`: a systemd template (`meshconsole@.service`), one settings file per radio (`/etc/default/meshconsole-dc`, `-ne`) and `install-pi.sh`, so a Raspberry Pi runs both radios as services that start at boot and restart on failure.
+
+
 ## 1.11.3 — 2026-10-24
 
 - BBS: `GAMES` lists the games; `COMMANDS`, `COMMAND`, `START`, `HI` and `HELLO` all give the menu, like `?`. (The DC mesh maintainer typed "Games" and "Commands" and got "Unknown" — twice.)

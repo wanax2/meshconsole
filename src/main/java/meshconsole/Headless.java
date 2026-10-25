@@ -19,7 +19,7 @@ public final class Headless {
     private Headless() { }
 
     public static void run(String[] args) throws Exception {
-        String port = null, tcp = null; boolean bbs = false; int webPort = 0;
+        String port = null, tcp = null, exportTime = null, exportDir = null, label = null; boolean bbs = false; int webPort = 0;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--port" -> port = args[++i];
@@ -27,10 +27,13 @@ public final class Headless {
                 case "--data" -> DataDir.set(Path.of(args[++i]));
                 case "--bbs" -> bbs = true;
                 case "--web" -> webPort = Integer.parseInt(args[++i]);
+                case "--export" -> exportTime = args[++i];          // nightly zip of all logs at HH:MM
+                case "--export-dir" -> exportDir = args[++i];       // where the nightly zips go (default <data>/exports)
+                case "--label" -> label = args[++i];                // name used in export file names
                 default -> { }
             }
         }
-        if (port == null && tcp == null) { System.err.println("usage: --headless (--port <serial> | --tcp host[:4403]) [--data <folder>] [--bbs]"); System.exit(2); }
+        if (port == null && tcp == null) { System.err.println("usage: --headless (--port <serial> | --tcp host[:4403]) [--data <folder>] [--bbs] [--web <port>] [--export HH:MM [--export-dir <folder>] [--label <name>]]"); System.exit(2); }
         if (!DataDir.lockInstance()) { System.err.println("Another Mesh Console is already using " + DataDir.get() + " – exiting."); System.exit(3); }
         String note = DataDir.checkVersion();
         MeshState state = new MeshState(new MessageLog(DataDir.file("messages.log")), new NodeDb(DataDir.file("nodes.json")));
@@ -53,7 +56,12 @@ public final class Headless {
         state.emitLog("BBS " + (store.enabled ? "enabled as '" + store.name + "'" : "disabled (use --bbs or enable in bbs.json)"));
         engine.setWeather(new meshconsole.analysis.WeatherHistory(DataDir.file("weather_history.csv")));
 
+        if (label != null) DataDir.setExportLabel(label);
         meshconsole.tools.Scheduler scheduler = new meshconsole.tools.Scheduler(client, () -> "<html><body>Report generation is available in the GUI.</body></html>");
+        if (exportTime != null) {
+            scheduler.exportOn = true; scheduler.exportTime = exportTime; scheduler.exportDir = exportDir == null ? DataDir.file("exports").toString() : exportDir;
+            state.emitLog("Nightly export at " + exportTime + " to " + scheduler.exportDir + " as meshconsole-" + DataDir.exportLabel() + "-<date>.zip");
+        }
         if (webPort > 0) { new meshconsole.tools.WebDashboard(state, webPort, () -> "<html><body>Use the GUI for the full report.</body></html>"); state.emitLog("Web dashboard on port " + webPort); }
         final String fPort = port, fTcp = tcp;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> { client.disconnect(); client.saveDbQuietly(); }));

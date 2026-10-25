@@ -1,0 +1,22 @@
+# Mesh Console headless instance. One unit per radio:
+#   sudo systemctl enable --now meshconsole@dc meshconsole@ne
+# Each instance reads its settings from /etc/default/meshconsole-<name>.
+[Unit]
+Description=Mesh Console (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+EnvironmentFile=/etc/default/meshconsole-%i
+WorkingDirectory=/opt/meshconsole
+ExecStart=/opt/meshconsole/meshconsole.sh --headless $MC_ARGS
+Restart=always
+RestartSec=10
+# give the radio a clean disconnect on stop
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
