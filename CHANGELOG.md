@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.8 — 2026-10-24
+
+- Station G3 panel understands the **station-g3-fem** firmware (see `station-g3-fem-firmware.zip`): detected from the LoRa config (the stock build reports the FEM LNA as not present), or tick the box by hand. With it, tx_power is shown and set as antenna dBm (the 30 / 26 dBm buttons set 30 / 26), an **LNA on** switch writes `fem_lna_mode`, and the GPIO "drive from here" controls are disabled because the firmware owns those lines.
+- Chip RX boost tooltip corrected: with an external LNA in front it adds little and costs linearity.
+
+
 ## 1.10.7 — 2026-10-24
 
 - Settings, LoRa row: **PA fan off** (`pa_fan_disabled`, Station G2/G3 and T-Beam 1W fans) and **Chip RX boost** (`sx126x_rx_boosted_gain`, ~+2 dB from the SX1262's own LNA).
