@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.12.2 — 2026-10-25
+
+- `pi/install-pi.sh` installs the full Java runtime (`openjdk-21-jre`) instead of the headless one, so the GUI starts on a Pi desktop. Headless services work with it too.
+
+
 ## 1.12.1 — 2026-10-25
 
 - Self-update now installs on **Windows** too: the new version is staged in `update-pending\`, the app exits, and a small helper copies the files in as soon as no instance is holding them (each instance does the same at its check time), then relaunches with the same data folder. If the files stay locked for ten minutes it starts the old version again.
