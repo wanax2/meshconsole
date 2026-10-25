@@ -2,7 +2,7 @@
 # Mesh Console on a Raspberry Pi (Pi OS 64-bit). Run from the unzipped ready-to-run folder:  sh pi/install-pi.sh
 set -e
 sudo apt-get update
-sudo apt-get install -y openjdk-21-jre-headless
+sudo apt-get install -y openjdk-21-jre      # full JRE: the GUI needs it; headless services work with it too
 sudo usermod -aG dialout "$USER"
 sudo mkdir -p /opt/meshconsole
 sudo cp meshconsole.jar protobuf-java.jar jSerialComm.jar meshconsole.sh /opt/meshconsole/
