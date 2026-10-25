@@ -134,14 +134,14 @@ public final class AppUpdater {
             String java = ProcessHandle.current().info().command().orElse("java");
             Path javaw = Path.of(java).resolveSibling("javaw.exe"); if (Files.isRegularFile(javaw)) java = javaw.toString();
             Path script = Files.createTempFile("meshconsole-update", ".cmd");
-            Files.writeString(script, windowsScript(java, args, stage, dir, version));
+            Files.writeString(script, windowsScript(java, jvmOptions(), args, stage, dir, version));
             new ProcessBuilder("cmd", "/c", "start", "\"\"", "/min", script.toString()).start();
         } catch (Exception e) { log.accept("Could not start the updater (" + e.getMessage() + ") – unzip the new version over " + dir + " by hand."); return; }
         try { beforeExit.run(); } catch (Exception ignored) { }
         System.exit(0);
     }
 
-    static String windowsScript(String java, String[] args, Path stage, Path dir, String version) {
+    static String windowsScript(String java, List<String> jvm, String[] args, Path stage, Path dir, String version) {
             StringBuilder a = new StringBuilder(); for (String x : args) a.append(" \"").append(x.replace("\"", "")).append('"');
             String cp = dir.resolve("meshconsole.jar") + ";" + dir.resolve("protobuf-java.jar") + ";" + dir.resolve("jSerialComm.jar");
             StringBuilder cmd = new StringBuilder("@echo off\r\nset /a n=0\r\n:retry\r\ntimeout /t 5 /nobreak >nul\r\n");
@@ -151,7 +151,8 @@ public final class AppUpdater {
                 cmd.append("copy /y \"").append(stage.resolve(f)).append("\" \"").append(dir.resolve(f)).append("\" >nul 2>&1\r\n");
             cmd.append("echo ").append(version).append("> \"").append(dir.resolve("installed_version.txt")).append("\"\r\ngoto run\r\n");
             cmd.append(":again\r\nset /a n+=1\r\nif %n% lss 120 goto retry\r\n");          // give up after ~10 min and start the old version
-            cmd.append(":run\r\nstart \"\" \"").append(java).append("\" -cp \"").append(cp).append("\" meshconsole.Main").append(a).append("\r\n");
+            StringBuilder j = new StringBuilder(); for (String x : jvm) j.append(" \"").append(x.replace("\"", "")).append('"');
+            cmd.append(":run\r\nstart \"\" \"").append(java).append("\"").append(j).append(" -cp \"").append(cp).append("\" meshconsole.Main").append(a).append("\r\n");
             return cmd.toString();
     }
 
@@ -182,12 +183,23 @@ public final class AppUpdater {
             String java = ProcessHandle.current().info().command().orElse("java");
             Path jar = installDir().resolve("meshconsole.jar");
             String sep = File.pathSeparator, dir = installDir().toString();
-            List<String> cmd = new ArrayList<>(List.of("sh", "-c", "sleep 4; exec \"$@\"", "sh", java, "-cp",
-                    dir + "/meshconsole.jar" + sep + dir + "/protobuf-java.jar" + sep + dir + "/jSerialComm.jar", "meshconsole.Main"));
+            List<String> cmd = new ArrayList<>(List.of("sh", "-c", "sleep 4; exec \"$@\"", "sh", java));
+            cmd.addAll(jvmOptions());
+            cmd.addAll(List.of("-cp", dir + "/meshconsole.jar" + sep + dir + "/protobuf-java.jar" + sep + dir + "/jSerialComm.jar", "meshconsole.Main"));
             cmd.addAll(Arrays.asList(args));
             new ProcessBuilder(cmd).inheritIO().start();
         } catch (Exception e) { log.accept("Restart failed (" + e.getMessage() + ") – start Mesh Console again by hand."); }
         System.exit(0);
+    }
+
+    /** JVM options this process was started with (e.g. -Xmx768m, -D...), carried over on restart. */
+    static List<String> jvmOptions() {
+        List<String> out = new ArrayList<>();
+        try {
+            for (String a : java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments())
+                if (a.startsWith("-Xm") || a.startsWith("-Xss") || a.startsWith("-D") || a.startsWith("-XX:")) out.add(a);
+        } catch (Throwable ignored) { }
+        return out;
     }
 
     static Path installDir() {

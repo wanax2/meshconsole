@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.12.3 — 2026-10-25
+
+- Self-update restarts keep the Java options the app was started with (e.g. `-Xmx768m`), not just its arguments, on Windows and Linux.
+
+
 ## 1.12.2 — 2026-10-25
 
 - `pi/install-pi.sh` installs the full Java runtime (`openjdk-21-jre`) instead of the headless one, so the GUI starts on a Pi desktop. Headless services work with it too.
