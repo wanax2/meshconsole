@@ -36,3 +36,5 @@ hang.log
 .lock
 lib/
 dist/
+dist/
+lib/

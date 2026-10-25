@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.3 — 2026-10-24
+
+- BBS: `GAMES` lists the games; `COMMANDS`, `COMMAND`, `START`, `HI` and `HELLO` all give the menu, like `?`. (The DC mesh maintainer typed "Games" and "Commands" and got "Unknown" — twice.)
+
+
 ## 1.11.2 — 2026-10-25
 
 - Fix: the radio tab treated tx_power **0** (the Meshtastic default) as the lowest setting. 0 means the firmware default, which is the maximum: on a stock G2/G3 that's the chip cap of 19 (about 1.6 W with factory jumpers), on the T-Beam 1W and the station-g3-fem build 30 dBm. The tab now shows the real output, the over-the-limit warning, and says what 0 means.

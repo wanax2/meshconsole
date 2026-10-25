@@ -200,7 +200,8 @@ public class BbsEngine {
         String arg = parts.length > 1 ? parts[1].trim() : "";
         String who = state.nodeName(from);
         switch (cmd) {
-            case "?", "H", "HELP", "MENU" -> { return store.name + ": B P M mail | S T N STATS TOP WHO | W TAF ALERTS SUN ISS SOLAR | METRO NEXT station BUS stop ELEV SCORE | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
+            case "GAMES", "GAME", "PLAY" -> { return "Games on " + store.name + ": TRIVIA (A answer) " + BbsExtras.trivia().size() + " questions, GUESS the number (G n), ADV text adventure (ADV, then N/S/E/W/LOOK), GO BILLS, GO SABRES, 716. Scores in TOP."; }
+            case "?", "H", "HELP", "MENU", "COMMANDS", "COMMAND", "START", "HI", "HELLO" -> { return store.name + ": B P M mail | S T N STATS TOP WHO | W TAF ALERTS SUN ISS SOLAR | METRO NEXT station BUS stop ELEV SCORE | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
             case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET | GO BILLS, GO SABRES, 716"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
