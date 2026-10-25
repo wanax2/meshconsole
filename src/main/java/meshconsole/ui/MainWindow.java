@@ -117,6 +117,9 @@ public class MainWindow extends JFrame {
         fw.addActionListener(e -> new FirmwareDialog(this, client, lastPortName).setVisible(true));
         tools.addSeparator(); tools.add(fw);
         JMenu help = new JMenu("Help");
+        JMenuItem upd = new JMenuItem("Updates…");
+        upd.addActionListener(e -> updateSettings());
+        help.add(upd);
         JMenuItem about = new JMenuItem("About " + meshconsole.Version.NAME + "…");
         about.addActionListener(e -> showAbout());
         help.add(about);
@@ -222,6 +225,7 @@ public class MainWindow extends JFrame {
         new Timer(60_000, e -> alerts.check()).start();
         new Timer(5 * 60_000, e -> { if (client.isConnected()) client.saveDbQuietly(); }).start();
 
+        meshconsole.tools.AppUpdater.start(state::emitLog, () -> { client.disconnect("update"); client.saveDbQuietly(); }, meshconsole.Main.ARGS);
         refreshPorts();
         setSize(1150, 760);
         setLocationRelativeTo(null);
@@ -450,6 +454,25 @@ public class MainWindow extends JFrame {
                 SwingUtilities.invokeLater(() -> { progress.dispose(); JOptionPane.showMessageDialog(this, ex.getMessage(), "Export failed", JOptionPane.ERROR_MESSAGE); });
             }
         }, "export").start();
+    }
+
+    /** Self-update source (a folder such as a mounted NAS share, or a GitHub owner/repo), shared by every instance. */
+    private void updateSettings() {
+        JCheckBox on = new JCheckBox("Check daily and update automatically", meshconsole.tools.AppUpdater.enabled());
+        JTextField src = new JTextField(meshconsole.tools.AppUpdater.source(), 32), at = new JTextField(meshconsole.tools.AppUpdater.time(), 5);
+        JPanel form = new JPanel(new GridBagLayout()); GridBagConstraints c = new GridBagConstraints(); c.insets = new Insets(3, 4, 3, 4); c.anchor = GridBagConstraints.WEST;
+        c.gridx = 0; c.gridy = 0; c.gridwidth = 2; form.add(new JLabel("<html>Source: a folder holding meshconsole-<i>x.y.z</i>-ready-to-run.zip files (e.g. a NAS share mounted on this machine),<br>or a GitHub repository as owner/repo (newest release). Installed version: " + meshconsole.Version.VERSION + "</html>"), c);
+        c.gridwidth = 1; c.gridy = 1; form.add(new JLabel("Source:"), c); c.gridx = 1; form.add(src, c);
+        c.gridx = 0; c.gridy = 2; form.add(new JLabel("Check at:"), c); c.gridx = 1; form.add(at, c);
+        c.gridx = 0; c.gridy = 3; c.gridwidth = 2; form.add(on, c);
+        Object[] opts = {"Save", "Save and check now", "Cancel"};
+        int r = JOptionPane.showOptionDialog(this, form, "Mesh Console updates", JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, opts, opts[0]);
+        if (r == 2 || r < 0) return;
+        meshconsole.tools.AppUpdater.configure(on.isSelected(), src.getText(), at.getText());
+        if (r == 1) new Thread(() -> {
+            try { String res = meshconsole.tools.AppUpdater.checkAndApply(state::emitLog, () -> { client.disconnect("update"); client.saveDbQuietly(); }, meshconsole.Main.ARGS, true); SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, res)); }
+            catch (Exception ex) { SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Update check failed: " + ex.getMessage())); }
+        }, "update-now").start();
     }
 
     /** Shared export folder (all instances) and this instance's label for the file name. */

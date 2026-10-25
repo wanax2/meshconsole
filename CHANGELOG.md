@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.0 — 2026-10-25
+
+- **Self-update** (Help → Updates…, or headless `--auto-update <source>`): a daily check (default 04:15) for a newer `meshconsole-x.y.z-ready-to-run.zip`, either in a folder — a NAS share mounted on the machine — or in a GitHub repository's latest release (`owner/repo`). On Linux and macOS the jars are replaced in place and the app restarts itself onto the new version with the same arguments (under systemd it exits and systemd restarts it); a second instance sharing the install folder restarts onto the new jars at its next check. On Windows, where running jars are locked, it reports that an update is waiting. "Save and check now" runs a check immediately.
+- `pi/install-pi.sh` gives your user ownership of `/opt/meshconsole` so updates can be written.
+
+
 ## 1.11.4 — 2026-10-25
 
 - Headless: `--export HH:MM` (nightly zip of all logs), `--export-dir <folder>`, `--label <name>` (used in the file name).

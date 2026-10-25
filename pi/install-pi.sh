@@ -7,6 +7,7 @@ sudo usermod -aG dialout "$USER"
 sudo mkdir -p /opt/meshconsole
 sudo cp meshconsole.jar protobuf-java.jar jSerialComm.jar meshconsole.sh /opt/meshconsole/
 sudo chmod +x /opt/meshconsole/meshconsole.sh
+sudo chown -R "$USER" /opt/meshconsole     # so the self-updater can replace the jars
 sudo cp pi/meshconsole@.service /etc/systemd/system/
 for n in dc ne; do [ -f /etc/default/meshconsole-$n ] || sudo cp pi/meshconsole-$n.default /etc/default/meshconsole-$n; done
 sudo sed -i "s/^User=.*/User=$USER/" /etc/systemd/system/meshconsole@.service

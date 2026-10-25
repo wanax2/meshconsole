@@ -30,6 +30,7 @@ public final class Headless {
                 case "--export" -> exportTime = args[++i];          // nightly zip of all logs at HH:MM
                 case "--export-dir" -> exportDir = args[++i];       // where the nightly zips go (default <data>/exports)
                 case "--label" -> label = args[++i];                // name used in export file names
+                case "--auto-update" -> { String src = args[++i]; meshconsole.tools.AppUpdater.configure(true, src, meshconsole.tools.AppUpdater.time()); }   // folder or owner/repo
                 default -> { }
             }
         }
@@ -63,6 +64,8 @@ public final class Headless {
             state.emitLog("Nightly export at " + exportTime + " to " + scheduler.exportDir + " as meshconsole-" + DataDir.exportLabel() + "-<date>.zip");
         }
         if (webPort > 0) { new meshconsole.tools.WebDashboard(state, webPort, () -> "<html><body>Use the GUI for the full report.</body></html>"); state.emitLog("Web dashboard on port " + webPort); }
+        meshconsole.tools.AppUpdater.start(state::emitLog, () -> { client.disconnect(); client.saveDbQuietly(); }, args);
+        if (meshconsole.tools.AppUpdater.enabled()) state.emitLog("Auto-update: daily at " + meshconsole.tools.AppUpdater.time() + " from " + meshconsole.tools.AppUpdater.source());
         final String fPort = port, fTcp = tcp;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> { client.disconnect(); client.saveDbQuietly(); }));
         long lastSave = System.currentTimeMillis(), lastAlert = lastSave;

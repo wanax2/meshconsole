@@ -38,7 +38,11 @@ public class Main {
         t.start();
     }
 
+    /** The command-line arguments, kept so the self-updater can restart with them. */
+    public static String[] ARGS = new String[0];
+
     public static void main(String[] args) throws Exception {
+        ARGS = args.clone();
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
             try {
                 java.io.StringWriter sw = new java.io.StringWriter(); e.printStackTrace(new java.io.PrintWriter(sw));
