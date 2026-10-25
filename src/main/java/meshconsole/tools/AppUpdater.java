@@ -57,15 +57,26 @@ public final class AppUpdater {
         long jarTime = 0; try { if (installDir != null) jarTime = Files.getLastModifiedTime(installDir.resolve("meshconsole.jar")).toMillis(); } catch (IOException ignored) { }
         if (installDir != null && newer(installed, Version.VERSION) && jarTime > started) {
             String msg = "Version " + installed + " is already installed next to this one (" + Version.VERSION + ") – restarting onto it.";
-            log.accept(msg); restart(log, beforeExit, restartArgs); return msg;
+            log.accept(msg);
+            if (WINDOWS) restartWindows(log, beforeExit, restartArgs, installDir, installDir, installed); else restart(log, beforeExit, restartArgs);
+            return msg;
         }
         Candidate c = findLatest(source());
         if (c == null) { String m = "No ready-to-run zip found in " + source(); if (manual) log.accept(m); return m; }
         if (!newer(c.version, Version.VERSION)) { String m = "Up to date (" + Version.VERSION + "; newest available " + c.version + ")."; if (manual) log.accept(m); return m; }
-        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
-        if (windows || installDir == null) { String m = "Mesh Console " + c.version + " is available at " + c.where + " – unzip it over this folder to update."; log.accept(m); return m; }
+        if (installDir == null) { String m = "Mesh Console " + c.version + " is available at " + c.where + " – unzip it over this folder to update."; log.accept(m); return m; }
         log.accept("Updating Mesh Console " + Version.VERSION + " → " + c.version + " from " + c.where);
         Path zip = c.local != null ? c.local : download(c.url);
+        if (WINDOWS) {
+            // Running jars are locked on Windows: stage the new files, exit, and let a helper copy them in once every
+            // instance using this folder has exited (each instance does the same at its own check), then relaunch.
+            Path stage = installDir.resolve("update-pending").resolve(c.version);
+            if (!Files.isRegularFile(stage.resolve("meshconsole.jar"))) { Files.createDirectories(stage); extract(zip, stage); }
+            if (c.local == null) Files.deleteIfExists(zip);
+            log.accept("Staged " + c.version + " – restarting to install it.");
+            restartWindows(log, beforeExit, restartArgs, stage, installDir, c.version);
+            return "Updating to " + c.version;
+        }
         install(zip, installDir, c.version);
         if (c.local == null) Files.deleteIfExists(zip);
         log.accept("Installed " + c.version + " in " + installDir + " – restarting.");
@@ -98,6 +109,50 @@ public final class AppUpdater {
         HttpResponse<Path> r = http.send(HttpRequest.newBuilder(URI.create(url)).header("User-Agent", "meshconsole").timeout(Duration.ofMinutes(5)).build(), HttpResponse.BodyHandlers.ofFile(tmp));
         if (r.statusCode() != 200) throw new IOException("download returned " + r.statusCode());
         return tmp;
+    }
+
+    private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
+    private static final Set<String> FILES = Set.of("meshconsole.jar", "protobuf-java.jar", "jSerialComm.jar", "meshconsole.sh", "meshconsole.bat", "CHANGELOG.md");
+
+    /** Unzips just the program files (flattened) into dir. */
+    static void extract(Path zip, Path dir) throws IOException {
+        int n = 0;
+        try (ZipInputStream in = new ZipInputStream(Files.newInputStream(zip))) {
+            for (ZipEntry e; (e = in.getNextEntry()) != null; ) {
+                if (e.isDirectory()) continue;
+                String name = Path.of(e.getName()).getFileName().toString();
+                if (!FILES.contains(name)) continue;
+                Files.copy(in, dir.resolve(name), StandardCopyOption.REPLACE_EXISTING); n++;
+            }
+        }
+        if (n == 0) throw new IOException("the zip contained no Mesh Console files");
+    }
+
+    /** Windows: a detached helper waits until the jars can be overwritten (all instances exited), copies, relaunches. */
+    private static void restartWindows(Consumer<String> log, Runnable beforeExit, String[] args, Path stage, Path dir, String version) {
+        try {
+            String java = ProcessHandle.current().info().command().orElse("java");
+            Path javaw = Path.of(java).resolveSibling("javaw.exe"); if (Files.isRegularFile(javaw)) java = javaw.toString();
+            Path script = Files.createTempFile("meshconsole-update", ".cmd");
+            Files.writeString(script, windowsScript(java, args, stage, dir, version));
+            new ProcessBuilder("cmd", "/c", "start", "\"\"", "/min", script.toString()).start();
+        } catch (Exception e) { log.accept("Could not start the updater (" + e.getMessage() + ") – unzip the new version over " + dir + " by hand."); return; }
+        try { beforeExit.run(); } catch (Exception ignored) { }
+        System.exit(0);
+    }
+
+    static String windowsScript(String java, String[] args, Path stage, Path dir, String version) {
+            StringBuilder a = new StringBuilder(); for (String x : args) a.append(" \"").append(x.replace("\"", "")).append('"');
+            String cp = dir.resolve("meshconsole.jar") + ";" + dir.resolve("protobuf-java.jar") + ";" + dir.resolve("jSerialComm.jar");
+            StringBuilder cmd = new StringBuilder("@echo off\r\nset /a n=0\r\n:retry\r\ntimeout /t 5 /nobreak >nul\r\n");
+            if (stage.equals(dir)) cmd.append("goto run\r\n");   // files already in place (another instance installed them): just relaunch
+            cmd.append("copy /y \"").append(stage.resolve("meshconsole.jar")).append("\" \"").append(dir.resolve("meshconsole.jar")).append("\" >nul 2>&1 || goto again\r\n");
+            for (String f : FILES) if (!f.equals("meshconsole.jar") && !f.endsWith(".sh") && Files.exists(stage.resolve(f)))
+                cmd.append("copy /y \"").append(stage.resolve(f)).append("\" \"").append(dir.resolve(f)).append("\" >nul 2>&1\r\n");
+            cmd.append("echo ").append(version).append("> \"").append(dir.resolve("installed_version.txt")).append("\"\r\ngoto run\r\n");
+            cmd.append(":again\r\nset /a n+=1\r\nif %n% lss 120 goto retry\r\n");          // give up after ~10 min and start the old version
+            cmd.append(":run\r\nstart \"\" \"").append(java).append("\" -cp \"").append(cp).append("\" meshconsole.Main").append(a).append("\r\n");
+            return cmd.toString();
     }
 
     /** Extracts the jars and launch scripts into installDir, each written to a temp file and moved into place. */
