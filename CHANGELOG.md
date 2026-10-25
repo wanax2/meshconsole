@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.2 — 2026-10-25
+
+- Fix: the radio tab treated tx_power **0** (the Meshtastic default) as the lowest setting. 0 means the firmware default, which is the maximum: on a stock G2/G3 that's the chip cap of 19 (about 1.6 W with factory jumpers), on the T-Beam 1W and the station-g3-fem build 30 dBm. The tab now shows the real output, the over-the-limit warning, and says what 0 means.
+
+
 ## 1.11.1 — 2026-10-25
 
 - Radio tab: **pick the output in watts.** An "Output power" list shows every setting the connected radio accepts as what comes out of the antenna port ("500 mW at the antenna (27.0 dBm, tx_power 27) ← legal maximum"), marks the ones over the limit for the selected antenna, and sets tx_power when you choose one. **Show every setting…** opens the full table for this radio and antenna: tx_power, watts and dBm at the port, watts and dBm EIRP, legal or not. Output, EIRP and the legal maximum are shown in watts throughout.

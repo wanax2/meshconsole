@@ -160,8 +160,18 @@ public class RadioPanel extends JPanel {
     private boolean femFirmware() { Config l = state.config(Config.PayloadVariantCase.LORA); return l != null && l.getLora().getFemLnaMode() != Config.LoRaConfig.FEM_LNA_Mode.NOT_PRESENT; }
     private int pal() { return (pl2.isSelected() ? 2 : 1) + (pl1.isSelected() ? 2 : 0); }
 
+    /** tx_power 0 is the firmware default: the region maximum (30 dBm in the US), then this radio's own cap. */
+    private int effectiveTx(int tx) {
+        if (tx != 0) return tx;
+        if (isG3() && femFirmware()) return 30;
+        if (isBqStation()) return 19;                 // stock G2/G3: 30 is clamped to the chip cap of 19 – full power
+        if (hw().equals("TBEAM_1_WATT")) return 30;
+        return 22;
+    }
+
     /** Expected output at the antenna port for a tx_power value on this radio. */
     private double outputFor(int tx) {
+        tx = effectiveTx(tx);
         if (isG3() && femFirmware()) return tx;                    // station-g3-fem: tx_power is antenna dBm
         if (isBqStation()) return g3Output(pal(), Math.min(tx, 19)); // stock G2/G3: tx_power is SX1262 drive, capped at 19
         if (hw().equals("TBEAM_1_WATT")) return Math.min(tx, 32);  // firmware subtracts its 10 dB PA gain; chip max 22
@@ -213,7 +223,8 @@ public class RadioPanel extends JPanel {
     private void recompute() {
         int tx = (int) txPower.getValue();
         double out = outputFor(tx), eirp = out + (double) gain.getValue() - (double) loss.getValue(), max = legalPortMax();
-        txMeaning.setText(String.format("<html>→ <b>%s</b> at the antenna port (%.1f dBm), <b>%s</b> EIRP (%.1f dBm). <i>%s</i></html>", watts(out), out, watts(eirp), eirp, txSemantics()));
+        txMeaning.setText(String.format("<html>→ <b>%s</b> at the antenna port (%.1f dBm), <b>%s</b> EIRP (%.1f dBm). <i>%s%s</i></html>", watts(out), out, watts(eirp), eirp, txSemantics(),
+                tx == 0 ? ". 0 is the firmware default, which is the maximum" : ""));
         boolean over = out > max + 0.05;
         legal.setText(String.format("<html>Legal maximum with this antenna: <b>%s</b> at the port (%.1f dBm), 4 W EIRP. %s</html>", watts(max), max,
                 over ? "<font color='#b00000'><b>Currently over: " + watts(out) + " is " + String.format("%.1f", out - max) + " dB too much.</b></font>" : "<font color='#006000'>Currently within the limit.</font>"));
@@ -222,6 +233,7 @@ public class RadioPanel extends JPanel {
     }
 
     private void rebuildPowerChoices(int currentTx) {
+        currentTx = effectiveTx(currentTx);
         int[] r = txRange(); double max = legalPortMax();
         int best = r[0];
         for (int t = r[0]; t <= r[1]; t++) if (outputFor(t) <= max + 0.05) best = t;
