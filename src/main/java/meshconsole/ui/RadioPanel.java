@@ -31,6 +31,14 @@ public class RadioPanel extends JPanel {
     private final JSpinner loss = new JSpinner(new SpinnerNumberModel(1.0, 0.0, 20.0, 0.1));
     private final JSpinner txPower = new JSpinner(new SpinnerNumberModel(20, 0, 40, 1));
     private final JLabel txMeaning = new JLabel(" "), legal = new JLabel(" ");
+    /** One entry per tx_power value this radio accepts, labelled with what comes out of the antenna port in watts. */
+    private record PowerChoice(int tx, double out, boolean over, boolean best) {
+        @Override public String toString() {
+            return String.format("%s at the antenna  (%.1f dBm, tx_power %d)%s", watts(out), out, tx, best ? "   ← legal maximum" : over ? "   over the limit" : "");
+        }
+    }
+    private final JComboBox<PowerChoice> powerPick = new JComboBox<>();
+    private boolean syncing;
     private final JCheckBox pl1 = new JCheckBox("PA PL1 jumper fitted"), pl2 = new JCheckBox("PA PL2 jumper fitted", true);
     private final JPanel jumperRow = row();
     // receive
@@ -62,7 +70,7 @@ public class RadioPanel extends JPanel {
         box.add(top);
 
         // ---- transmit power and antenna
-        JPanel tx = section("Transmit power and antenna (US: ≤ 30 dBm into the antenna and ≤ 36 dBm EIRP)");
+        JPanel tx = section("Transmit power and antenna (US: at most 1 W into the antenna and 4 W EIRP)");
         JPanel a1 = row();
         a1.add(new JLabel("Antenna:")); a1.add(antenna);
         a1.add(new JLabel("gain dBi:")); a1.add(gain);
@@ -70,8 +78,13 @@ public class RadioPanel extends JPanel {
         tx.add(a1);
         jumperRow.add(new JLabel("Station G2/G3 jumpers as they are on the board:")); jumperRow.add(pl1); jumperRow.add(pl2);
         tx.add(jumperRow);
+        JPanel a0 = row();
+        JLabel pl = new JLabel("Output power:"); pl.setFont(pl.getFont().deriveFont(Font.BOLD)); a0.add(pl);
+        a0.add(powerPick);
+        a0.add(button("Show every setting…", this::showPowerTable));
+        tx.add(a0);
         JPanel a2 = row();
-        a2.add(new JLabel("tx_power:")); a2.add(txPower); a2.add(txMeaning);
+        a2.add(new JLabel("tx_power (dBm, as the radio stores it):")); a2.add(txPower); a2.add(txMeaning);
         tx.add(a2);
         JPanel a3 = row();
         a3.add(legal);
@@ -124,6 +137,7 @@ public class RadioPanel extends JPanel {
         for (JComponent c : new JComponent[]{gain, loss, txPower}) ((JSpinner) c).addChangeListener(e -> recompute());
         for (JCheckBox c : new JCheckBox[]{pl1, pl2}) c.addActionListener(e -> recompute());
         antenna.addActionListener(e -> antennaPicked());
+        powerPick.addActionListener(e -> { if (syncing) return; PowerChoice c = (PowerChoice) powerPick.getSelectedItem(); if (c != null) txPower.setValue(c.tx()); });
 
         state.addListener(new MeshState.Listener() {
             @Override public void onStatusChanged() { SwingUtilities.invokeLater(RadioPanel.this::populate); }
@@ -172,6 +186,24 @@ public class RadioPanel extends JPanel {
         return row[0];
     }
 
+    /** "500 mW", "1.00 W", "4.0 W" – milliwatts below 1 W. */
+    static String watts(double dbm) {
+        double w = Math.pow(10, (dbm - 30) / 10.0);
+        double mw = w * 1000;
+        if (mw < 9.95) return String.format("%.1f mW", mw);
+        if (mw < 99.5) return String.format("%.0f mW", mw);
+        if (mw < 995) return String.format("%.0f mW", Math.round(mw / 10.0) * 10.0);   // the tables are ±2 dB; 501 mW reads as 500
+        return String.format("%.1f W", w);
+    }
+
+    /** tx_power values worth offering on this radio (above the top one the firmware clamps anyway). */
+    private int[] txRange() {
+        if (isG3() && femFirmware()) return new int[]{10, 30};
+        if (isBqStation()) return new int[]{1, 19};
+        if (hw().equals("TBEAM_1_WATT")) return new int[]{10, 30};
+        return new int[]{1, 22};
+    }
+
     /** Highest output allowed at the antenna port: 30 dBm conducted and 36 dBm EIRP (US Part 15). */
     private double legalPortMax() { return Math.min(30.0, 36.0 - (double) gain.getValue() + (double) loss.getValue()); }
 
@@ -181,11 +213,48 @@ public class RadioPanel extends JPanel {
     private void recompute() {
         int tx = (int) txPower.getValue();
         double out = outputFor(tx), eirp = out + (double) gain.getValue() - (double) loss.getValue(), max = legalPortMax();
-        txMeaning.setText(String.format("→ about %.1f dBm at the antenna port, %.1f dBm EIRP.   %s", out, eirp, txSemantics()));
+        txMeaning.setText(String.format("<html>→ <b>%s</b> at the antenna port (%.1f dBm), <b>%s</b> EIRP (%.1f dBm). <i>%s</i></html>", watts(out), out, watts(eirp), eirp, txSemantics()));
         boolean over = out > max + 0.05;
-        legal.setText(String.format("<html>Legal maximum with this antenna: <b>%.1f dBm</b> at the port. %s</html>", max,
-                over ? "<font color='#b00000'><b>Currently over by " + String.format("%.1f", out - max) + " dB.</b></font>" : "<font color='#006000'>Currently within the limit.</font>"));
+        legal.setText(String.format("<html>Legal maximum with this antenna: <b>%s</b> at the port (%.1f dBm), 4 W EIRP. %s</html>", watts(max), max,
+                over ? "<font color='#b00000'><b>Currently over: " + watts(out) + " is " + String.format("%.1f", out - max) + " dB too much.</b></font>" : "<font color='#006000'>Currently within the limit.</font>"));
         jumperRow.setVisible(isBqStation() && !(isG3() && femFirmware()));
+        rebuildPowerChoices(tx);
+    }
+
+    private void rebuildPowerChoices(int currentTx) {
+        int[] r = txRange(); double max = legalPortMax();
+        int best = r[0];
+        for (int t = r[0]; t <= r[1]; t++) if (outputFor(t) <= max + 0.05) best = t;
+        syncing = true;
+        try {
+            powerPick.removeAllItems();
+            PowerChoice sel = null;
+            for (int t = r[0]; t <= r[1]; t++) {
+                double o = outputFor(t);
+                PowerChoice c = new PowerChoice(t, o, o > max + 0.05, t == best);
+                powerPick.addItem(c);
+                if (t == currentTx) sel = c;
+            }
+            if (sel == null && currentTx > r[1]) sel = powerPick.getItemAt(powerPick.getItemCount() - 1);   // the firmware clamps higher values to the top one
+            if (sel != null) powerPick.setSelectedItem(sel); else powerPick.setSelectedIndex(-1);
+        } finally { syncing = false; }
+    }
+
+    private void showPowerTable() {
+        int[] r = txRange(); double g = (double) gain.getValue(), ls = (double) loss.getValue(), max = legalPortMax();
+        String[] cols = {"tx_power", "At the antenna port", "dBm", "EIRP", "EIRP dBm", ""};
+        java.util.List<Object[]> rows = new java.util.ArrayList<>();
+        for (int t = r[0]; t <= r[1]; t++) {
+            double o = outputFor(t), e = o + g - ls;
+            rows.add(new Object[]{t, watts(o), String.format("%.1f", o), watts(e), String.format("%.1f", e), o > max + 0.05 ? "over the limit" : (t == r[1] || outputFor(t + 1) > max + 0.05) ? "legal maximum" : ""});
+        }
+        JTable table = new JTable(rows.toArray(new Object[0][]), cols);
+        table.setEnabled(false);
+        JScrollPane sp = new JScrollPane(table); sp.setPreferredSize(new Dimension(620, Math.min(520, 24 + 18 * rows.size())));
+        JPanel p = new JPanel(new BorderLayout(4, 4));
+        p.add(new JLabel(String.format("<html>%s – %s.<br>Antenna %.1f dBi, loss %.1f dB. US limits: 1 W into the antenna, 4 W EIRP.</html>", tabTitle(), txSemantics(), g, ls)), BorderLayout.NORTH);
+        p.add(sp, BorderLayout.CENTER);
+        JOptionPane.showMessageDialog(this, p, "Power settings on this radio", JOptionPane.PLAIN_MESSAGE);
     }
 
     private void setLegalMax() {
@@ -194,7 +263,7 @@ public class RadioPanel extends JPanel {
         for (int tx = 0; tx <= 30; tx++) if (outputFor(tx) <= max + 0.05) best = tx;   // highest setting whose output stays within the limit
         txPower.setValue(best);
         recompute();
-        say("tx_power set to " + best + " – press Save to radio");
+        say("tx_power " + best + " = " + watts(outputFor(best)) + " at the antenna – press Save to radio");
     }
 
     private void antennaPicked() {
@@ -286,7 +355,7 @@ public class RadioPanel extends JPanel {
             Config l = state.config(Config.PayloadVariantCase.LORA), d = state.config(Config.PayloadVariantCase.DEVICE);
             if (l == null || d == null) throw new IOException("Settings haven't arrived from the radio yet.");
             double out = outputFor((int) txPower.getValue()), max = legalPortMax();
-            if (out > max + 0.05 && JOptionPane.showConfirmDialog(this, String.format("That's about %.1f dBm at the antenna port, %.1f dB over the US limit for this antenna.%nSave anyway?", out, out - max),
+            if (out > max + 0.05 && JOptionPane.showConfirmDialog(this, String.format("That's about %s (%.1f dBm) at the antenna port; the limit with this antenna is %s.%nSave anyway?", watts(out), out, watts(max)),
                     "Over the legal limit", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.OK_OPTION) return;
             Config.LoRaConfig.Builder lb = l.getLora().toBuilder()
                     .setTxPower((int) txPower.getValue()).setHopLimit((int) hops.getValue()).setTxEnabled(txEnabled.isSelected())

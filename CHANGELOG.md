@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.1 — 2026-10-25
+
+- Radio tab: **pick the output in watts.** An "Output power" list shows every setting the connected radio accepts as what comes out of the antenna port ("500 mW at the antenna (27.0 dBm, tx_power 27) ← legal maximum"), marks the ones over the limit for the selected antenna, and sets tx_power when you choose one. **Show every setting…** opens the full table for this radio and antenna: tx_power, watts and dBm at the port, watts and dBm EIRP, legal or not. Output, EIRP and the legal maximum are shown in watts throughout.
+
+
 ## 1.11.0 — 2026-10-25
 
 - **The radio's own tab**, next to Status & signal and titled after the connected radio ("Station G3", "Station G2", "T-Beam 1W", otherwise "This radio"). Everything that depends on the hardware, on one page with one **Save to radio**:
