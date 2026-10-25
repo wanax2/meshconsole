@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.12.4 — 2026-10-25
+
+- Alerts tab settings (alerts on/off, desktop/tray notifications, beep, DM alerts, silent-node hours, favourites only, battery and utilisation thresholds, push out) are saved per data folder and restored at start-up — previously they reset to the defaults on every restart, including after a self-update.
+
+
 ## 1.12.3 — 2026-10-25
 
 - Self-update restarts keep the Java options the app was started with (e.g. `-Xmx768m`), not just its arguments, on Windows and Linux.

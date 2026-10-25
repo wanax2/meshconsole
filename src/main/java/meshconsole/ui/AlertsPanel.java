@@ -46,8 +46,15 @@ class AlertsPanel extends JPanel {
         }
     }
 
+    /** Alert settings persist per data folder, so restarts (including self-updates) keep them. */
+    private static final java.util.prefs.Preferences P = java.util.prefs.Preferences.userRoot().node("meshconsole-alerts-" + Integer.toHexString(meshconsole.DataDir.get().toString().toLowerCase().hashCode()));
+    private void persist(JCheckBox box, String key) { box.setSelected(P.getBoolean(key, box.isSelected())); box.addActionListener(e -> P.putBoolean(key, box.isSelected())); }
+    private void persist(JSpinner sp, String key) { sp.setValue(P.getInt(key, (Integer) sp.getValue())); sp.addChangeListener(e -> P.putInt(key, (Integer) sp.getValue())); }
+
     AlertsPanel(MeshState state, AlertEngine engine) {
         this.engine = engine;
+        persist(enabled, "enabled"); persist(tray, "tray"); persist(beep, "beep"); persist(dmAlert, "dm"); persist(favOnly, "favOnly"); persist(pushOut, "push");
+        persist(silentH, "silentH"); persist(batt, "batt"); persist(util, "util");
         setLayout(new BorderLayout(6, 6));
         JPanel top = new JPanel();
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
@@ -84,6 +91,7 @@ class AlertsPanel extends JPanel {
         silentH.addChangeListener(e -> apply.actionPerformed(null));
         batt.addChangeListener(e -> apply.actionPerformed(null));
         util.addChangeListener(e -> apply.actionPerformed(null));
+        apply.actionPerformed(null);   // hand the restored settings to the engine at startup
 
         if (SystemTray.isSupported()) {
             try {
