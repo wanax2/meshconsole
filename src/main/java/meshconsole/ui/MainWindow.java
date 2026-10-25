@@ -28,6 +28,7 @@ public class MainWindow extends JFrame {
     private final MapPanel mapPanel;
     private final SwrPanel swrPanel;
     private final SettingsPanel settingsPanel;
+    private RadioPanel radioPanel;
     private final TelemetryPanel telemetryPanel;
     private final StatsPanel statsPanel;
     private final TrafficPanel trafficPanel;
@@ -172,6 +173,9 @@ public class MainWindow extends JFrame {
         alertsPanel = new AlertsPanel(state, alerts);
         mapPanel.setClient(client);
         tabs.addTab("Status & signal", statusPanel);
+        radioPanel = new RadioPanel(client, () -> new FirmwareDialog(this, client, lastPortName).setVisible(true));
+        radioPanel.afterSave = settingsPanel::refreshFromRadio;
+        tabs.addTab("This radio", radioPanel);
         tabs.addTab("Messages", messagesPanel);
         tabs.addTab("Nodes", nodesPanel);
         tabs.addTab("Map", mapPanel);
@@ -321,6 +325,7 @@ public class MainWindow extends JFrame {
     }
 
     private void refreshStatusLine() {
+        if (radioPanel != null) { int i = tabs.indexOfComponent(radioPanel); if (i >= 0) { String t = radioPanel.tabTitle(); if (!t.equals(tabs.getTitleAt(i))) tabs.setTitleAt(i, t); } }
         if (!client.isConnected()) return;
         if (state.configComplete() && !registered && state.myNodeNum() != 0 && analysisPanel != null) {
             registered = true; connectedNum = state.myNodeNum();

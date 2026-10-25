@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.0 — 2026-10-25
+
+- **The radio's own tab**, next to Status & signal and titled after the connected radio ("Station G3", "Station G2", "T-Beam 1W", otherwise "This radio"). Everything that depends on the hardware, on one page with one **Save to radio**:
+  - **Transmit power and antenna**: pick the antenna (from My antennas or presets), gain and cable/filter loss; it shows the expected output at the antenna port and the EIRP, the US legal maximum for that antenna (≤ 30 dBm conducted, ≤ 36 dBm EIRP), whether you're over, and **Set to the legal maximum**. It knows what tx_power means on each radio: antenna dBm on the T-Beam 1W and the station-g3-fem build, PA drive on a stock G2/G3 (with the jumper level).
+  - **Receive**: external LNA (a saved setting on station-g3-fem; jumper guidance or GPIO drive on the stock G3), chip RX boost with advice for the radio, PA fan.
+  - **Role**: role, hop limit, transmit enabled (receive-only listener).
+  - **Power monitor and firmware**: INA219 supply telemetry, live supply / noise floor / channel readout, Firmware update…, Reboot.
+- Saving warns before writing a power that's over the limit for the selected antenna.
+- The Station G3 section in Settings moved to the new tab.
+
+
 ## 1.10.8 — 2026-10-24
 
 - Station G3 panel understands the **station-g3-fem** firmware (see `station-g3-fem-firmware.zip`): detected from the LoRa config (the stock build reports the FEM LNA as not present), or tick the box by hand. With it, tx_power is shown and set as antenna dBm (the 30 / 26 dBm buttons set 30 / 26), an **LNA on** switch writes `fem_lna_mode`, and the GPIO "drive from here" controls are disabled because the firmware owns those lines.

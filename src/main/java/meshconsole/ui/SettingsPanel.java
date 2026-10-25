@@ -187,65 +187,10 @@ class SettingsPanel extends JPanel {
         }));
         box.add(sec);
 
-        // ---- Station G3: jumpers decide the PA level and LNA; tx_power is the SX1262 drive, not the antenna output
-        g3Box = section("Station G3 – amplifier levels (shown when the connected radio is a G3)");
-        g3Box.add(new JLabel("<html><b>Antenna on before power.</b> Supply: 9–19 V barrel (25 W+) or 15 V USB-C PD; the MCU's USB-C is data only. "
-                + "Two motherboard jumpers set the PA level, LNA P sets the LNA (<i>installed = LNA off</i>). tx_power below is the chip's drive into the PA; the antenna output is the table.</html>"));
-        g3pl1 = new JCheckBox("PA PL1 installed", false); g3pl2 = new JCheckBox("PA PL2 installed", true); g3lna = new JCheckBox("LNA P installed (LNA OFF)", false);
-        g3Out = new JLabel(" ");
-        JPanel jr = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); jr.add(g3pl1); jr.add(g3pl2); jr.add(g3lna); jr.add(new JLabel("   Level / expected output:")); jr.add(g3Out);
-        g3Box.add(jr);
-        JPanel fr = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); fr.add(g3Fem); fr.add(g3FemLna);
-        g3FemLna.setToolTipText("Saved in the radio's LoRa config; the FEM firmware switches the LNA off during transmit and back on for receive.");
-        fr.add(button("Apply LNA", () -> {
-            Config base = state.config(Config.PayloadVariantCase.LORA);
-            if (base == null) throw new IOException("LoRa settings not received yet.");
-            client.setConfig(Config.newBuilder().setLora(base.getLora().toBuilder().setFemLnaMode(g3FemLna.isSelected() ? Config.LoRaConfig.FEM_LNA_Mode.ENABLED : Config.LoRaConfig.FEM_LNA_Mode.DISABLED)).build());
-            state.emitLog("FEM LNA " + (g3FemLna.isSelected() ? "enabled" : "disabled"));
-        }));
-        g3Box.add(fr);
-        Runnable g3calc = () -> {
-            int level = (g3pl2.isSelected() ? 2 : 1) + (g3pl1.isSelected() ? 2 : 0);
-            int tx = (int) txPower.getValue();
-            g3FemLna.setEnabled(g3Fem.isSelected());
-            if (g3Sw != null) for (Component c : g3Sw.getComponents()) c.setEnabled(!g3Fem.isSelected());
-            if (g3Fem.isSelected()) {
-                g3Out.setText(String.format("FEM firmware: tx_power %d = about %d dBm at the antenna port (the radio converts it for PA level %d)%s", tx, tx, level, tx > 30 ? "  ⚠ over 30 dBm / 1 W" : ""));
-                return;
-            }
-            double out = g3Output(level, tx);
-            g3Out.setText(String.format("level %d, tx_power %d → about %.1f dBm at the antenna port (±2 dB)%s%s", level, tx, out, out > 30.5 ? "  ⚠ over 30 dBm / 1 W" : "", g3lna.isSelected() ? "   · LNA off" : "   · LNA on"));
-        };
-        for (JCheckBox cb : new JCheckBox[]{g3pl1, g3pl2, g3lna, g3Fem}) cb.addActionListener(e -> g3calc.run());
-        txPower.addChangeListener(e -> g3calc.run());
-        JPanel jb = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
-        jb.add(button("Set tx_power for ~30 dBm at this level", () -> { int level = (g3pl2.isSelected() ? 2 : 1) + (g3pl1.isSelected() ? 2 : 0); txPower.setValue(g3Fem.isSelected() ? 30 : new int[]{0, 18, 16, 15, 14}[level]); g3calc.run(); }));
-        jb.add(button("…for ~26 dBm (10 dBi yagi, 36 dBm EIRP)", () -> { int level = (g3pl2.isSelected() ? 2 : 1) + (g3pl1.isSelected() ? 2 : 0); txPower.setValue(g3Fem.isSelected() ? 26 : new int[]{0, 12, 11, 10, 9}[level]); g3calc.run(); }));
-        jb.add(new JLabel("<html><i>Level 4 needs ≥10 V. Reboots on transmit = supply too small. Weak RX at a noisy site: try LNA P installed (LNA off) for a day.</i></html>"));
-        g3Box.add(jb);
-        // ---- software control of the amplifier lines (jumpers removed): GPIO 9 = PA PL1 (HIGH = high level pair), GPIO 10 = LNA enable (LOW = on)
-        JPanel sw = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); g3Sw = sw;
-        sw.add(new JLabel("<html><b>Drive from here</b> (jumpers PA PL1 and LNA P removed; PA PL2 as installed above):</html>"));
-        JComboBox<String> levelPick = new JComboBox<>(new String[]{"PL1 low → level 1 (PL2 out) / level 2 (PL2 in)", "PL1 high → level 3 (PL2 out) / level 4 (PL2 in)"});
-        JCheckBox lnaOn = new JCheckBox("LNA on", true);
-        JCheckBox reapply = new JCheckBox("Re-apply on every connect", java.util.prefs.Preferences.userNodeForPackage(SettingsPanel.class).getBoolean("g3reapply", false));
-        sw.add(levelPick); sw.add(lnaOn); sw.add(reapply);
-        sw.add(button("Enable GPIO control on radio (one-time, reboots)", () -> {
-            try { client.enableRemoteHardware(); state.emitLog("Remote Hardware module enabled with undefined-pin access – radio reboots; reconnect, then Apply"); }
-            catch (java.io.IOException ex) { state.emitLog("Enable failed: " + ex.getMessage()); }
-        }));
-        sw.add(button("Apply", () -> {
-            long mask = (1L << 9) | (1L << 10); long value = (levelPick.getSelectedIndex() == 1 ? (1L << 9) : 0) | (lnaOn.isSelected() ? 0 : (1L << 10));
-            java.util.prefs.Preferences pr = java.util.prefs.Preferences.userNodeForPackage(SettingsPanel.class);
-            pr.putLong("g3mask", mask); pr.putLong("g3value", value); pr.putBoolean("g3reapply", reapply.isSelected());
-            try { client.writeGpio(mask, value); g3pl1.setSelected(levelPick.getSelectedIndex() == 1); g3lna.setSelected(!lnaOn.isSelected()); g3calc.run(); }
-            catch (java.io.IOException ex) { state.emitLog("GPIO write failed: " + ex.getMessage()); }
-        }));
-        sw.add(button("Read back", () -> { try { client.readGpio((1L << 9) | (1L << 10)); } catch (java.io.IOException ex) { state.emitLog("GPIO read failed: " + ex.getMessage()); } }));
-        g3Box.add(sw);
-        g3Box.add(new JLabel("<html><i>Pins from the board definition (PA PL1 = GPIO 9, primary LNA enable = GPIO 10, active low). The setting lives until the radio reboots; tick re-apply to send it again on connect. Verify with Read back and with the yagi's SNR.</i></html>"));
-        g3calc.run();
-        box.add(g3Box);
+        JPanel moved = section("Radio-specific settings");
+        moved.add(new JLabel("<html>Transmit power checked against your antenna, LNA, chip RX boost, PA fan, role, the Station G3's jumpers or FEM firmware, "
+                + "the supply monitor and firmware are on the <b>radio's own tab</b> (titled after the radio, e.g. <b>Station G3</b>, next to Status &amp; signal).</html>"));
+        box.add(moved);
 
         JPanel pw = section("Power monitor & radio control");
         pw.add(powerTelemetry);
@@ -358,26 +303,17 @@ class SettingsPanel extends JPanel {
     }
 
     private boolean populated;
-    private JPanel g3Box; private JCheckBox g3pl1, g3pl2, g3lna; private JLabel g3Out; private boolean g3Applied;
-    private final JCheckBox g3Fem = new JCheckBox("Radio runs the station-g3-fem firmware (tx_power = antenna dBm)");
-    private final JCheckBox g3FemLna = new JCheckBox("LNA on (fem_lna_mode)", true);
-    private JPanel g3Sw;
 
-    /** Manufacturer's typical G3 output at 915 MHz (dBm) by PA level and SX1262 tx setting; interpolated between the published points. */
-    static double g3Output(int level, int tx) {
-        int[] txs = {7, 14, 15, 16, 18, 22};
-        double[][] tbl = {{21.7, 27.7, 28.4, 29.2, 30.5, 32.8}, {22.2, 28.4, 29.2, 30.0, 31.4, 34.1}, {23.1, 29.4, 30.2, 31.0, 32.6, 35.6}, {23.3, 29.7, 30.6, 31.5, 33.3, 36.8}};
-        double[] row = tbl[Math.max(1, Math.min(4, level)) - 1];
-        if (tx <= txs[0]) return row[0] - (txs[0] - tx) * 0.9;
-        if (tx >= txs[5]) return row[5];
-        for (int i = 0; i < 5; i++) if (tx >= txs[i] && tx <= txs[i + 1]) return row[i] + (row[i + 1] - row[i]) * (tx - txs[i]) / (double) (txs[i + 1] - txs[i]);
-        return row[0];
-    }
+
+
     private int populatedFrom;   // node number the fields were last filled from
+
+    /** Re-reads every field from the radio's current config (called after another tab saved settings). */
+    public void refreshFromRadio() { populated = false; populateIfFresh(); }
 
     private void populateIfFresh() {
         int now = state.myNodeNum();
-        if (now != populatedFrom) { populated = false; populatedFrom = now; g3Applied = false; }   // a different radio (or a reconnect) – the old values are not this radio's
+        if (now != populatedFrom) { populated = false; populatedFrom = now; }   // a different radio (or a reconnect) – the old values are not this radio's
         if (!state.configComplete()) { if (now != 0) loaded.setText("Loading settings from " + state.nodeName(now) + "…"); else loaded.setText("Settings not loaded – connect to a radio."); return; }
         if (!populated) populate();
     }
@@ -387,19 +323,6 @@ class SettingsPanel extends JPanel {
         populated = state.config(Config.PayloadVariantCase.LORA) != null;   // keep re-populating until the LoRa section has actually arrived
         loaded.setText("Loaded from " + state.nodeName(state.myNodeNum()) + ".");
         { ModuleConfig t = state.moduleConfig(ModuleConfig.PayloadVariantCase.TELEMETRY); if (t != null) powerTelemetry.setSelected(t.getTelemetry().getPowerMeasurementEnabled()); }
-        if (g3Box != null) {
-            NodeEntry me = state.myNode(); boolean g3 = me != null && "STATION_G3".equalsIgnoreCase(me.hwModel); g3Box.setVisible(g3);
-            Config lc = state.config(Config.PayloadVariantCase.LORA);
-            if (g3 && lc != null && lc.getLora().getFemLnaMode() != Config.LoRaConfig.FEM_LNA_Mode.NOT_PRESENT) {   // stock G3 firmware reports NOT_PRESENT
-                g3Fem.setSelected(true); g3FemLna.setSelected(lc.getLora().getFemLnaMode() == Config.LoRaConfig.FEM_LNA_Mode.ENABLED);
-                g3Out.setText(" "); for (java.awt.event.ActionListener l : g3Fem.getActionListeners()) l.actionPerformed(null);
-            }
-            java.util.prefs.Preferences pr = java.util.prefs.Preferences.userNodeForPackage(SettingsPanel.class);
-            if (g3 && !g3Fem.isSelected() && pr.getBoolean("g3reapply", false) && pr.getLong("g3mask", 0) != 0 && !g3Applied) {
-                g3Applied = true;
-                new Thread(() -> { try { Thread.sleep(3000); client.writeGpio(pr.getLong("g3mask", 0), pr.getLong("g3value", 0)); state.emitLog("G3 amplifier lines re-applied on connect"); } catch (Exception ignored) { } }).start();
-            }
-        }
         NodeEntry me = state.myNode();
         if (me != null) {
             longName.setText(me.longName); shortName.setText(me.shortName);
