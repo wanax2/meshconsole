@@ -14,7 +14,7 @@ import java.util.*;
 public final class BbsExtras {
     private BbsExtras() { }
 
-    private static String get(String url, String... headers) throws IOException {
+    static String get(String url, String... headers) throws IOException {
         HttpURLConnection c = (HttpURLConnection) URI.create(url).toURL().openConnection();
         c.setRequestProperty("User-Agent", "MeshConsole-BBS"); c.setConnectTimeout(6000); c.setReadTimeout(8000);
         for (int i = 0; i + 1 < headers.length; i += 2) c.setRequestProperty(headers[i], headers[i + 1]);

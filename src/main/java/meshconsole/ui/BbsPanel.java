@@ -58,7 +58,11 @@ class BbsPanel extends JPanel {
         JPanel r2b = row();
         JTextField wmata = new JPasswordField(store.wmataKey, 14), discord = new JTextField(store.discordWebhook, 28), station = new JTextField(store.station, 5);
         r2b.add(new JLabel("Weather station:")); r2b.add(station); r2b.add(new JLabel("WMATA API key (developer.wmata.com):")); r2b.add(wmata); r2b.add(new JLabel("Discord webhook (bulletins mirror):")); r2b.add(discord);
-        JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.station = station.getText().trim().toUpperCase(); store.wmataKey = new String(((JPasswordField) wmata).getPassword()).trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
+        JTextField av = new JTextField(store.avStations, 10), cat = new JTextField(store.catStations, 16);
+        av.setToolTipText("Default airports for METAR, TAF, DA and PIREP (first one is used when only one is needed)");
+        cat.setToolTipText("Airports listed by CAT (flight categories)");
+        r2b.add(new JLabel("Aviation:")); r2b.add(av); r2b.add(new JLabel("CAT list:")); r2b.add(cat);
+        JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.avStations = av.getText().trim().toUpperCase(); store.catStations = cat.getText().trim().toUpperCase(); store.station = station.getText().trim().toUpperCase(); store.wmataKey = new String(((JPasswordField) wmata).getPassword()).trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
         JButton postEvent = new JButton("Post event…");
         postEvent.addActionListener(e -> {
             JTextField when = new JTextField("", 12), text = new JTextField("", 30);

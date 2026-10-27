@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.13.0 — 2026-10-26
+
+BBS aviation weather (aviationweather.gov and api.weather.gov, no keys), defaults set on the BBS tab ("Aviation: KDCA,KHEF"):
+- **METAR [id …]** — raw METAR without remarks, plus flight category and density altitude; with no id, one line for each default airport. Three-letter ids work (`METAR HEF`).
+- **TAF [id]** — now takes an airport (default: the first aviation airport).
+- **CAT [ids]** — flight categories at a glance for a list of airports (default KDCA, KHEF, KIAD, KBWI, KJYO, KADW): category, ceiling, visibility, wind.
+- **DA [id]** — density altitude with the working (field elevation, temperature, altimeter, pressure altitude).
+- **WINDS [site]** — winds and temperatures aloft, 3,000–24,000 ft, decoded (direction/speed, temperature), from the nearest FB forecast point.
+- **PIREP [id]** — pilot reports within 100 nm in the last 3 hours.
+- **FCST** — the next three NWS forecast periods for the board's position.
+- **AV** lists them all; the main menu shows `AV`.
+Responses are cached for five minutes.
+
+
 ## 1.12.4 — 2026-10-25
 
 - Alerts tab settings (alerts on/off, desktop/tray notifications, beep, DM alerts, silent-node hours, favourites only, battery and utilisation thresholds, push out) are saved per data folder and restored at start-up — previously they reset to the defaults on every restart, including after a self-update.

@@ -201,7 +201,7 @@ public class BbsEngine {
         String who = state.nodeName(from);
         switch (cmd) {
             case "GAMES", "GAME", "PLAY" -> { return "Games on " + store.name + ": TRIVIA (A answer) " + BbsExtras.trivia().size() + " questions, GUESS the number (G n), ADV text adventure (ADV, then N/S/E/W/LOOK), GO BILLS, GO SABRES, 716. Scores in TOP."; }
-            case "?", "H", "HELP", "MENU", "COMMANDS", "COMMAND", "START", "HI", "HELLO" -> { return store.name + ": B P M mail | S T N STATS TOP WHO | W TAF ALERTS SUN ISS SOLAR | METRO NEXT station BUS stop ELEV SCORE | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
+            case "?", "H", "HELP", "MENU", "COMMANDS", "COMMAND", "START", "HI", "HELLO" -> { return store.name + ": B P M mail | S T N STATS TOP WHO | W FCST ALERTS SUN ISS SOLAR | AV aviation (METAR TAF CAT DA WINDS PIREP) | METRO NEXT station BUS stop ELEV SCORE | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
             case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET | GO BILLS, GO SABRES, 716"; }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
@@ -402,7 +402,14 @@ public class BbsEngine {
             case "SUN", "MOON", "SUNSET", "SUNRISE" -> { NodeEntry me0 = state.myNode(); return BbsExtras.sun(me0 != null && me0.hasPosition ? me0.lat : 0, me0 != null && me0.hasPosition ? me0.lon : 0); }
             case "ISS" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, BbsExtras.iss(la, lo))); return null; }
             case "SOLAR", "HF", "PROP" -> { bg.submit(() -> send(from, BbsExtras.solar())); return null; }
-            case "TAF" -> { bg.submit(() -> send(from, BbsExtras.taf(store.station))); return null; }
+            case "TAF" -> { final String id = arg.isBlank() ? Aviation.ids(store.avStations).get(0) : Aviation.icao(arg); bg.submit(() -> send(from, BbsExtras.taf(id))); return null; }
+            case "METAR" -> { final List<String> ids = arg.isBlank() ? Aviation.ids(store.avStations) : Aviation.ids(arg); bg.submit(() -> { for (String line : Aviation.metar(ids.subList(0, Math.min(3, ids.size())))) send(from, line); }); return null; }
+            case "CAT", "FLTCAT", "VFR" -> { final List<String> ids = arg.isBlank() ? Aviation.ids(store.catStations) : Aviation.ids(arg); bg.submit(() -> send(from, Aviation.categories(ids))); return null; }
+            case "DA", "DENSITY" -> { final String id = arg.isBlank() ? Aviation.ids(store.avStations).get(0) : Aviation.icao(arg); bg.submit(() -> send(from, Aviation.densityAltitude(id))); return null; }
+            case "PIREP", "PIREPS" -> { final String id = arg.isBlank() ? Aviation.ids(store.avStations).get(0) : Aviation.icao(arg); bg.submit(() -> send(from, Aviation.pireps(id))); return null; }
+            case "WINDS", "FB", "ALOFT" -> { final String id = arg; final List<String> fb = new ArrayList<>(Aviation.ids(store.avStations)); fb.addAll(Arrays.asList(store.windsSites.split("[,\\s]+"))); bg.submit(() -> send(from, Aviation.windsAloft(id, fb))); return null; }
+            case "FCST", "FORECAST" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, Aviation.forecast(la, lo))); return null; }
+            case "AV", "AVIATION", "AVWX" -> { return "Aviation: METAR [id..] (default " + store.avStations + ") · TAF [id] · CAT [ids] flight categories · DA [id] density alt · WINDS [site] aloft · PIREP [id] · FCST NWS forecast"; }
             case "METRO", "WMATA" -> {
                 final String a = arg.trim();
                 if (a.toUpperCase().startsWith("BUS")) { final String route = a.length() > 3 ? a.substring(3).trim() : ""; bg.submit(() -> send(from, BbsExtras.busIncidents(store.wmataKey, route))); return null; }
