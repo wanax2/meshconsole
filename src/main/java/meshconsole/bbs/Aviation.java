@@ -184,6 +184,86 @@ public final class Aviation {
         } catch (NumberFormatException e) { return g; }
     }
 
+    // ---- FAA airport status (delays, ground stops, closures) --------------------------------------
+    /** FAA NAS status for the given airports (3- or 4-letter ids); "ALL" lists the national picture. */
+    public static String delays(List<String> ids, boolean all) {
+        try {
+            String xml = fetch("https://nasstatus.faa.gov/api/airport-status-information");
+            List<String[]> items = new ArrayList<>();   // {airport, text}
+            for (java.util.regex.Matcher m = java.util.regex.Pattern.compile("<Ground_Delay>(.*?)</Ground_Delay>", java.util.regex.Pattern.DOTALL).matcher(xml); m.find(); )
+                items.add(new String[]{tag(m.group(1), "ARPT"), "ground delay avg " + tag(m.group(1), "Avg") + " (" + tag(m.group(1), "Reason") + ")"});
+            java.util.regex.Matcher gs = java.util.regex.Pattern.compile("<Ground_Stop_List>(.*?)</Ground_Stop_List>", java.util.regex.Pattern.DOTALL).matcher(xml);
+            if (gs.find()) for (java.util.regex.Matcher m = java.util.regex.Pattern.compile("<Program>(.*?)</Program>", java.util.regex.Pattern.DOTALL).matcher(gs.group(1)); m.find(); )
+                items.add(new String[]{tag(m.group(1), "ARPT"), "GROUND STOP until " + tag(m.group(1), "End_Time") + " (" + tag(m.group(1), "Reason") + ")"});
+            for (java.util.regex.Matcher m = java.util.regex.Pattern.compile("<Delay>(.*?)</Delay>", java.util.regex.Pattern.DOTALL).matcher(xml); m.find(); ) {
+                String b = m.group(1), type = "";
+                java.util.regex.Matcher t = java.util.regex.Pattern.compile("<Arrival_Departure Type=\"([^\"]+)\">(.*?)</Arrival_Departure>", java.util.regex.Pattern.DOTALL).matcher(b);
+                if (t.find()) type = t.group(1).toLowerCase(Locale.ROOT) + " delays " + tag(t.group(2), "Min") + "–" + tag(t.group(2), "Max") + " " + tag(t.group(2), "Trend").toLowerCase(Locale.ROOT);
+                items.add(new String[]{tag(b, "ARPT"), (type.isEmpty() ? "delays" : type) + " (" + tag(b, "Reason") + ")"});
+            }
+            java.util.regex.Matcher cl = java.util.regex.Pattern.compile("<Airport_Closure_List>(.*?)</Airport_Closure_List>", java.util.regex.Pattern.DOTALL).matcher(xml);
+            if (cl.find()) for (java.util.regex.Matcher m = java.util.regex.Pattern.compile("<Airport>(.*?)</Airport>", java.util.regex.Pattern.DOTALL).matcher(cl.group(1)); m.find(); )
+                items.add(new String[]{tag(m.group(1), "ARPT"), "CLOSED " + tag(m.group(1), "Reason")});
+            Set<String> want = new HashSet<>(); for (String id : ids) want.add(fb(id));
+            StringBuilder sb = new StringBuilder();
+            int shown = 0;
+            for (String[] it : items) {
+                if (!all && !want.contains(it[0])) continue;
+                String line = it[0] + ": " + it[1].replaceAll("\\s+", " ").replace(" ()", "") + "; ";
+                if (sb.length() + line.length() > 380) { sb.append("(+more)"); break; }
+                sb.append(line); shown++;
+            }
+            if (shown == 0) return all ? "FAA: no delays, ground stops or closures reported nationwide." : "FAA: no delays reported for " + String.join(", ", want) + ".";
+            return "FAA: " + sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return "FAA status unavailable (" + e.getMessage() + ")"; }
+    }
+    private static String tag(String xml, String t) { java.util.regex.Matcher m = java.util.regex.Pattern.compile("<" + t + ">\\s*(.*?)\\s*</" + t + ">", java.util.regex.Pattern.DOTALL).matcher(xml); return m.find() ? m.group(1).trim() : ""; }
+
+    // ---- aircraft overhead (OpenSky Network, anonymous) -------------------------------------------
+    /** The closest aircraft within radiusKm of the board: callsign, altitude, heading, speed, distance and bearing. */
+    public static String planes(double lat, double lon, int radiusKm) {
+        if (lat == 0) return "No position set on this board.";
+        try {
+            double dLat = radiusKm / 111.0, dLon = radiusKm / (111.0 * Math.cos(Math.toRadians(lat)));
+            String url = String.format(Locale.ROOT, "https://opensky-network.org/api/states/all?lamin=%.3f&lomin=%.3f&lamax=%.3f&lomax=%.3f", lat - dLat, lon - dLon, lat + dLat, lon + dLon);
+            Object root = Json.parse(fetchShort(url));
+            if (!(root instanceof Map<?, ?> m) || !(m.get("states") instanceof List<?> states) || states.isEmpty()) return "No aircraft reported within " + radiusKm + " km right now.";
+            record Ac(String cs, double km, double brg, int altFt, int hdg, int kt, boolean ground) { }
+            List<Ac> ac = new ArrayList<>();
+            for (Object o : states) {
+                if (!(o instanceof List<?> s) || s.size() < 11 || s.get(5) == null || s.get(6) == null) continue;
+                double alat = ((Number) s.get(6)).doubleValue(), alon = ((Number) s.get(5)).doubleValue();
+                double km = meshconsole.analysis.Metar.distanceKm(lat, lon, alat, alon);
+                if (km > radiusKm) continue;
+                double y = Math.sin(Math.toRadians(alon - lon)) * Math.cos(Math.toRadians(alat)), x = Math.cos(Math.toRadians(lat)) * Math.sin(Math.toRadians(alat)) - Math.sin(Math.toRadians(lat)) * Math.cos(Math.toRadians(alat)) * Math.cos(Math.toRadians(alon - lon));
+                double brg = (Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+                String cs = s.get(1) == null ? "" : s.get(1).toString().trim(); if (cs.isEmpty()) cs = String.valueOf(s.get(0));
+                int alt = s.get(7) == null ? -1 : (int) Math.round(((Number) s.get(7)).doubleValue() * 3.28084);
+                int hdg = s.get(10) == null ? -1 : (int) Math.round(((Number) s.get(10)).doubleValue());
+                int kt = s.get(9) == null ? -1 : (int) Math.round(((Number) s.get(9)).doubleValue() * 1.94384);
+                ac.add(new Ac(cs, km, brg, alt, hdg, kt, Boolean.TRUE.equals(s.get(8))));
+            }
+            if (ac.isEmpty()) return "No aircraft reported within " + radiusKm + " km right now.";
+            ac.sort(Comparator.comparingDouble(Ac::km));
+            String[] pts = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+            StringBuilder sb = new StringBuilder(ac.size() + " aircraft within " + radiusKm + " km. ");
+            for (Ac a : ac) {
+                String item = a.cs + " " + (a.ground ? "on ground" : (a.altFt >= 0 ? String.format("%,dft", a.altFt) : "?ft") + (a.hdg >= 0 ? " hdg " + a.hdg : "") + (a.kt >= 0 ? " " + a.kt + "kt" : ""))
+                        + String.format(Locale.ROOT, " %.1fkm %s; ", a.km, pts[(int) Math.round(a.brg / 45) % 8]);
+                if (sb.length() + item.length() > 380) break;
+                sb.append(item);
+            }
+            return sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return "Aircraft data unavailable (" + e.getMessage() + ")"; }
+    }
+    /** Live positions go stale fast: cache for 30 s rather than 5 minutes. */
+    private static String fetchShort(String url) throws IOException {
+        synchronized (CACHE) { Cached c = CACHE.get(url); if (c != null && System.currentTimeMillis() - c.at < 30_000) return c.body; }
+        String body = BbsExtras.get(url);
+        synchronized (CACHE) { CACHE.put(url, new Cached(System.currentTimeMillis(), body)); }
+        return body;
+    }
+
     // ---- NWS forecast ---------------------------------------------------------------------------
     private static String forecastUrl; private static double fLat, fLon;
 

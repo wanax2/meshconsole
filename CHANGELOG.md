@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.13.1 — 2026-10-26
+
+- BBS **DELAY [ids | ALL]** — FAA airport status: ground stops, ground delay programs, arrival/departure delays and closures for the CAT airports (default DCA, HEF, IAD, BWI, JYO, ADW) or any you name; `DELAY ALL` for the national picture. Source: nasstatus.faa.gov, no key.
+- BBS **PLANES [km]** — aircraft within 10 km of the board (2–50 km with an argument), nearest first: callsign, altitude, heading, speed, distance and direction. Source: OpenSky Network (anonymous), cached 30 s.
+
+
 ## 1.13.0 — 2026-10-26
 
 BBS aviation weather (aviationweather.gov and api.weather.gov, no keys), defaults set on the BBS tab ("Aviation: KDCA,KHEF"):
