@@ -411,7 +411,7 @@ public class BbsEngine {
             case "FCST", "FORECAST" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, Aviation.forecast(la, lo))); return null; }
             case "DELAY", "DELAYS", "FAA" -> { final boolean all = arg.trim().equalsIgnoreCase("ALL"); final List<String> ids = arg.isBlank() || all ? Aviation.ids(store.catStations) : Aviation.ids(arg); bg.submit(() -> send(from, Aviation.delays(ids, all))); return null; }
             case "PLANES", "OVERHEAD", "ADSB", "AIRCRAFT" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; int r = 10; try { if (!arg.isBlank()) r = Math.max(2, Math.min(50, Integer.parseInt(arg.trim().replaceAll("\\D", "")))); } catch (NumberFormatException ignored) { } final int rad = r; bg.submit(() -> send(from, Aviation.planes(la, lo, rad))); return null; }
-            case "AV", "AVIATION", "AVWX" -> { return "Aviation: METAR [id..] (default " + store.avStations + ") · TAF [id] · CAT [ids] · DA [id] · WINDS [site] · PIREP [id] · DELAY [ids|ALL] FAA delays/stops · PLANES [km] overhead · FCST"; }
+            case "AV", "AVIATION", "AVWX" -> { return "Aviation: METAR (" + store.avStations + "), or METAR KBUF / just KBUF for any airport · TAF [id] · CAT [ids] · DA [id] · WINDS [site] · PIREP [id] · DELAY [ids|ALL] · PLANES [km] · FCST"; }
             case "METRO", "WMATA" -> {
                 final String a = arg.trim();
                 if (a.toUpperCase().startsWith("BUS")) { final String route = a.length() > 3 ? a.substring(3).trim() : ""; bg.submit(() -> send(from, BbsExtras.busIncidents(store.wmataKey, route))); return null; }
@@ -486,7 +486,19 @@ public class BbsEngine {
                 return String.format("%s %s: %.0f°C/%.0f°F RH %.0f%% wind %s kt %.0f hPa%s", o.station(), meshconsole.ui.FmtBridge.time(o.time()), o.tempC(), o.tempC() * 9 / 5 + 32, o.humidityPct(),
                         Double.isNaN(o.windKt()) ? "?" : String.valueOf((int) o.windKt()), o.pressureHpa(), o.wx().isEmpty() ? "" : " " + o.wx());
             }
-            default -> { return "Unknown '" + parts[0] + "'. Send ? for commands."; }
+            default -> {
+                // A bare airport code ("KBUF", "BUF", "EGLL") is a METAR request; anything that isn't one falls through to the usual reply.
+                if (arg.isBlank() && cmd.matches("[A-Z][A-Z0-9]{2,3}")) {
+                    final String id = Aviation.icao(cmd), word = parts[0];
+                    bg.submit(() -> {
+                        List<String> lines = Aviation.metar(List.of(id));
+                        if (lines.size() == 1 && (lines.get(0).startsWith("No METAR") || lines.get(0).startsWith("METAR unavailable"))) send(from, "Unknown '" + word + "'. Send ? for commands, or METAR plus an airport code.");
+                        else for (String line : lines) send(from, line);
+                    });
+                    return null;
+                }
+                return "Unknown '" + parts[0] + "'. Send ? for commands.";
+            }
         }
     }
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.13.2 — 2026-10-26
+
+- BBS: send just an airport code — `KBUF`, `BUF`, `EGLL` — and the board replies with its METAR (any ICAO station worldwide). Real commands always take precedence; a code with no METAR gets the usual "Unknown" reply. `AV` help updated.
+
+
 ## 1.13.1 — 2026-10-26
 
 - BBS **DELAY [ids | ALL]** — FAA airport status: ground stops, ground delay programs, arrival/departure delays and closures for the CAT airports (default DCA, HEF, IAD, BWI, JYO, ADW) or any you name; `DELAY ALL` for the national picture. Source: nasstatus.faa.gov, no key.
