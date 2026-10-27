@@ -62,6 +62,10 @@ class BbsPanel extends JPanel {
         av.setToolTipText("Default airports for METAR, TAF, DA and PIREP (first one is used when only one is needed)");
         cat.setToolTipText("Airports listed by CAT (flight categories)");
         r2b.add(new JLabel("Aviation:")); r2b.add(av); r2b.add(new JLabel("CAT list:")); r2b.add(cat);
+        JButton profile = new JButton("Board profile…");
+        profile.setToolTipText("Which command groups and trivia categories this board offers, and regional presets");
+        profile.addActionListener(e -> { boardProfile(); av.setText(store.avStations); cat.setText(store.catStations); reload(); });
+        r2b.add(profile);
         JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.avStations = av.getText().trim().toUpperCase(); store.catStations = cat.getText().trim().toUpperCase(); store.station = station.getText().trim().toUpperCase(); store.wmataKey = new String(((JPasswordField) wmata).getPassword()).trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
         JButton postEvent = new JButton("Post event…");
         postEvent.addActionListener(e -> {
@@ -176,6 +180,41 @@ class BbsPanel extends JPanel {
         store.cooldownSec = (Integer) cooldown.getValue(); store.maxPosts = (Integer) maxPosts.getValue();
         store.save();
         reload();
+    }
+
+    /** Per-board feature switches, trivia categories and region presets. */
+    private void boardProfile() {
+        JPanel groups = new JPanel(new GridLayout(0, 1)); groups.setBorder(BorderFactory.createTitledBorder("Commands this board offers"));
+        java.util.Map<String, JCheckBox> gBox = new java.util.LinkedHashMap<>();
+        for (String[] g : meshconsole.bbs.BbsEngine.GROUPS) { JCheckBox b = new JCheckBox(g[0].charAt(0) + g[0].substring(1).toLowerCase() + " — " + g[1], !store.offGroups.contains(g[0])); gBox.put(g[0], b); groups.add(b); }
+        JPanel cats = new JPanel(new GridLayout(0, 2)); cats.setBorder(BorderFactory.createTitledBorder("Built-in trivia categories (trivia.txt in the data folder is always used)"));
+        java.util.Map<String, JCheckBox> cBox = new java.util.LinkedHashMap<>();
+        String[] labels = {"Mesh & radio", "Ham radio", "Computing history", "Nerd", "DC & Arlington", "Buffalo & WNY", "Finger Lakes & upstate NY"};
+        for (int i = 0; i < meshconsole.bbs.BbsExtras.TRIVIA_CATS.length; i++) { String c = meshconsole.bbs.BbsExtras.TRIVIA_CATS[i]; JCheckBox b = new JCheckBox(labels[i], store.triviaCats.isEmpty() || store.triviaCats.contains(c)); cBox.put(c, b); cats.add(b); }
+        JComboBox<String> preset = new JComboBox<>(new String[]{"(keep current settings)", "DC / Arlington", "Finger Lakes / upstate NY", "Universal (no local features)"});
+        preset.addActionListener(e -> {
+            int i = preset.getSelectedIndex(); if (i == 0) return;
+            for (JCheckBox b : gBox.values()) b.setSelected(true);
+            for (JCheckBox b : cBox.values()) b.setSelected(true);
+            if (i == 2) { gBox.get("TRANSIT").setSelected(false); cBox.get("DC").setSelected(false); }
+            if (i == 3) { gBox.get("TRANSIT").setSelected(false); gBox.get("BUFFALO").setSelected(false); cBox.get("DC").setSelected(false); cBox.get("BUFFALO").setSelected(false); cBox.get("FINGERLAKES").setSelected(false); }
+            if (i == 1) { cBox.get("FINGERLAKES").setSelected(false); }
+        });
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT)); top.add(new JLabel("Region preset:")); top.add(preset);
+        top.add(new JLabel("<html><small>Finger Lakes also sets airports KITH/KSYR, CAT list and weather station KITH.<br>DC sets KDCA/KHEF and weather station KDCA.</small></html>"));
+        JPanel form = new JPanel(new BorderLayout(4, 4)); form.add(top, BorderLayout.NORTH); form.add(groups, BorderLayout.CENTER); form.add(cats, BorderLayout.SOUTH);
+        if (JOptionPane.showConfirmDialog(this, form, "Board profile – " + store.name, JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        store.offGroups.clear(); for (var en : gBox.entrySet()) if (!en.getValue().isSelected()) store.offGroups.add(en.getKey());
+        store.triviaCats.clear(); boolean allCats = true; for (var en : cBox.entrySet()) if (en.getValue().isSelected()) store.triviaCats.add(en.getKey()); else allCats = false;
+        if (allCats) store.triviaCats.clear();   // empty = every category, including any added in later versions
+        if (store.triviaCats.isEmpty() && !allCats) store.triviaCats.add("MESH");   // never leave a board with no questions
+        switch (preset.getSelectedIndex()) {
+            case 1 -> { store.region = "DC"; store.avStations = "KDCA,KHEF"; store.catStations = "KDCA,KHEF,KIAD,KBWI,KJYO,KADW"; store.windsSites = "EMI,RIC,ACY"; store.station = "KDCA"; }
+            case 2 -> { store.region = "FINGERLAKES"; store.avStations = "KITH,KSYR"; store.catStations = "KITH,KSYR,KROC,KELM,KBGM,KPEO"; store.windsSites = "SYR,BUF,ALB"; store.station = "KITH"; }
+            case 3 -> store.region = "UNIVERSAL";
+            default -> { }
+        }
+        store.save();
     }
 
     void reload() {

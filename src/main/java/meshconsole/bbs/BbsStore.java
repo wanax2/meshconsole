@@ -49,6 +49,8 @@ public class BbsStore {
     public boolean netOn = false;
     public String avStations = "KDCA,KHEF", catStations = "KDCA,KHEF,KIAD,KBWI,KJYO,KADW", windsSites = "EMI,RIC,ACY";
     public boolean nwsBroadcast = false; public final Set<String> nwsSeen = new LinkedHashSet<>();
+    /** Board profile: command groups switched off, trivia categories switched on (empty = all), region preset name. */
+    public final Set<String> offGroups = new LinkedHashSet<>(), triviaCats = new LinkedHashSet<>(); public String region = "";
     public static class Caller { public int num; public String name = ""; public long first, last; public int commands; public String lastCommand = ""; public int lastPostSeen; public String lastMotdDay = ""; public int repliesSent, repliesAcked; }
     public final Map<Integer, Caller> callers = new LinkedHashMap<>();
     public long callsToday; public String callsDay = "";
@@ -119,6 +121,9 @@ public class BbsStore {
             if (m.get("netTime") != null) netTime = Json.str(m.get("netTime")); if (m.get("netDay") != null) netDay = Json.str(m.get("netDay"));
             netOn = Boolean.TRUE.equals(m.get("netOn")); nwsBroadcast = Boolean.TRUE.equals(m.get("nwsBroadcast"));
             if (m.get("nwsSeen") instanceof List<?> nl) for (Object o : nl) nwsSeen.add(String.valueOf(o));
+            if (m.get("offGroups") instanceof List<?> og) for (Object o : og) offGroups.add(String.valueOf(o));
+            if (m.get("triviaCats") instanceof List<?> tc) for (Object o : tc) triviaCats.add(String.valueOf(o));
+            if (m.get("region") != null) region = Json.str(m.get("region"));
             advertOn = Boolean.TRUE.equals(m.get("advertOn")); advertIndex = (int) Json.num(m.get("advertIndex"), 0); if (m.get("advertTime") != null) advertTime = Json.str(m.get("advertTime")); if (m.get("advertText") != null) advertText = Json.str(m.get("advertText")); if (m.get("advertDay") != null) advertDay = Json.str(m.get("advertDay"));
             if (m.get("events") instanceof List<?> es) for (Object o : es) if (o instanceof Map<?, ?> p) { Event x = new Event(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.when = (long) Json.num(p.get("when"), 0); x.text = Json.str(p.get("text")); events.add(x); }
             if (m.get("trivia") instanceof Map<?, ?> tm) for (Map.Entry<?, ?> e : tm.entrySet()) try { trivia.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
@@ -142,6 +147,12 @@ public class BbsStore {
         } catch (IOException ignored) { }
     }
 
+    private static String list(String key, Collection<String> items) {
+        StringBuilder b = new StringBuilder("\"" + key + "\":[");
+        boolean first = true; for (String x : items) { if (!first) b.append(','); first = false; b.append('"').append(x.replace("\\", "\\\\").replace("\"", "\\\"")).append('"'); }
+        return b.append("],\n").toString();
+    }
+
     public synchronized void save() {
         if (loadFailed) return;   // never overwrite a file we couldn't read with defaults; the original is kept as bbs.json.broken-*
         StringBuilder sb = new StringBuilder("{\n");
@@ -156,6 +167,7 @@ public class BbsStore {
         sb.append("],").append(kv("netMailSeq", netMailSeq));
         sb.append("\"netSeen\":["); sf = true; for (String n : netSeen) { if (!sf) sb.append(','); sf = false; sb.append('"').append(n).append('"'); } sb.append("],\n");
         sb.append("\"nwsSeen\":["); boolean nf = true; for (String n : nwsSeen) { if (!nf) sb.append(','); nf = false; sb.append(kv("x", n), 4, kv("x", n).length() - 1); } sb.append("],\n");
+        sb.append(list("offGroups", offGroups)).append(list("triviaCats", triviaCats)).append(kv("region", region));
         sb.append("\"trivia\":{");
         boolean tf = true; for (Map.Entry<Integer, Integer> e : trivia.entrySet()) { if (!tf) sb.append(','); tf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); }
         sb.append("},\n\"events\":[\n");

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.14.0 — 2026-10-27
+
+- **Board profile** (BBS tab → Board profile…), saved per data folder so two boards on one program can differ:
+  - **Command groups** on/off: community, mesh tools, weather, aviation, ham, transit (WMATA), games, Buffalo. Switched-off commands answer "Unknown" and vanish from `?` and `?2`, which are now built from what the board offers.
+  - **Trivia categories** on/off: mesh & radio, ham, computing history, nerd, DC & Arlington, Buffalo & WNY, and a new **Finger Lakes & upstate NY** set (18 questions: Cayuga and Seneca lakes, Taughannock Falls, Seneca Falls 1848, Tubman and Seward in Auburn, Henry Wells, Cornell, Montezuma, Glenn Curtiss, Watkins Glen, Corning, Elmira, Syracuse, Rochester, Owasco). The board's own trivia.txt is always used.
+  - **Region presets**: DC / Arlington, Finger Lakes / upstate NY (no transit, no DC trivia; airports KITH/KSYR, CAT list KITH KSYR KROC KELM KBGM KPEO, weather KITH), and Universal (no local features).
+- Built-in trivia bank: 159 questions.
+
+
 ## 1.13.2 — 2026-10-26
 
 - BBS: send just an airport code — `KBUF`, `BUF`, `EGLL` — and the board replies with its METAR (any ICAO station worldwide). Real commands always take precedence; a code with no METAR gets the usual "Unknown" reply. `AV` help updated.

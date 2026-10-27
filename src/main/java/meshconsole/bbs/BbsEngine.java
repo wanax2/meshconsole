@@ -156,12 +156,42 @@ public class BbsEngine {
         catch (RuntimeException e) { reply = "error: " + e.getMessage(); }
         if (reply == null) { store.commandsServed++; store.save(); return; }   // answered asynchronously
         String motd = store.motd;
-        if (motd.isBlank()) { java.time.LocalDate d = java.time.LocalDate.now(); if (d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY && (d.getMonthValue() >= 9 || d.getMonthValue() <= 1)) motd = "It's Sunday. Go Bills."; }
+        if (motd.isBlank() && on("BUFFALO")) { java.time.LocalDate d = java.time.LocalDate.now(); if (d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY && (d.getMonthValue() >= 9 || d.getMonthValue() <= 1)) motd = "It's Sunday. Go Bills."; }
         if (!motd.isBlank() && !today.equals(cl.lastMotdDay) && text.trim().startsWith("?")) { cl.lastMotdDay = today; reply = "MOTD: " + motd + "\n" + reply; }
-        if (new Random().nextInt(12) == 0 && reply.length() < 178 && !reply.contains("Bills") && !reply.contains("Sabres")) reply = reply + (new Random().nextBoolean() ? " Go Bills." : " Go Sabres.");
+        if (on("BUFFALO") && new Random().nextInt(12) == 0 && reply.length() < 178 && !reply.contains("Bills") && !reply.contains("Sabres")) reply = reply + (new Random().nextBoolean() ? " Go Bills." : " Go Sabres.");
         store.commandsServed++;
         send(m.from, reply);
         store.save();
+    }
+
+    /** Command groups a board can switch off (BBS tab → Board profile). Commands not listed are always available. */
+    public static final String[][] GROUPS = {
+        {"COMMUNITY", "Bulletins, mail, guestbook, polls, events, digests", "B LIST R READ P POST D DEL DELETE M MAIL GB GUESTBOOK POLL V VOTE E EVENTS SUB SUBSCRIBE UNSUB"},
+        {"MESH", "Signal report, traceroute, mesh stats, records, node cards", "S SIG SIGNAL T TRACE STATS MESH TOP LEADER WHO NODES"},
+        {"WEATHER", "Weather, NWS forecast and alerts, sun and moon", "W WX WEATHER FCST FORECAST ALERTS ALERT NWS WARN SUN MOON SUNSET SUNRISE"},
+        {"AVIATION", "METAR (and bare airport codes), TAF, categories, density altitude, winds aloft, PIREPs, FAA delays, aircraft overhead", "METAR TAF CAT FLTCAT VFR DA DENSITY PIREP PIREPS WINDS FB ALOFT DELAY DELAYS FAA PLANES OVERHEAD ADSB AIRCRAFT AV AVIATION AVWX"},
+        {"HAM", "HF propagation, ISS position, callsign lookup", "SOLAR HF PROP ISS C CALL CALLSIGN"},
+        {"TRANSIT", "WMATA Metro: rail alerts, next trains, buses, elevators", "METRO WMATA NEXT TRAIN TRAINS BUS ELEV ELEVATOR ESC"},
+        {"GAMES", "Trivia, guess the number, text adventure", "TRIVIA Q A ANSWER GUESS G ADV LOOK N NORTH SOUTH U UP DOWN TAKE GAMES GAME PLAY"},
+        {"BUFFALO", "GO BILLS, GO SABRES, 716, Bills/Sabres scores and the occasional Go Bills", "BILLS GOBILLS GO SABRES GOSABRES BUFFALO 716 SCORE SCORES"},
+    };
+    private static final Map<String, String> GROUP_OF = new HashMap<>();
+    static { for (String[] g : GROUPS) for (String c : g[2].split(" ")) GROUP_OF.put(c, g[0]); }
+    private boolean on(String group) { return !store.offGroups.contains(group); }
+
+    /** The ? and ?2 menus, built from the groups this board offers. */
+    private String menu(boolean detail) {
+        List<String> parts = new ArrayList<>();
+        if (on("COMMUNITY")) parts.add(detail ? "B list (B 2) R n read P text post D n | M mail, M name text, M board!name text | GB guestbook E events POLL/V n SUB" : "B P M mail");
+        if (on("MESH")) parts.add(detail ? "S signal T trace STATS TOP WHO name" : "S T STATS TOP WHO");
+        if (on("WEATHER")) parts.add(detail ? "W weather FCST forecast ALERTS SUN" : "W FCST ALERTS SUN");
+        if (on("AVIATION")) parts.add(detail ? "METAR or any airport code (KBUF), TAF CAT DA WINDS PIREP DELAY PLANES (AV)" : "AV aviation (METAR or any airport code)");
+        if (on("HAM")) parts.add(detail ? "SOLAR HF bands ISS C callsign" : "SOLAR ISS C call");
+        if (on("TRANSIT")) parts.add(detail ? "METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station]" : "METRO NEXT station BUS stop ELEV");
+        if (on("GAMES")) parts.add(detail ? "TRIVIA (A answer) GUESS (G n) ADV" : "TRIVIA GUESS ADV");
+        if (on("BUFFALO") && detail) parts.add("GO BILLS GO SABRES 716 SCORE");
+        if (detail && !store.peers.isEmpty()) parts.add("NET");
+        return (detail ? "" : store.name + ": ") + String.join(" | ", parts) + (detail ? "" : " | ?2 more");
     }
 
     private void send(int to, String text) {
@@ -197,12 +227,13 @@ public class BbsEngine {
         if (text.regionMatches(true, 0, "DM ", 0, 3)) text = text.substring(3).trim();   // people type "DM TRIVIA" after reading the advert
         String[] parts = text.split("\\s+", 2);
         String cmd = parts[0].toUpperCase(Locale.ROOT);
+        { String g = GROUP_OF.get(cmd.equals("GO") && parts.length > 1 ? "GO" : cmd); if (g != null && !on(g)) return "Unknown '" + parts[0] + "'. Send ? for commands."; }
         String arg = parts.length > 1 ? parts[1].trim() : "";
         String who = state.nodeName(from);
         switch (cmd) {
-            case "GAMES", "GAME", "PLAY" -> { return "Games on " + store.name + ": TRIVIA (A answer) " + BbsExtras.trivia().size() + " questions, GUESS the number (G n), ADV text adventure (ADV, then N/S/E/W/LOOK), GO BILLS, GO SABRES, 716. Scores in TOP."; }
-            case "?", "H", "HELP", "MENU", "COMMANDS", "COMMAND", "START", "HI", "HELLO" -> { return store.name + ": B P M mail | S T N STATS TOP WHO | W FCST ALERTS SUN ISS SOLAR | AV aviation (METAR TAF CAT DA WINDS PIREP) | METRO NEXT station BUS stop ELEV SCORE | E POLL GB SUB | TRIVIA GUESS ADV | ?2 more"; }
-            case "?2", "HELP2" -> { return "B list(B 2) R n P text D n | M mail, M bob hi, M board!bob hi | S T N STATS TOP WHO n | W TAF | METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station] | C call E POLL/V n GB SUB | TRIVIA GUESS ADV | NET | GO BILLS, GO SABRES, 716"; }
+            case "GAMES", "GAME", "PLAY" -> { return "Games on " + store.name + ": TRIVIA (A answer) " + BbsExtras.trivia(store.triviaCats).size() + " questions, GUESS the number (G n), ADV text adventure (ADV, then N/S/E/W/LOOK)" + (on("BUFFALO") ? ", GO BILLS, GO SABRES, 716" : "") + ". Scores in TOP."; }
+            case "?", "H", "HELP", "MENU", "COMMANDS", "COMMAND", "START", "HI", "HELLO" -> { return menu(false); }
+            case "?2", "HELP2" -> { return menu(true); }
             case "PING" -> { return "PONG from " + store.name; }
             case "I", "INFO" -> {
                 long up = (System.currentTimeMillis() - store.started) / 60000;
@@ -433,7 +464,7 @@ public class BbsEngine {
                 return sb.toString().trim();
             }
             case "TRIVIA", "Q" -> {
-                List<BbsExtras.Trivia> bank = BbsExtras.trivia();
+                List<BbsExtras.Trivia> bank = BbsExtras.trivia(store.triviaCats);
                 int qi = new Random().nextInt(bank.size());
                 store.triviaQ.put(from, qi); store.triviaAsked.put(from, System.currentTimeMillis());
                 return "Q: " + bank.get(qi).q() + "  (answer with A your-answer)";
@@ -443,7 +474,7 @@ public class BbsEngine {
                 if (qi == null) return "No question pending – send TRIVIA first.";
                 Long asked = store.triviaAsked.get(from);
                 if (asked != null && System.currentTimeMillis() - asked > 86400_000L) { store.triviaQ.remove(from); return "That question expired (24 h). TRIVIA for a fresh one."; }
-                List<BbsExtras.Trivia> bank = BbsExtras.trivia();
+                List<BbsExtras.Trivia> bank = BbsExtras.trivia(store.triviaCats);
                 if (qi >= bank.size()) { store.triviaQ.remove(from); return "The question bank changed – TRIVIA for a fresh one."; }
                 BbsExtras.Trivia t = bank.get(qi);
                 String ans = arg.trim().toLowerCase().replace(".", "");
@@ -488,7 +519,7 @@ public class BbsEngine {
             }
             default -> {
                 // A bare airport code ("KBUF", "BUF", "EGLL") is a METAR request; anything that isn't one falls through to the usual reply.
-                if (arg.isBlank() && cmd.matches("[A-Z][A-Z0-9]{2,3}")) {
+                if (on("AVIATION") && arg.isBlank() && cmd.matches("[A-Z][A-Z0-9]{2,3}")) {
                     final String id = Aviation.icao(cmd), word = parts[0];
                     bg.submit(() -> {
                         List<String> lines = Aviation.metar(List.of(id));

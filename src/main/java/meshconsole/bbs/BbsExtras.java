@@ -279,6 +279,27 @@ public final class BbsExtras {
 
     public record Trivia(String q, String a, String[] alts) { }
 
+    /** Trivia categories a board can switch on or off (BBS tab → Board profile). */
+    public static final String[] TRIVIA_CATS = {"MESH", "HAM", "COMPUTING", "NERD", "DC", "BUFFALO", "FINGERLAKES"};
+    /** Category of the built-in question at index i (the bank grew in blocks; see the comments in TRIVIA). */
+    static String category(int i) {
+        if (i == 5 || i == 11 || i == 14 || (i >= 62 && i <= 76)) return "DC";
+        if (i >= 20 && i <= 30) return "BUFFALO";
+        if ((i >= 50 && i <= 61) || i == 83) return "HAM";
+        if ((i >= 78 && i <= 82) || (i >= 84 && i <= 113)) return "COMPUTING";
+        if (i == 77 || (i >= 114 && i <= 139)) return "NERD";
+        if (i >= 141) return "FINGERLAKES";
+        return "MESH";
+    }
+
+    /** The built-in questions in the enabled categories plus <data>/trivia.txt. */
+    public static synchronized List<Trivia> trivia(Set<String> cats) {
+        List<Trivia> all = trivia(); List<Trivia> out = new ArrayList<>();
+        for (int i = 0; i < TRIVIA.length; i++) if (cats == null || cats.isEmpty() || cats.contains(category(i))) out.add(TRIVIA[i]);
+        for (int i = TRIVIA.length; i < all.size(); i++) out.add(all.get(i));   // the board's own trivia.txt is always on
+        return out.isEmpty() ? all : out;
+    }
+
     /** Built-in bank plus the lines of <data>/trivia.txt (question|answer|alt1;alt2), re-read when the file changes. */
     private static List<Trivia> bank; private static long bankStamp = -1;
     public static synchronized List<Trivia> trivia() {
@@ -447,6 +468,25 @@ public final class BbsExtras {
         new Trivia("What do you call a 1 followed by 100 zeros?", "googol", new String[]{"a googol"}),
         new Trivia("Which Linux command shows who is logged in?", "who", new String[]{"w", "users"}),
         new Trivia("The first message on the Meshtastic mesh you're on was probably?", "test", new String[]{"testing", "hello", "ping"}),
+        // --- Finger Lakes and upstate New York (category FINGERLAKES; indices from 141)
+        new Trivia("Longest of the Finger Lakes, about 38 miles?", "cayuga", new String[]{"cayuga lake"}),
+        new Trivia("Deepest of the Finger Lakes, about 618 feet?", "seneca", new String[]{"seneca lake"}),
+        new Trivia("How many Finger Lakes are there?", "11", new String[]{"eleven"}),
+        new Trivia("Taughannock Falls near Ithaca drops about how many feet?", "215", new String[]{"215 feet", "215ft"}),
+        new Trivia("The first women's rights convention was held in Seneca Falls in what year?", "1848", new String[]{}),
+        new Trivia("Which Underground Railroad conductor made her home in Auburn, NY?", "harriet tubman", new String[]{"tubman"}),
+        new Trivia("Lincoln's Secretary of State whose house is in Auburn?", "seward", new String[]{"william seward", "william h. seward", "william h seward"}),
+        new Trivia("Aurora's Wells College was founded by which co-founder of Wells Fargo and American Express?", "henry wells", new String[]{"wells"}),
+        new Trivia("Ithaca's famous pun slogan: Ithaca is ___", "gorges", new String[]{"gorgeous"}),
+        new Trivia("Cornell University was founded in what year?", "1865", new String[]{}),
+        new Trivia("Wildlife refuge at the north end of Cayuga Lake, a stop for migrating geese?", "montezuma", new String[]{"montezuma national wildlife refuge"}),
+        new Trivia("Hammondsport-born aviation pioneer, rival of the Wright brothers?", "glenn curtiss", new String[]{"curtiss"}),
+        new Trivia("Which Finger Lakes town hosted the US Grand Prix from 1961 to 1980?", "watkins glen", new String[]{}),
+        new Trivia("Corning, NY is famous for making what?", "glass", new String[]{"glassware", "corning ware", "gorilla glass"}),
+        new Trivia("Mark Twain wrote much of Huckleberry Finn in which Southern Tier city?", "elmira", new String[]{}),
+        new Trivia("Syracuse's old nickname, from its 19th-century industry?", "salt city", new String[]{"the salt city", "salt"}),
+        new Trivia("Rochester was home to which camera and film company?", "kodak", new String[]{"eastman kodak"}),
+        new Trivia("Auburn sits at the north end of which Finger Lake?", "owasco", new String[]{"owasco lake"}),
     };
 
     /** Sly Buffalo Bills material. The sysop is from Amherst, NY; the mesh is in Virginia; the board doesn't care. */
