@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.2 — 2026-10-28
+
+- Map: **Go to** box. Type an address or place ("Main St, Aurora NY") or coordinates ("42.75, -76.70"), press Enter, and the map jumps there at street level with a red marker; then right-click the roof → Set as my fixed position. Addresses are looked up with OpenStreetMap's Nominatim (free, no key).
+
+
 ## 1.14.1 — 2026-10-27
 
 - BBS adverts: **Shuffle** option. Each advert goes out once per cycle in random order (dealt like cards), reshuffled at the end of each cycle and whenever the advert list changes; never the same advert twice in a row; the position survives restarts and updates. Off = the existing top-to-bottom rotation.

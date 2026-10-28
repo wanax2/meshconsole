@@ -47,6 +47,12 @@ class MapPanel extends JPanel {
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         JButton me = new JButton("Center on me");
         JButton fit = new JButton("Fit all nodes");
+        JTextField find = new JTextField(22);
+        find.setToolTipText("An address or place (\"123 Main St, Aurora NY\"), or coordinates (\"42.75, -76.70\"); Enter jumps the map there");
+        JButton findGo = new JButton("Find");
+        Runnable doFind = () -> findPlace(find.getText().trim());
+        find.addActionListener(e -> doFind.run()); findGo.addActionListener(e -> doFind.run());
+        top.add(new JLabel("Go to:")); top.add(find); top.add(findGo);
         top.add(me); top.add(fit); top.add(showLinks); top.add(showNeighbors); top.add(showTracks); top.add(showWaypoints); top.add(showCoverage); top.add(showGrid); top.add(showNames);
         JButton clearCov = new JButton("Clear coverage");
         clearCov.addActionListener(e -> { state.clearCoverage(); view.repaint(); });
@@ -103,6 +109,27 @@ class MapPanel extends JPanel {
         NodeEntry n = state.node(nodeNum);
         if (n != null && n.hasPosition) view.setCenter(n.lat, n.lon, Math.max(view.zoom, 13));
         else status.setText("That node has no position");
+    }
+
+    /** Jumps the map to coordinates or to an address found through OpenStreetMap's Nominatim, and marks the spot. */
+    void findPlace(String q) {
+        if (q.isEmpty()) return;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^\\s*(-?\\d+(?:\\.\\d+)?)\\s*[,; ]\\s*(-?\\d+(?:\\.\\d+)?)\\s*$").matcher(q);
+        if (m.matches()) { double la = Double.parseDouble(m.group(1)), lo = Double.parseDouble(m.group(2)); view.mark(la, lo, String.format("%.5f, %.5f", la, lo)); return; }
+        status.setText("Looking up " + q + "…");
+        new Thread(() -> {
+            try {
+                String url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + java.net.URLEncoder.encode(q, java.nio.charset.StandardCharsets.UTF_8);
+                java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(15)).build();
+                java.net.http.HttpResponse<String> r = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(url)).header("User-Agent", "MeshConsole/" + meshconsole.Version.VERSION + " (desktop Meshtastic client)").timeout(java.time.Duration.ofSeconds(20)).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                Object root = meshconsole.analysis.Json.parse(r.body());
+                if (!(root instanceof List<?> l) || l.isEmpty()) { SwingUtilities.invokeLater(() -> status.setText("Nothing found for \"" + q + "\" – try adding the town and state, or type coordinates")); return; }
+                java.util.Map<?, ?> hit = (java.util.Map<?, ?>) l.get(0);
+                double la = Double.parseDouble(String.valueOf(hit.get("lat"))), lo = Double.parseDouble(String.valueOf(hit.get("lon")));
+                String name = String.valueOf(hit.get("display_name"));
+                SwingUtilities.invokeLater(() -> { view.mark(la, lo, name.length() > 70 ? name.substring(0, 69) + "…" : name); status.setText("Found: " + name + " – right-click the exact roof to set the fixed position"); });
+            } catch (Exception ex) { SwingUtilities.invokeLater(() -> status.setText("Address lookup failed: " + ex.getMessage())); }
+        }, "find-place").start();
     }
 
     void fitAll() {
@@ -193,6 +220,8 @@ class MapPanel extends JPanel {
     // ---- view ---------------------------------------------------------------
 
     private class MapView extends JComponent {
+        private double markLat = Double.NaN, markLon; private String markLabel = "";
+        void mark(double lat, double lon, String label) { markLat = lat; markLon = lon; markLabel = label; setCenter(lat, lon, Math.max(zoom, 17)); repaint(); }
         double centerLat = 20, centerLon = 0;
         int zoom = 2;
         boolean centeredOnce;
@@ -340,6 +369,12 @@ class MapPanel extends JPanel {
             List<NodeEntry> nodes = state.nodes();
             NodeEntry me = state.myNode();
             Point mePt = (me != null && me.hasPosition) ? toScreen(me.lat, me.lon) : null;
+            if (!Double.isNaN(markLat)) {   // the spot found with "Go to"
+                Point mp = toScreen(markLat, markLon);
+                g.setColor(new Color(220, 40, 40)); g.setStroke(new BasicStroke(2.5f));
+                g.drawLine(mp.x - 9, mp.y, mp.x + 9, mp.y); g.drawLine(mp.x, mp.y - 9, mp.x, mp.y + 9); g.drawOval(mp.x - 6, mp.y - 6, 12, 12);
+                g.setColor(new Color(160, 20, 20)); g.drawString(markLabel, mp.x + 10, mp.y - 8);
+            }
             long now = System.currentTimeMillis();
 
             // antenna beam overlay: a wedge from my position along the configured bearing, 15 km long
