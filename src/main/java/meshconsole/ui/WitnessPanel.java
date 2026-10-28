@@ -69,7 +69,7 @@ class WitnessPanel extends JPanel {
     }
 
     private static JTable table(AbstractTableModel m) { JTable t = new JTable(m); t.setRowHeight(20); return t; }
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 
     /** Radios from the library count as "mine" too. */
     void addMyNodes(Collection<Integer> nums) { for (int n : nums) witness.addMyNode(n); }

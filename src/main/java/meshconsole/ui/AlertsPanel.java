@@ -131,5 +131,5 @@ class AlertsPanel extends JPanel {
         if (beep.isSelected()) Toolkit.getDefaultToolkit().beep();
     }
 
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 }

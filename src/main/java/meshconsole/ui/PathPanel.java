@@ -66,7 +66,7 @@ class PathPanel extends JPanel {
         }, "los").start();
     }
 
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 
     static class ProfileChart extends JComponent {
         Elevation.Profile p; Elevation.Los l; double h1, h2; String na = "", nb = "";

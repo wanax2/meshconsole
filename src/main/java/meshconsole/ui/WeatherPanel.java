@@ -200,7 +200,7 @@ class WeatherPanel extends JPanel {
         scatter.set(pts, state.nodeName(node) + " – RSSI vs " + scatterVar.getSelectedItem());
     }
 
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 
     /** Simple scatter: x = weather variable, y = hourly RSSI; rain hours in blue. */
     static class Scatter extends JComponent {

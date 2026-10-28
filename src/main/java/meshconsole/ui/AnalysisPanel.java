@@ -248,7 +248,7 @@ class AnalysisPanel extends JPanel {
     void setWeatherPanel(WeatherPanel w) { weatherPanel = w; }
 
     private static JTable table(AbstractTableModel m) { JTable t = new JTable(m); t.setRowHeight(20); t.setAutoCreateRowSorter(true); return t; }
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 
     private long lastRefresh;
     void refreshAll() {

@@ -36,5 +36,5 @@ class SchedulePanel extends JPanel {
         box.add(r1); box.add(r2); box.add(r3); box.add(r4); box.add(r5); box.add(r6);
         add(box, BorderLayout.NORTH);
     }
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 }

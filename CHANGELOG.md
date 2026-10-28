@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.3 — 2026-10-28
+
+- Fix: rows of controls (BBS, Alerts, Analysis, Weather, Schedule, radio tab and others) were clipped when the window was narrower than the row — the overflow wrapped onto a second line that had no height, so buttons such as "Board profile…" were cut off. Rows now grow to fit when they wrap.
+
+
 ## 1.14.2 — 2026-10-28
 
 - Map: **Go to** box. Type an address or place ("Main St, Aurora NY") or coordinates ("42.75, -76.70"), press Enter, and the map jumps there at street level with a red marker; then right-click the roof → Set as my fixed position. Addresses are looked up with OpenStreetMap's Nominatim (free, no key).

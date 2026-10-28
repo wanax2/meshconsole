@@ -236,5 +236,5 @@ class BbsPanel extends JPanel {
         stats.setText((store.enabled ? "Running" : "Stopped") + "  ·  " + store.posts.size() + " posts, " + store.mail.size() + " mail, " + store.commandsServed + " commands served, " + store.repliesSent + " replies, " + store.banned.size() + " banned");
     }
 
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 }

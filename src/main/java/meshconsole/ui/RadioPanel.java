@@ -417,7 +417,7 @@ public class RadioPanel extends JPanel {
         return p;
     }
 
-    private static JPanel row() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
+    private static JPanel row() { JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3)); p.setAlignmentX(LEFT_ALIGNMENT); return p; }
 
     private static JComponent note(String s) { JLabel l = new JLabel("<html><i>" + s + "</i></html>"); JPanel p = row(); p.add(l); return p; }
 }
