@@ -88,9 +88,11 @@ class BbsPanel extends JPanel {
         countAdverts.run();
         r2c.add(advOn); r2c.add(advTime); r2c.add(new JLabel("text (--- on its own line separates rotating messages):")); r2c.add(new JScrollPane(advText));
         JPanel r2c2 = row();
-        JButton advSave = new JButton("Save advert"); advSave.addActionListener(e -> { store.advertOn = advOn.isSelected(); store.advertTime = advTime.getText().trim(); store.advertText = advText.getText().trim(); store.save(); });
-        JButton advNow = new JButton("Send next advert now"); advNow.addActionListener(e -> { store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
-        r2c2.add(advSave); r2c2.add(advNow); r2c2.add(advCount);
+        JCheckBox advShuffle = new JCheckBox("Shuffle", store.advertShuffle);
+        advShuffle.setToolTipText("Every advert once per cycle, in random order; reshuffled each cycle and whenever the adverts change");
+        JButton advSave = new JButton("Save advert"); advSave.addActionListener(e -> { store.advertShuffle = advShuffle.isSelected(); store.advertOn = advOn.isSelected(); store.advertTime = advTime.getText().trim(); store.advertText = advText.getText().trim(); store.save(); });
+        JButton advNow = new JButton("Send next advert now"); advNow.addActionListener(e -> { store.advertShuffle = advShuffle.isSelected(); store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
+        r2c2.add(advShuffle); r2c2.add(advSave); r2c2.add(advNow); r2c2.add(advCount);
         // ---- 2.1: MOTD, poll, sysop password, digest time
         JPanel r2d = row();
         JTextField motd = new JTextField(store.motd, 30), pw = new JPasswordField(store.sysopPassword, 10), digest = new JTextField(store.digestTime, 5);

@@ -28,7 +28,23 @@ public class BbsStore {
         if (l.isEmpty()) l.add(defaultAdvert());
         return l;
     }
-    public String nextAdvert() { java.util.List<String> l = advertVariants(); String a = l.get(Math.floorMod(advertIndex, l.size())); advertIndex++; return a; }
+    /** Shuffle: every advert once per cycle in random order (a "deck"), reshuffled when it runs out or the adverts change. */
+    public boolean advertShuffle; public final java.util.List<Integer> advertBag = new java.util.ArrayList<>(); public int advertBagHash, advertLast = -1;
+
+    public String nextAdvert() {
+        java.util.List<String> l = advertVariants();
+        if (!advertShuffle) { String a = l.get(Math.floorMod(advertIndex, l.size())); advertIndex++; return a; }
+        int hash = l.hashCode();
+        advertBag.removeIf(i -> i >= l.size());
+        if (advertBag.isEmpty() || hash != advertBagHash) {
+            advertBag.clear(); for (int i = 0; i < l.size(); i++) advertBag.add(i);
+            java.util.Collections.shuffle(advertBag);
+            if (advertBag.size() > 1 && advertBag.get(0) == advertLast) java.util.Collections.swap(advertBag, 0, 1);   // never the same one twice in a row across a reshuffle
+            advertBagHash = hash;
+        }
+        advertLast = advertBag.remove(0);
+        return l.get(advertLast);
+    }
     // ---- 2.1 additions
     public final Map<String, Integer> callsPerDay = new TreeMap<>();      // yyyy-MM-dd → calls
     public final Map<String, Integer> cmdCounts = new TreeMap<>();        // command → count
@@ -124,7 +140,8 @@ public class BbsStore {
             if (m.get("offGroups") instanceof List<?> og) for (Object o : og) offGroups.add(String.valueOf(o));
             if (m.get("triviaCats") instanceof List<?> tc) for (Object o : tc) triviaCats.add(String.valueOf(o));
             if (m.get("region") != null) region = Json.str(m.get("region"));
-            advertOn = Boolean.TRUE.equals(m.get("advertOn")); advertIndex = (int) Json.num(m.get("advertIndex"), 0); if (m.get("advertTime") != null) advertTime = Json.str(m.get("advertTime")); if (m.get("advertText") != null) advertText = Json.str(m.get("advertText")); if (m.get("advertDay") != null) advertDay = Json.str(m.get("advertDay"));
+            advertOn = Boolean.TRUE.equals(m.get("advertOn")); advertIndex = (int) Json.num(m.get("advertIndex"), 0); advertShuffle = Boolean.TRUE.equals(m.get("advertShuffle")); advertBagHash = (int) Json.num(m.get("advertBagHash"), 0); advertLast = (int) Json.num(m.get("advertLast"), -1);
+            if (m.get("advertBag") instanceof List<?> ab) for (Object o : ab) advertBag.add((int) Json.num(o, 0)); if (m.get("advertTime") != null) advertTime = Json.str(m.get("advertTime")); if (m.get("advertText") != null) advertText = Json.str(m.get("advertText")); if (m.get("advertDay") != null) advertDay = Json.str(m.get("advertDay"));
             if (m.get("events") instanceof List<?> es) for (Object o : es) if (o instanceof Map<?, ?> p) { Event x = new Event(); x.id = (int) Json.num(p.get("id"), 0); x.time = (long) Json.num(p.get("time"), 0); x.when = (long) Json.num(p.get("when"), 0); x.text = Json.str(p.get("text")); events.add(x); }
             if (m.get("trivia") instanceof Map<?, ?> tm) for (Map.Entry<?, ?> e : tm.entrySet()) try { trivia.put((int) Long.parseLong(String.valueOf(e.getKey())), (int) Json.num(e.getValue(), 0)); } catch (NumberFormatException ignored) { }
             if (m.get("callers") instanceof List<?> cs) for (Object o : cs) if (o instanceof Map<?, ?> p) {
@@ -157,7 +174,8 @@ public class BbsStore {
         if (loadFailed) return;   // never overwrite a file we couldn't read with defaults; the original is kept as bbs.json.broken-*
         StringBuilder sb = new StringBuilder("{\n");
         sb.append(kv("name", name)).append(kv("welcome", welcome)).append(kv("enabled", enabled)).append(kv("channelTrigger", channelTrigger)).append(kv("triggerWord", triggerWord))
-          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("repliesAcked", repliesAcked)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("avStations", avStations)).append(kv("catStations", catStations)).append(kv("windsSites", windsSites)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("nwsBroadcast", nwsBroadcast)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay)).append(kv("advertIndex", advertIndex));
+          .append(kv("maxPosts", maxPosts)).append(kv("cooldownSec", cooldownSec)).append(kv("commandsServed", commandsServed)).append(kv("repliesSent", repliesSent)).append(kv("nextId", nextId)).append(kv("repliesAcked", repliesAcked)).append(kv("callsToday", callsToday)).append(kv("callsDay", callsDay)).append(kv("wmataKey", wmataKey)).append(kv("discordWebhook", discordWebhook)).append(kv("station", station)).append(kv("avStations", avStations)).append(kv("catStations", catStations)).append(kv("windsSites", windsSites)).append(kv("digestTime", digestTime)).append(kv("digestDay", digestDay)).append(kv("pollQuestion", pollQuestion)).append(kv("motd", motd)).append(kv("sysopPassword", sysopPassword)).append(kv("discordBotToken", discordBotToken)).append(kv("discordChannelId", discordChannelId)).append(kv("discordLastId", discordLastId)).append(kv("netTime", netTime)).append(kv("netDay", netDay)).append(kv("netOn", netOn)).append(kv("nwsBroadcast", nwsBroadcast)).append(kv("advertOn", advertOn)).append(kv("advertTime", advertTime)).append(kv("advertText", advertText)).append(kv("advertDay", advertDay)).append(kv("advertIndex", advertIndex)).append(kv("advertShuffle", advertShuffle)).append(kv("advertBagHash", advertBagHash)).append(kv("advertLast", advertLast));
+        { StringBuilder b = new StringBuilder("\"advertBag\":["); for (int i = 0; i < advertBag.size(); i++) { if (i > 0) b.append(','); b.append(advertBag.get(i)); } sb.append(b).append("],\n"); }
         sb.append("\"callsPerDay\":").append(mapJson(callsPerDay)).append(",\"cmdCounts\":").append(mapJson(cmdCounts)).append(",\"hourCounts\":").append(Arrays.toString(hourCounts)).append(",\n");
         sb.append("\"subs\":{"); boolean sf = true; for (Map.Entry<Integer, Set<String>> e : subs.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":["); boolean ff = true; for (String v : e.getValue()) { if (!ff) sb.append(','); ff = false; sb.append('"').append(v).append('"'); } sb.append(']'); } sb.append("},\n");
         sb.append("\"pollOptions\":["); sf = true; for (String o : pollOptions) { if (!sf) sb.append(','); sf = false; sb.append(kv("x", o), 4, kv("x", o).length() - 1); } sb.append("],\"pollVotes\":{"); sf = true; for (Map.Entry<Integer, Integer> e : pollVotes.entrySet()) { if (!sf) sb.append(','); sf = false; sb.append('"').append(Integer.toUnsignedLong(e.getKey())).append("\":").append(e.getValue()); } sb.append("},\n");

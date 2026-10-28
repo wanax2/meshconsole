@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.1 — 2026-10-27
+
+- BBS adverts: **Shuffle** option. Each advert goes out once per cycle in random order (dealt like cards), reshuffled at the end of each cycle and whenever the advert list changes; never the same advert twice in a row; the position survives restarts and updates. Off = the existing top-to-bottom rotation.
+
+
 ## 1.14.0 — 2026-10-27
 
 - **Board profile** (BBS tab → Board profile…), saved per data folder so two boards on one program can differ:
