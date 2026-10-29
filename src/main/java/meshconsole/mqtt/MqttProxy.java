@@ -66,14 +66,37 @@ public class MqttProxy implements AutoCloseable {
                 state.removeListener(radioListener);
             }
         });
-        // The firmware subscribes per downlink channel (root/2/e/<name>/+) plus PKI; a wildcard
-        // covers all of them and the radio drops anything it can't decrypt.
-        if (cfg.getJsonEnabled()) mqtt.subscribe(root + "/2/e/#", root + "/2/json/#");
-        else mqtt.subscribe(root + "/2/e/#");
+        // Subscribe only to the channels that have downlink enabled (root/2/e/<channel>/+), as the firmware itself
+        // would. A wildcard over root/2/e/# pulls the whole region's traffic – thousands of packets a minute on the
+        // public server – down the serial link into the radio, which can't keep up and fills its log with errors.
+        // With no downlink channel the proxy is uplink-only and subscribes to nothing.
+        java.util.List<String> topics = new java.util.ArrayList<>();
+        for (org.meshtastic.proto.ChannelProtos.Channel ch : state.channels()) {
+            if (ch.getRole() == org.meshtastic.proto.ChannelProtos.Channel.Role.DISABLED || !ch.getSettings().getDownlinkEnabled()) continue;
+            String name = ch.getSettings().getName();
+            if (name.isEmpty()) name = presetChannelName();
+            topics.add(root + "/2/e/" + name + "/+");
+            if (cfg.getJsonEnabled()) topics.add(root + "/2/json/" + name + "/+");
+        }
+        if (!topics.isEmpty()) mqtt.subscribe(topics.toArray(new String[0]));
         state.addListener(radioListener);
         published = received = 0;
-        status.accept("Connected to " + host + ":" + port + "  ·  subscribed " + root + "/2/e/#");
+        status.accept("Connected to " + host + ":" + port + "  ·  " + (topics.isEmpty() ? "uplink only (no channel has downlink on)" : "downlink " + String.join(", ", topics)));
         state.emitLog("[mqtt] proxy running as " + clientId);
+    }
+
+    /** The default channel name the firmware uses for an unnamed primary channel: the modem preset's display name. */
+    private String presetChannelName() {
+        try {
+            org.meshtastic.proto.ConfigProtos.Config lc = state.config(org.meshtastic.proto.ConfigProtos.Config.PayloadVariantCase.LORA);
+            if (lc == null) return "LongFast";
+            return switch (lc.getLora().getModemPreset()) {
+                case LONG_FAST -> "LongFast"; case LONG_SLOW -> "LongSlow"; case LONG_MODERATE -> "LongMod";
+                case MEDIUM_FAST -> "MediumFast"; case MEDIUM_SLOW -> "MediumSlow";
+                case SHORT_FAST -> "ShortFast"; case SHORT_SLOW -> "ShortSlow"; case SHORT_TURBO -> "ShortTurbo";
+                default -> "LongFast";
+            };
+        } catch (Exception e) { return "LongFast"; }
     }
 
     private void fromRadio(MqttClientProxyMessage m) {

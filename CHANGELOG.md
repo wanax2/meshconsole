@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.7 — 2026-10-29
+
+- Fix: the MQTT client proxy subscribed to the whole region (`msh/US/2/e/#`) and pushed every packet on the public server down the USB link into the radio, which couldn't keep up ("Invalid MQTT service envelope" / "Can't decode protobuf" errors, many per second). It now subscribes only to channels with **downlink** enabled, as the firmware itself does; with no downlink channel the proxy is uplink-only (map reports and your own packets go up, nothing comes down).
+
+
 ## 1.14.6 — 2026-10-29
 
 - Settings → Channels: the **Uplink** and **Downlink** tick boxes now come right after the name, before the long PSK column, and the role/name columns are capped — on a narrow screen (a Pi over screen sharing) the uplink boxes were pushed out of view.
