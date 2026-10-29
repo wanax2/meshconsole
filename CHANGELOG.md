@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.14.4 — 2026-10-29
+## 1.14.6 — 2026-10-29
 
 - Settings → Channels: the **Uplink** and **Downlink** tick boxes now come right after the name, before the long PSK column, and the role/name columns are capped — on a narrow screen (a Pi over screen sharing) the uplink boxes were pushed out of view.
 
