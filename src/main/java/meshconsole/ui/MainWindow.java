@@ -227,8 +227,12 @@ public class MainWindow extends JFrame {
 
         meshconsole.tools.AppUpdater.start(state::emitLog, () -> { client.disconnect("update"); client.saveDbQuietly(); }, meshconsole.Main.ARGS);
         refreshPorts();
-        setSize(1150, 760);
+        // fit the usable screen (a headless Pi under screen sharing may be only 1280×720): a window taller than the
+        // screen puts its title bar out of reach, so it can't be moved, and its dialogs can end up off-screen
+        Rectangle scr = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        setSize(Math.min(1150, scr.width), Math.min(760, scr.height));
         setLocationRelativeTo(null);
+        if (getY() < scr.y) setLocation(getX(), scr.y);
         // Auto-connect at startup to the radio used last time, when auto-reconnect is on and it is present.
         String last = PREFS.get("lastRadio", "");
         if (autoReconnect.isSelected() && !last.isEmpty()) {
@@ -470,9 +474,24 @@ public class MainWindow extends JFrame {
         if (r == 2 || r < 0) return;
         meshconsole.tools.AppUpdater.configure(on.isSelected(), src.getText(), at.getText());
         if (r == 1) new Thread(() -> {
-            try { String res = meshconsole.tools.AppUpdater.checkAndApply(state::emitLog, () -> { client.disconnect("update"); client.saveDbQuietly(); }, meshconsole.Main.ARGS, true); SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, res)); }
-            catch (Exception ex) { SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, "Update check failed: " + ex.getMessage())); }
+            try { String res = meshconsole.tools.AppUpdater.checkAndApply(state::emitLog, () -> { client.disconnect("update"); client.saveDbQuietly(); }, meshconsole.Main.ARGS, true); state.emitLog("[update] " + res); SwingUtilities.invokeLater(() -> notice("Mesh Console updates", res)); }
+            catch (Exception ex) { state.emitLog("[update] check failed: " + ex.getMessage()); SwingUtilities.invokeLater(() -> notice("Mesh Console updates", "Update check failed: " + ex.getMessage())); }
         }, "update-now").start();
+    }
+
+    /**
+     * A result message that can never freeze the window: not modal, always on top and centred on the screen. A modal
+     * message box that the window manager places behind the main window or off-screen (seen on the Pi's Wayland
+     * desktop when the main window is larger than the screen) blocks every click while being invisible.
+     */
+    void notice(String title, String text) {
+        JOptionPane pane = new JOptionPane(text, JOptionPane.INFORMATION_MESSAGE);
+        JDialog d = pane.createDialog(null, title);
+        d.setModal(false);
+        d.setAlwaysOnTop(true);
+        d.setLocationRelativeTo(null);
+        pane.addPropertyChangeListener(JOptionPane.VALUE_PROPERTY, e -> d.dispose());
+        d.setVisible(true);
     }
 
     /** Shared export folder (all instances) and this instance's label for the file name. */

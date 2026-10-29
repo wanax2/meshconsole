@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.1 — 2026-10-29
+
+- Fix: "Save and check now" could leave the window frozen. Its result ("Up to date", "Updating…", an error) was a modal message box, and on the Pi's desktop it could open behind the main window or off-screen, blocking every click while invisible. The result now goes to the log and to a non-modal box that stays on top, centred on the screen.
+- The main window now fits the usable screen when it opens (a headless Pi under screen sharing may run at 1280×720), so its title bar is always reachable.
+
+
 ## 1.15.0 — 2026-10-29
 
 - Map: **Nearby on MQTT** layer. Mesh Console listens to the public server's map reports (root/2/map/) on this computer's internet connection – nothing goes to or through the radio – and draws the nodes within a radius you choose as grey squares (filled = your radio has heard it), with the reported precision area at street zoom. Click one for its name, preset, role, distance and bearing from you, last report, and whether your radio has heard it. **Nearby list…** shows them in a table, nearest first; double-click to centre the map. On/off and radius are remembered per data folder; reports are kept for 7 days in mqtt_map_reports.json so the layer fills straight away after a restart. Uses the radio's MQTT server settings when loaded, else the public defaults.
