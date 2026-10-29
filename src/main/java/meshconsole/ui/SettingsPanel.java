@@ -251,9 +251,21 @@ class SettingsPanel extends JPanel {
         mq3.add(new JLabel("Client proxy (this PC relays the radio's MQTT traffic over its internet):"));
         mq3.add(proxyBtn);
         mq3.add(proxyStatus);
+        // The proxy remembers whether it was on (per data folder) and starts itself once the radio's config has loaded,
+        // so an unattended station keeps uplinking after reboots and updates.
+        final java.util.prefs.Preferences pp = java.util.prefs.Preferences.userRoot().node("meshconsole-mqttproxy-" + Integer.toHexString(meshconsole.DataDir.get().toString().toLowerCase().hashCode()));
         proxyBtn.addActionListener(e -> {
-            if (proxy.isRunning()) proxy.close();
-            else run(proxy::start);
+            if (proxy.isRunning()) { proxy.close(); pp.putBoolean("auto", false); }
+            else { pp.putBoolean("auto", true); run(proxy::start); }
+        });
+        state.addListener(new MeshState.Listener() {
+            private boolean tried;
+            @Override public void onStatusChanged() {
+                if (!state.configComplete()) { tried = false; return; }
+                if (tried || !pp.getBoolean("auto", false) || proxy.isRunning()) return;
+                tried = true;
+                new Thread(() -> { try { Thread.sleep(3000); if (!proxy.isRunning()) proxy.start(); } catch (Exception ex) { state.emitLog("MQTT proxy auto-start failed: " + ex.getMessage()); } }, "mqtt-proxy-auto").start();
+            }
         });
         box.add(mq);
         box.add(mq2);

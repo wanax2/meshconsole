@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.4 — 2026-10-29
+
+- MQTT client proxy remembers that it was started (per data folder) and starts itself again a few seconds after the radio's configuration loads — so an unattended station keeps uplinking (map reports, witness) through reboots, reconnects and self-updates. Stopping it with the button turns the auto-start off.
+
+
 ## 1.14.3 — 2026-10-28
 
 - Fix: rows of controls (BBS, Alerts, Analysis, Weather, Schedule, radio tab and others) were clipped when the window was narrower than the row — the overflow wrapped onto a second line that had no height, so buttons such as "Board profile…" were cut off. Rows now grow to fit when they wrap.
