@@ -326,7 +326,7 @@ class SettingsPanel extends JPanel {
     private void populateIfFresh() {
         int now = state.myNodeNum();
         if (now != populatedFrom) { populated = false; populatedFrom = now; }   // a different radio (or a reconnect) – the old values are not this radio's
-        if (!state.configComplete()) { if (now != 0) loaded.setText("Loading settings from " + state.nodeName(now) + "…"); else loaded.setText("Settings not loaded – connect to a radio."); return; }
+        if (!state.configComplete()) { populated = false; if (now != 0) loaded.setText("Loading settings from " + state.nodeName(now) + "…"); else loaded.setText("Settings not loaded – connect to a radio."); return; }   // re-read after every reconnect (e.g. the reboot that follows a write in All settings)
         if (!populated) populate();
     }
 
