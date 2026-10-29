@@ -296,7 +296,10 @@ class SettingsPanel extends JPanel {
         JComboBox<Channel.Role> roleEditor = new JComboBox<>(new Channel.Role[]{Channel.Role.DISABLED, Channel.Role.PRIMARY, Channel.Role.SECONDARY});
         chTable.getColumnModel().getColumn(1).setCellEditor(new DefaultCellEditor(roleEditor));
         chTable.getColumnModel().getColumn(0).setMaxWidth(40);
-        chTable.getColumnModel().getColumn(3).setPreferredWidth(320);
+        chTable.getColumnModel().getColumn(1).setPreferredWidth(110); chTable.getColumnModel().getColumn(1).setMaxWidth(140);
+        chTable.getColumnModel().getColumn(2).setPreferredWidth(140); chTable.getColumnModel().getColumn(2).setMaxWidth(220);
+        chTable.getColumnModel().getColumn(3).setMaxWidth(70); chTable.getColumnModel().getColumn(4).setMaxWidth(80);
+        chTable.getColumnModel().getColumn(5).setPreferredWidth(320);
         JScrollPane chScroll = new JScrollPane(chTable);
         chScroll.setAlignmentX(LEFT_ALIGNMENT);
         box.add(chScroll);
@@ -447,7 +450,7 @@ class SettingsPanel extends JPanel {
     }
 
     static class ChannelModel extends AbstractTableModel {
-        final String[] cols = {"#", "Role", "Name", "PSK (base64)", "Uplink", "Downlink"};
+        final String[] cols = {"#", "Role", "Name", "Uplink", "Downlink", "PSK (base64)"};
         List<ChRow> rows = new ArrayList<>();
 
         void load(List<Channel> chs) {
@@ -465,19 +468,19 @@ class SettingsPanel extends JPanel {
         @Override public int getColumnCount() { return cols.length; }
         @Override public String getColumnName(int c) { return cols[c]; }
         @Override public boolean isCellEditable(int r, int c) { return c > 0; }
-        @Override public Class<?> getColumnClass(int c) { return c >= 4 ? Boolean.class : c == 1 ? Channel.Role.class : Object.class; }
+        @Override public Class<?> getColumnClass(int c) { return c == 3 || c == 4 ? Boolean.class : c == 1 ? Channel.Role.class : Object.class; }
         @Override public Object getValueAt(int r, int c) {
             ChRow x = rows.get(r);
-            return switch (c) { case 0 -> x.index; case 1 -> x.role; case 2 -> x.name; case 3 -> x.psk; case 4 -> x.uplink; case 5 -> x.downlink; default -> ""; };
+            return switch (c) { case 0 -> x.index; case 1 -> x.role; case 2 -> x.name; case 3 -> x.uplink; case 4 -> x.downlink; case 5 -> x.psk; default -> ""; };
         }
         @Override public void setValueAt(Object v, int r, int c) {
             ChRow x = rows.get(r);
             switch (c) {
                 case 1 -> x.role = (Channel.Role) v;
                 case 2 -> x.name = String.valueOf(v);
-                case 3 -> x.psk = String.valueOf(v);
-                case 4 -> x.uplink = (Boolean) v;
-                case 5 -> x.downlink = (Boolean) v;
+                case 3 -> x.uplink = (Boolean) v;
+                case 4 -> x.downlink = (Boolean) v;
+                case 5 -> x.psk = String.valueOf(v);
                 default -> { }
             }
         }

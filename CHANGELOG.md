@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.4 — 2026-10-29
+
+- Settings → Channels: the **Uplink** and **Downlink** tick boxes now come right after the name, before the long PSK column, and the role/name columns are capped — on a narrow screen (a Pi over screen sharing) the uplink boxes were pushed out of view.
+
+
 ## 1.14.5 — 2026-10-29
 
 - Fix: the Settings → Common page kept showing values from before a change made in All settings (e.g. "MQTT module enabled" unticked after enabling it there), and saving that section from Common could switch the setting back. Common now re-reads the radio's settings after every reconnect, including the reboot that follows a write.
