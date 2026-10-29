@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.0 — 2026-10-29
+
+- Map: **Nearby on MQTT** layer. Mesh Console listens to the public server's map reports (root/2/map/) on this computer's internet connection – nothing goes to or through the radio – and draws the nodes within a radius you choose as grey squares (filled = your radio has heard it), with the reported precision area at street zoom. Click one for its name, preset, role, distance and bearing from you, last report, and whether your radio has heard it. **Nearby list…** shows them in a table, nearest first; double-click to centre the map. On/off and radius are remembered per data folder; reports are kept for 7 days in mqtt_map_reports.json so the layer fills straight away after a restart. Uses the radio's MQTT server settings when loaded, else the public defaults.
+
+
 ## 1.14.7 — 2026-10-29
 
 - Fix: the MQTT client proxy subscribed to the whole region (`msh/US/2/e/#`) and pushed every packet on the public server down the USB link into the radio, which couldn't keep up ("Invalid MQTT service envelope" / "Can't decode protobuf" errors, many per second). It now subscribes only to channels with **downlink** enabled, as the firmware itself does; with no downlink channel the proxy is uplink-only (map reports and your own packets go up, nothing comes down).
