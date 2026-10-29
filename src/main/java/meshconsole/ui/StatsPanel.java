@@ -48,7 +48,7 @@ class StatsPanel extends JPanel {
     StatsPanel(MeshState state) {
         this.state = state;
         setLayout(new BorderLayout(6, 6));
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel top = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         top.add(new JLabel("<html><b>Delivery statistics</b> (direct messages; a retried message counts once)</html>"));
         add(top, BorderLayout.NORTH);
         table.setRowHeight(20);
@@ -57,7 +57,7 @@ class StatsPanel extends JPanel {
         center.add(summary, BorderLayout.SOUTH);
         add(center, BorderLayout.CENTER);
 
-        JPanel export = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel export = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         export.setBorder(BorderFactory.createTitledBorder("Export CSV"));
         export.add(button("Nodes", this::exportNodes));
         export.add(button("Signal samples", this::exportSignal));

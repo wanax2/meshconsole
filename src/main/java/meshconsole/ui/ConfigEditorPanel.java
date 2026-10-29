@@ -52,7 +52,7 @@ class ConfigEditorPanel extends JPanel {
         this.client = client;
         this.state = client.state();
         setLayout(new BorderLayout(6, 6));
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel top = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         top.add(new JLabel("Target:"));
         target.addItem(new Target(0, "This radio"));
         target.setPrototypeDisplayValue("A fairly long node name here");

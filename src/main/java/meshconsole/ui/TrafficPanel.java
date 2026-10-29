@@ -72,7 +72,7 @@ class TrafficPanel extends JPanel {
     TrafficPanel(MeshState state) {
         this.state = state;
         setLayout(new BorderLayout(6, 6));
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel top = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         JButton reset = new JButton("Reset counters");
         reset.addActionListener(e -> state.resetTraffic());
         top.add(reset);

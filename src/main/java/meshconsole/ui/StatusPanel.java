@@ -52,7 +52,7 @@ class StatusPanel extends JPanel {
 
         JPanel chartBox = new JPanel(new BorderLayout(4, 4));
         chartBox.setBorder(BorderFactory.createTitledBorder("Live signal (received packets)"));
-        JPanel chartTop = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel chartTop = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2));
         chartTop.add(new JLabel("Show:"));
         chartNode.addItem(new NodeChoice(0, "All nodes"));
         chartNode.addActionListener(e -> refreshChart());
@@ -73,7 +73,7 @@ class StatusPanel extends JPanel {
 
         JPanel infoBox = new JPanel(new BorderLayout());
         infoBox.add(infoScroll, BorderLayout.CENTER);
-        JPanel infoButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel infoButtons = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2));
         JButton refreshStats = new JButton("Refresh stats");
         refreshStats.setToolTipText("Ask the radio for fresh device metrics and local statistics now (they are otherwise reported every few minutes; the app also asks every 5 min)");
         refreshStats.addActionListener(e -> new Thread(() -> { try { client.requestStats(state.myNodeNum()); } catch (java.io.IOException ex) { state.emitLog("Stats request failed: " + ex.getMessage()); } }).start());
@@ -87,7 +87,7 @@ class StatusPanel extends JPanel {
         JScrollPane logScroll = new JScrollPane(log);
         JPanel logBox = new JPanel(new BorderLayout());
         logBox.setBorder(BorderFactory.createTitledBorder("Device / app log"));
-        JPanel logTop = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        JPanel logTop = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 0));
         verbose.setToolTipText("Log every packet (from/to, port, hops, RSSI/SNR), config item, admin message and MQTT proxy transfer");
         trace.setToolTipText("Also log the full protobuf content of every frame sent to and received from the radio (very chatty)");
         toFile.setToolTipText("Append everything shown here to meshconsole.log in the working directory");

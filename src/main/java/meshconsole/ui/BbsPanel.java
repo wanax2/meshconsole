@@ -202,7 +202,7 @@ class BbsPanel extends JPanel {
             if (i == 3) { gBox.get("TRANSIT").setSelected(false); gBox.get("BUFFALO").setSelected(false); cBox.get("DC").setSelected(false); cBox.get("BUFFALO").setSelected(false); cBox.get("FINGERLAKES").setSelected(false); }
             if (i == 1) { cBox.get("FINGERLAKES").setSelected(false); }
         });
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT)); top.add(new JLabel("Region preset:")); top.add(preset);
+        JPanel top = new JPanel(new WrapLayout(FlowLayout.LEFT)); top.add(new JLabel("Region preset:")); top.add(preset);
         top.add(new JLabel("<html><small>Finger Lakes also sets airports KITH/KSYR, CAT list and weather station KITH.<br>DC sets KDCA/KHEF and weather station KDCA.</small></html>"));
         JPanel form = new JPanel(new BorderLayout(4, 4)); form.add(top, BorderLayout.NORTH); form.add(groups, BorderLayout.CENTER); form.add(cats, BorderLayout.SOUTH);
         if (JOptionPane.showConfirmDialog(this, form, "Board profile – " + store.name, JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;

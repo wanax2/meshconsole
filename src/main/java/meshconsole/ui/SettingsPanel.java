@@ -413,7 +413,7 @@ class SettingsPanel extends JPanel {
     }
 
     private static JPanel row() {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel p = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         p.setAlignmentX(LEFT_ALIGNMENT);
         return p;
     }

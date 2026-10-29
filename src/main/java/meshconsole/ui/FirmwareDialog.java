@@ -55,7 +55,7 @@ class FirmwareDialog extends JDialog {
         pack(); setLocationRelativeTo(owner);
     }
 
-    private static JPanel row() { return new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3)); }
+    private static JPanel row() { return new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3)); }
     private void say(String s) { SwingUtilities.invokeLater(() -> { log.append(s + "\n"); log.setCaretPosition(log.getDocument().getLength()); }); }
 
     private void fetchReleases() {

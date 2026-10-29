@@ -111,7 +111,7 @@ class NodesPanel extends JPanel {
         JScrollPane tableScroll = new JScrollPane(table, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         add(tableScroll, BorderLayout.CENTER);
 
-        JPanel dbBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel dbBar = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2));
         dbBar.add(dbInfo);
         JButton save = new JButton("Save DB now");
         JButton reset = new JButton("Reset DB…");
@@ -126,7 +126,7 @@ class NodesPanel extends JPanel {
         add(dbBar, BorderLayout.NORTH);
 
         JPanel south = new JPanel(new BorderLayout(4, 4));
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel buttons = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2));
         JButton dm = new JButton("Message node");
         JButton tr = new JButton("Traceroute");
         JButton pos = new JButton("Request position");

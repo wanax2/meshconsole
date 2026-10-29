@@ -9,6 +9,7 @@ import java.awt.*;
  */
 public class WrapLayout extends FlowLayout {
     public WrapLayout(int align, int hgap, int vgap) { super(align, hgap, vgap); }
+    public WrapLayout(int align) { super(align); }
 
     @Override public Dimension preferredLayoutSize(Container target) { return layoutSize(target, true); }
     @Override public Dimension minimumLayoutSize(Container target) { Dimension d = layoutSize(target, false); d.width -= getHgap() + 1; return d; }

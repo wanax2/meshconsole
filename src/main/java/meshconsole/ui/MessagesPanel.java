@@ -117,7 +117,7 @@ class MessagesPanel extends JPanel {
             }
         });
         table.getSelectionModel().addListSelectionListener(e -> resend.setEnabled(selectedOutgoing() != null));
-        JPanel searchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel searchRow = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2));
         searchRow.add(new JLabel("Search:")); searchRow.add(search);
         search.setToolTipText("Filter by text, node name or channel; empty shows all");
         search.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -140,7 +140,7 @@ class MessagesPanel extends JPanel {
         add(center, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout(4, 4));
-        JPanel line1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel line1 = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2));
         line1.add(new JLabel("To:"));
         dest.setPrototypeDisplayValue(new Dest(0, "A reasonably long node name here"));
         line1.add(dest);

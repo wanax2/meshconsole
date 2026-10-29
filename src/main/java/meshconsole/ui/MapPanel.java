@@ -49,7 +49,7 @@ class MapPanel extends JPanel {
     MapPanel(MeshState state) {
         this.state = state;
         setLayout(new BorderLayout(4, 4));
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        JPanel top = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2));   // wraps onto a second line on a narrow screen instead of hiding controls
         JButton me = new JButton("Center on me");
         JButton fit = new JButton("Fit all nodes");
         JTextField find = new JTextField(22);

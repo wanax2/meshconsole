@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.3 — 2026-10-29
+
+- Fix: toolbars wider than the window (the Map tab's in particular, on a 1280-wide Pi screen) hid their right-hand controls – including the new **Nearby on MQTT** box, its radius and **Nearby list…**. Every left-aligned toolbar now wraps onto a second line instead.
+
+
 ## 1.15.2 — 2026-10-29
 
 - Map: **− / +** zoom buttons at the left of the toolbar, and the **-** / **+** keys once the map has been clicked – for remote desktops, touch screens and touchpads without a scroll wheel.

@@ -64,7 +64,7 @@ class SwrPanel extends JPanel {
         setLayout(new BorderLayout(6, 6));
 
         JPanel top = new JPanel(new GridLayout(2, 1));
-        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel row1 = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         row1.add(new JLabel("NanoVNA port:"));
         row1.add(ports);
         JButton refresh = new JButton("↻");
@@ -73,7 +73,7 @@ class SwrPanel extends JPanel {
         row1.add(refresh);
         row1.add(new JLabel("Band:"));
         row1.add(band);
-        JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel row2 = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         row2.add(new JLabel("Start MHz:"));
         row2.add(start);
         row2.add(new JLabel("Stop MHz:"));

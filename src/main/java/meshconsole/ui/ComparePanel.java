@@ -32,7 +32,7 @@ public class ComparePanel extends JPanel {
     public ComparePanel(MeshState state) {
         super(new BorderLayout(6, 6));
         this.state = state;
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        JPanel top = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 4));
         top.add(new JLabel("Radio A:")); top.add(radioA);
         top.add(new JLabel("Radio B:")); top.add(radioB);
         top.add(new JLabel("or other instance's data folder:")); top.add(otherFolder);

@@ -32,7 +32,7 @@ class SecondRadioWindow extends JFrame {
         client = new MeshClient(state);
         setDefaultCloseOperation(HIDE_ON_CLOSE);
         JPanel root = new JPanel(new BorderLayout(6, 6));
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        JPanel top = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 3));
         top.add(new JLabel("Port:")); top.add(ports);
         JButton refresh = new JButton("↻"); refresh.addActionListener(e -> refreshPorts()); top.add(refresh);
         top.add(connect);
@@ -40,7 +40,7 @@ class SecondRadioWindow extends JFrame {
         top.add(status);
         root.add(top, BorderLayout.NORTH);
         JPanel center = new JPanel(new BorderLayout());
-        JPanel cmp = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2)); cmp.add(compare); center.add(cmp, BorderLayout.NORTH);
+        JPanel cmp = new JPanel(new WrapLayout(FlowLayout.LEFT, 6, 2)); cmp.add(compare); center.add(cmp, BorderLayout.NORTH);
         chart.setPreferredSize(new Dimension(700, 200)); center.add(chart, BorderLayout.CENTER);
         log.setEditable(false); log.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         JScrollPane ls = new JScrollPane(log); ls.setPreferredSize(new Dimension(700, 220)); ls.setBorder(BorderFactory.createTitledBorder("Packets"));
