@@ -57,6 +57,10 @@ class MapPanel extends JPanel {
         JButton findGo = new JButton("Find");
         Runnable doFind = () -> findPlace(find.getText().trim());
         find.addActionListener(e -> doFind.run()); findGo.addActionListener(e -> doFind.run());
+        JButton zoomOut = new JButton("−"), zoomIn = new JButton("+");
+        zoomOut.setToolTipText("Zoom out (also: mouse wheel, or the - key)"); zoomIn.setToolTipText("Zoom in (also: mouse wheel, or the + key)");
+        zoomOut.addActionListener(e -> view.zoomBy(-1)); zoomIn.addActionListener(e -> view.zoomBy(1));
+        top.add(zoomOut); top.add(zoomIn);
         top.add(new JLabel("Go to:")); top.add(find); top.add(findGo);
         top.add(me); top.add(fit); top.add(showLinks); top.add(showNeighbors); top.add(showTracks); top.add(showWaypoints); top.add(showCoverage); top.add(showGrid); top.add(showNames);
         JButton mqttList = new JButton("Nearby list…");
@@ -79,6 +83,12 @@ class MapPanel extends JPanel {
         for (JCheckBox c : new JCheckBox[]{showNeighbors, showTracks, showWaypoints, showCoverage, showGrid}) c.addActionListener(e -> view.repaint());
         add(top, BorderLayout.NORTH);
         add(view, BorderLayout.CENTER);
+        view.setFocusable(true);   // + / - keys zoom once the map has been clicked
+        InputMap im = view.getInputMap(JComponent.WHEN_FOCUSED); ActionMap am = view.getActionMap();
+        for (String k : new String[]{"PLUS", "ADD", "EQUALS", "shift EQUALS"}) im.put(KeyStroke.getKeyStroke(k), "zoomIn");
+        for (String k : new String[]{"MINUS", "SUBTRACT"}) im.put(KeyStroke.getKeyStroke(k), "zoomOut");
+        am.put("zoomIn", new AbstractAction() { @Override public void actionPerformed(java.awt.event.ActionEvent e) { view.zoomBy(1); } });
+        am.put("zoomOut", new AbstractAction() { @Override public void actionPerformed(java.awt.event.ActionEvent e) { view.zoomBy(-1); } });
         JLabel credit = new JLabel("  Map data © OpenStreetMap contributors  ·  drag to pan, wheel to zoom, click a marker for details, right-click to add a waypoint");
         credit.setFont(credit.getFont().deriveFont(10f));
         add(credit, BorderLayout.SOUTH);
@@ -309,6 +319,8 @@ class MapPanel extends JPanel {
     // ---- view ---------------------------------------------------------------
 
     private class MapView extends JComponent {
+        /** Zoom around the centre of the view – for touch screens and remote desktops without a mouse wheel. */
+        void zoomBy(int d) { int nz = Math.max(1, Math.min(18, zoom + d)); if (nz != zoom) { zoom = nz; repaint(); } }
         private double markLat = Double.NaN, markLon; private String markLabel = "";
         void mark(double lat, double lon, String label) { markLat = lat; markLon = lon; markLabel = label; setCenter(lat, lon, Math.max(zoom, 17)); repaint(); }
         double centerLat = 20, centerLon = 0;
@@ -321,7 +333,7 @@ class MapPanel extends JPanel {
         MapView() {
             setPreferredSize(new Dimension(700, 500));
             MouseAdapter ma = new MouseAdapter() {
-                @Override public void mousePressed(MouseEvent e) { dragStart = e.getPoint(); dragLat = centerLat; dragLon = centerLon; }
+                @Override public void mousePressed(MouseEvent e) { requestFocusInWindow(); dragStart = e.getPoint(); dragLat = centerLat; dragLon = centerLon; }
                 @Override public void mouseDragged(MouseEvent e) {
                     if (dragStart == null) return;
                     double cx = lonToX(dragLon, zoom) - (e.getX() - dragStart.x);

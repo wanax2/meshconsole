@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.2 — 2026-10-29
+
+- Map: **− / +** zoom buttons at the left of the toolbar, and the **-** / **+** keys once the map has been clicked – for remote desktops, touch screens and touchpads without a scroll wheel.
+
+
 ## 1.15.1 — 2026-10-29
 
 - Fix: "Save and check now" could leave the window frozen. Its result ("Up to date", "Updating…", an error) was a modal message box, and on the Pi's desktop it could open behind the main window or off-screen, blocking every click while invisible. The result now goes to the log and to a non-modal box that stays on top, centred on the screen.
