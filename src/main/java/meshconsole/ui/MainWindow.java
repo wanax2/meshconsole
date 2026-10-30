@@ -19,6 +19,8 @@ public class MainWindow extends JFrame {
     private final JLabel status = new JLabel("Not connected");
     private final JCheckBox autoReconnect = new JCheckBox("Auto-reconnect", true);
     private String lastPortName;
+    /** Set once the user connects or disconnects by hand, so a pending start-up auto-connect stops looking. */
+    private volatile boolean userTookOver;
     private Timer reconnectTimer;
     private TcpItem lastTcp;
     private final JTabbedPane tabs = new JTabbedPane();
@@ -198,7 +200,7 @@ public class MainWindow extends JFrame {
         nodesPanel.setOnMessageNode(num -> { messagesPanel.selectDestination(num); tabs.setSelectedComponent(messagesPanel); });
         nodesPanel.setOnShowOnMap(num -> { mapPanel.centerOn(num); tabs.setSelectedComponent(mapPanel); });
 
-        connect.addActionListener(e -> toggleConnect());
+        connect.addActionListener(e -> { userTookOver = true; toggleConnect(); });
         client.setConnectionListener((c, d) -> SwingUtilities.invokeLater(() -> {
             connect.setText(c ? "Disconnect" : "Connect to device");
             connect.setBackground(c ? new Color(160, 60, 50) : new Color(40, 120, 70));
@@ -236,18 +238,28 @@ public class MainWindow extends JFrame {
         // Auto-connect at startup to the radio used last time, when auto-reconnect is on and it is present.
         String last = PREFS.get("lastRadio", "");
         if (autoReconnect.isSelected() && !last.isEmpty()) {
-            Timer t = new Timer(2500, e -> {
-                if (client.isConnected()) return;
+            // At boot the radio's USB port can appear a few seconds after the app starts, or under another name
+            // (ttyACM1 instead of ttyACM0): keep looking every 10 s, matching the port name first and then the
+            // radio's USB identity, until it is found or the user connects by hand.
+            String lastId = PREFS.get("lastRadioUsb", "");
+            Timer t = new Timer(2500, null);
+            t.addActionListener(e -> {
+                if (client.isConnected() || userTookOver) { t.stop(); return; }
                 refreshPorts();
-                for (int i = 0; i < ports.getItemCount(); i++) {
+                int found = -1;
+                for (int i = 0; i < ports.getItemCount() && found < 0; i++) {
                     Object it = ports.getItemAt(i);
-                    boolean match = (it instanceof PortItem pi && last.equals("serial:" + pi.port().getSystemPortName()))
-                                 || (it instanceof TcpItem ti && last.equals("tcp:" + ti.host() + ":" + ti.port()));
-                    if (match) { ports.setSelectedIndex(i); status.setText("Auto-connecting to " + it + "…"); toggleConnect(); return; }
+                    if ((it instanceof PortItem pi && last.equals("serial:" + pi.port().getSystemPortName()))
+                            || (it instanceof TcpItem ti && last.equals("tcp:" + ti.host() + ":" + ti.port()))) found = i;
                 }
-                status.setText("Last radio (" + last.substring(last.indexOf(':') + 1) + ") not present – pick a port and Connect");
+                if (found < 0 && !lastId.isEmpty() && last.startsWith("serial:"))
+                    for (int i = 0; i < ports.getItemCount() && found < 0; i++)
+                        if (ports.getItemAt(i) instanceof PortItem pi && lastId.equals(usbIdentity(pi.port()))) found = i;
+                if (found >= 0) { t.stop(); ports.setSelectedIndex(found); status.setText("Auto-connecting to " + ports.getItemAt(found) + "…"); toggleConnect(); return; }
+                status.setText("Waiting for the last radio (" + last.substring(last.indexOf(':') + 1) + ") – still looking every 10 s, or pick a port and Connect");
+                t.setDelay(10_000);
             });
-            t.setRepeats(false); t.start();
+            t.setInitialDelay(2500); t.start();
         }
     }
 
@@ -364,6 +376,18 @@ public class MainWindow extends JFrame {
         PREFS.put("tcpHosts", sb.toString());
     }
 
+    /** The computer's own UARTs – a Raspberry Pi's ttyAMA* / ttyS* – which a USB radio never appears as. */
+    static boolean isBuiltInUart(SerialPort p) {
+        String n = p.getSystemPortName();
+        return n.startsWith("ttyAMA") || n.startsWith("ttyS") || n.startsWith("serial");
+    }
+
+    /** "vid:pid:serial" of a USB serial port, to find the same radio again if its name changes (ttyACM0 to ttyACM1). */
+    static String usbIdentity(SerialPort p) {
+        try { if (p.getVendorID() <= 0) return ""; return String.format("%04x:%04x:%s", p.getVendorID(), p.getProductID(), p.getSerialNumber() == null ? "" : p.getSerialNumber()); }
+        catch (Throwable t) { return ""; }
+    }
+
     void refreshPorts() {
         Object sel = ports.getSelectedItem();
         ports.removeAllItems();
@@ -376,7 +400,8 @@ public class MainWindow extends JFrame {
             if (!(ports.getItemAt(i) instanceof PortItem pi)) continue;
             String d = pi.port().getDescriptivePortName().toLowerCase();
             if (d.contains("active management") || d.contains("amt")) continue;   // the laptop's own Intel management port is never a radio
-            if (d.contains("rak") || d.contains("meshtastic") || d.contains("wisblock") || d.contains("usb serial")) { pick = i; break; }
+            if (isBuiltInUart(pi.port())) continue;                              // a Pi's own serial pins / debug UART (ttyAMA*, ttyS*) are never a radio
+            if (d.contains("rak") || d.contains("meshtastic") || d.contains("wisblock") || d.contains("usb serial") || d.contains("jtag") || d.contains("cp210") || d.contains("ch340") || d.contains("ch910")) { pick = i; break; }
             // built-in / virtual ports that are never a radio
             if (pick < 0 && !d.contains("active management") && !d.contains("sol") && !d.contains("communications port") && !d.contains("bluetooth")) pick = i;
         }
@@ -575,6 +600,7 @@ public class MainWindow extends JFrame {
         try {
             lastPortName = pi.port().getSystemPortName();
             PREFS.put("lastRadio", "serial:" + lastPortName);
+            PREFS.put("lastRadioUsb", usbIdentity(pi.port()));
             client.connect(pi.port());
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Connect failed", JOptionPane.ERROR_MESSAGE);

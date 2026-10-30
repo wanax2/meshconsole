@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.2 — 2026-10-30
+
+- Start-up auto-connect no longer gives up: if the last radio isn't there when the app opens (a USB radio can appear a few seconds after boot), it keeps looking every 10 s until it appears or you connect by hand.
+- It also finds the same radio by its USB identity (vendor, product, serial number) if its port name changed – ttyACM0 → ttyACM1 – and remembers that identity on every connect.
+- A Raspberry Pi's built-in serial ports (ttyAMA*, ttyS*) are never picked as the default port any more; ESP32-S3 boards ("USB JTAG/serial debug unit", e.g. Station G2/G3) and common USB-serial chips are preferred.
+
+
 ## 1.16.1 — 2026-10-30
 
 - Messages: the **Channel** picker and the channel column show names ("1 · Family", "2 · Friends", "0 · primary") instead of bare numbers; direct messages show "DM".
