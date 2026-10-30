@@ -48,7 +48,7 @@ class MessagesPanel extends JPanel {
                 case 1 -> m.outgoing ? "→" : "←";
                 case 2 -> state.nodeName(m.from);
                 case 3 -> state.nodeName(m.to);
-                case 4 -> m.channel;
+                case 4 -> m.to == ChatMessage.BROADCAST ? channelLabel(m.channel) : "DM";
                 case 5 -> messageText(m);
                 case 6 -> statusText(m);
                 case 7 -> m.rssi == 0 ? "" : m.rssi + " dBm";
@@ -228,7 +228,7 @@ class MessagesPanel extends JPanel {
             return;
         }
         Dest d = (Dest) dest.getSelectedItem();
-        int ch = channel.getSelectedIndex() < 0 ? 0 : Integer.parseInt((String) channel.getSelectedItem());
+        int ch = channel.getSelectedIndex() < 0 ? 0 : Integer.parseInt(((String) channel.getSelectedItem()).split(" ")[0]);
         try {
             client.sendText(text, d == null ? ChatMessage.BROADCAST : d.num(), ch);
             input.setText("");
@@ -271,13 +271,24 @@ class MessagesPanel extends JPanel {
         if (fromFilter && wanted.size() == 2) dest.setSelectedIndex(1);
     }
 
+    private static String channelName(Channel c) {
+        String n = c.getSettings().getName();
+        return n.isEmpty() ? (c.getIndex() == 0 ? "primary" : "(unnamed)") : n;
+    }
+
+    /** "1 · Family" for a channel index, using this radio's channel list. */
+    String channelLabel(int idx) {
+        for (Channel c : state.channels()) if (c.getIndex() == idx) return idx + " · " + channelName(c);
+        return String.valueOf(idx);
+    }
+
     private void refreshChannels() {
         List<Channel> chs = state.channels();
         if (chs.isEmpty()) return;
         Object sel = channel.getSelectedItem();
         channel.removeAllItems();
-        for (Channel c : chs) channel.addItem(String.valueOf(c.getIndex()));
-        if (sel != null) channel.setSelectedItem(sel);
+        for (Channel c : chs) channel.addItem(c.getIndex() + " · " + channelName(c));
+        if (sel != null) { String idx = String.valueOf(sel).split(" ")[0]; for (int i = 0; i < channel.getItemCount(); i++) if (channel.getItemAt(i).split(" ")[0].equals(idx)) channel.setSelectedIndex(i); }
         StringBuilder tip = new StringBuilder("<html>");
         for (Channel c : chs) tip.append(c.getIndex()).append(": ").append(c.getSettings().getName().isEmpty() ? "(default)" : c.getSettings().getName()).append("<br>");
         channel.setToolTipText(tip.toString());

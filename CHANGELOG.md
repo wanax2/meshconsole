@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.16.1 — 2026-10-30
+
+- Messages: the **Channel** picker and the channel column show names ("1 · Family", "2 · Friends", "0 · primary") instead of bare numbers; direct messages show "DM".
+
+
 ## 1.16.0 — 2026-10-29
 
 - Map → Nearby on MQTT: choose the **source** next to the box. **Map reports** – nodes that opted in to the public map (few, each about hourly); **Channel positions** – any node uplinking position packets on the default channel (LongFast, or your preset's channel), decrypted with the public default key, with names from their node-info packets – the same feed meshmap.net largely draws from, so many more nodes; **Map reports + channel** – both. Click details and the Nearby list show how each node was seen. Still this computer's internet only; nothing goes through the radio.
