@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.16.0 — 2026-10-29
+
+- Map → Nearby on MQTT: choose the **source** next to the box. **Map reports** – nodes that opted in to the public map (few, each about hourly); **Channel positions** – any node uplinking position packets on the default channel (LongFast, or your preset's channel), decrypted with the public default key, with names from their node-info packets – the same feed meshmap.net largely draws from, so many more nodes; **Map reports + channel** – both. Click details and the Nearby list show how each node was seen. Still this computer's internet only; nothing goes through the radio.
+
+
 ## 1.15.3 — 2026-10-29
 
 - Fix: toolbars wider than the window (the Map tab's in particular, on a 1280-wide Pi screen) hid their right-hand controls – including the new **Nearby on MQTT** box, its radius and **Nearby list…**. Every left-aligned toolbar now wraps onto a second line instead.

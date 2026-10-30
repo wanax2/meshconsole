@@ -44,6 +44,7 @@ class MapPanel extends JPanel {
     private final JCheckBox showMqtt = new JCheckBox("Nearby on MQTT", mqttPrefs.getBoolean("on", false));
     private final JSpinner mqttRadius = new JSpinner(new SpinnerNumberModel(mqttPrefs.getInt("radiusKm", 80), 5, 2000, 5));
     private meshconsole.mqtt.MapReportWatcher mqttMap;
+    private final JComboBox<meshconsole.mqtt.MapReportWatcher.Source> mqttSource = new JComboBox<>(meshconsole.mqtt.MapReportWatcher.Source.values());
     private final JLabel status = new JLabel(" ");
 
     MapPanel(MeshState state) {
@@ -67,7 +68,10 @@ class MapPanel extends JPanel {
         showMqtt.setToolTipText("Show the nodes that report themselves to the public MQTT map within the radius – heard by your radio or not (grey squares). Uses this computer's internet; nothing goes through the radio.");
         mqttRadius.setToolTipText("Radius around your position, km");
         ((JSpinner.DefaultEditor) mqttRadius.getEditor()).getTextField().setColumns(4);
-        top.add(showMqtt); top.add(mqttRadius); top.add(new JLabel("km")); top.add(mqttList);
+        try { mqttSource.setSelectedItem(meshconsole.mqtt.MapReportWatcher.Source.valueOf(mqttPrefs.get("source", "MAP_REPORTS"))); } catch (IllegalArgumentException ignored) { }
+        mqttSource.setToolTipText("<html>Map reports: nodes that opted in to the public map (few, each about hourly).<br>Channel positions: any node uplinking positions on the default channel, decrypted with the public key (many more, busier feed).</html>");
+        mqttSource.addActionListener(e -> { mqttPrefs.put("source", ((meshconsole.mqtt.MapReportWatcher.Source) mqttSource.getSelectedItem()).name()); if (showMqtt.isSelected()) setMqtt(true); /* start() replaces the running connection */ view.repaint(); });
+        top.add(showMqtt); top.add(mqttSource); top.add(mqttRadius); top.add(new JLabel("km")); top.add(mqttList);
         showMqtt.addActionListener(e -> { mqttPrefs.putBoolean("on", showMqtt.isSelected()); setMqtt(showMqtt.isSelected()); view.repaint(); });
         mqttRadius.addChangeListener(e -> { mqttPrefs.putInt("radiusKm", (Integer) mqttRadius.getValue()); view.repaint(); });
         mqttList.addActionListener(e -> showNearbyList());
@@ -163,7 +167,8 @@ class MapPanel extends JPanel {
             mqttMap.addListener(() -> SwingUtilities.invokeLater(view::repaint));
         }
         meshconsole.mqtt.MapReportWatcher w = mqttMap;
-        new Thread(() -> { try { if (!w.isRunning()) w.start(); } catch (Exception ex) { SwingUtilities.invokeLater(() -> status.setText("Map reports: " + ex.getMessage())); } }, "mqtt-map-start").start();
+        meshconsole.mqtt.MapReportWatcher.Source src = (meshconsole.mqtt.MapReportWatcher.Source) mqttSource.getSelectedItem();
+        new Thread(() -> { try { w.start(src); } catch (Exception ex) { SwingUtilities.invokeLater(() -> status.setText("Nearby on MQTT: " + ex.getMessage())); } }, "mqtt-map-start").start();
     }
 
     /** The map-report nodes within the radius of my position (all of them when my position is unknown), nearest first. */
@@ -175,6 +180,10 @@ class MapPanel extends JPanel {
         List<meshconsole.mqtt.MapReportWatcher.Report> out = new ArrayList<>();
         for (meshconsole.mqtt.MapReportWatcher.Report r : mqttMap.reports()) {
             if (me != null && r.num == me.num) continue;
+            if (r.lat == 0 && r.lon == 0) continue;
+            meshconsole.mqtt.MapReportWatcher.Source src = (meshconsole.mqtt.MapReportWatcher.Source) mqttSource.getSelectedItem();
+            if (src == meshconsole.mqtt.MapReportWatcher.Source.MAP_REPORTS && !r.viaMap) continue;
+            if (src == meshconsole.mqtt.MapReportWatcher.Source.CHANNEL && !r.viaChannel) continue;
             if (havePos && Fmt.distanceM(me.lat, me.lon, r.lat, r.lon) > maxM) continue;
             out.add(r);
         }
@@ -199,7 +208,7 @@ class MapPanel extends JPanel {
         if (me != null && me.hasPosition) where = String.format("  %s at %.0f°", Fmt.distance(Fmt.distanceM(me.lat, me.lon, r.lat, r.lon)), bearingDeg(me.lat, me.lon, r.lat, r.lon));
         String fuzz = r.fuzzMetres() > 0 ? String.format(" (±%.0f m)", r.fuzzMetres()) : "";
         return (r.longName.isBlank() ? r.idString() : r.longName) + " " + r.idString() + where + fuzz + "  ·  " + r.preset + " " + r.role
-                + "  ·  map report " + Fmt.ago(r.lastSeen) + " ago  ·  " + heardText(r.num);
+                + "  ·  " + r.via() + " " + Fmt.ago(r.lastSeen) + " ago  ·  " + heardText(r.num);
     }
 
     private void showNearbyList() {
@@ -207,14 +216,14 @@ class MapPanel extends JPanel {
         NodeEntry me = state.myNode();
         boolean havePos = me != null && me.hasPosition;
         List<meshconsole.mqtt.MapReportWatcher.Report> list = nearbyReports();
-        String[] cols = {"Name", "Short", "ID", "Distance", "Bearing", "Preset", "Role", "Hardware", "Map report", "Your radio"};
+        String[] cols = {"Name", "Short", "ID", "Distance", "Bearing", "Preset", "Role", "Hardware", "Seen via", "Last seen", "Your radio"};
         Object[][] rows = new Object[list.size()][];
         for (int i = 0; i < list.size(); i++) {
             meshconsole.mqtt.MapReportWatcher.Report r = list.get(i);
             rows[i] = new Object[]{r.longName, r.shortName, r.idString(),
                     havePos ? Fmt.distance(Fmt.distanceM(me.lat, me.lon, r.lat, r.lon)) : "?",
                     havePos ? String.format("%.0f°", bearingDeg(me.lat, me.lon, r.lat, r.lon)) : "?",
-                    r.preset, r.role, r.hw, Fmt.ago(r.lastSeen) + " ago", heardText(r.num)};
+                    r.preset, r.role, r.hw, r.via(), Fmt.ago(r.lastSeen) + " ago", heardText(r.num)};
         }
         JTable t = new JTable(rows, cols) { @Override public boolean isCellEditable(int r, int c) { return false; } };
         t.setAutoCreateRowSorter(false);
@@ -226,7 +235,7 @@ class MapPanel extends JPanel {
         JScrollPane sp = new JScrollPane(t); sp.setPreferredSize(new Dimension(1000, 380));
         String head = list.isEmpty()
                 ? (mqttMap != null && mqttMap.isRunning() ? "No map reports within " + mqttRadius.getValue() + " km yet – nodes report about hourly, so give it up to an hour after first switching this on." : "Connecting to the map reports…")
-                : list.size() + " node(s) within " + mqttRadius.getValue() + " km that report to the public map, nearest first" + (havePos ? "" : " (set your position to sort by distance)") + ". Double-click to show one on the map.";
+                : list.size() + " node(s) within " + mqttRadius.getValue() + " km (" + mqttSource.getSelectedItem() + "), nearest first" + (havePos ? "" : " (set your position to sort by distance)") + ". Double-click to show one on the map.";
         JPanel p = new JPanel(new BorderLayout(4, 4)); p.add(new JLabel(head), BorderLayout.NORTH); p.add(sp, BorderLayout.CENTER);
         JOptionPane.showMessageDialog(this, p, "Nearby on MQTT", JOptionPane.PLAIN_MESSAGE);
     }
