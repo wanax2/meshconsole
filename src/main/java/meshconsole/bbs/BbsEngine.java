@@ -84,9 +84,20 @@ public class BbsEngine {
         if (!store.outbox.isEmpty()) netPump();
         if (store.nwsBroadcast && System.currentTimeMillis() - lastNwsCheck > 10 * 60_000L) { lastNwsCheck = System.currentTimeMillis(); checkNws(); }
         if (!store.advertOn) return;
-        if (due(now, store.advertTime) && !today.equals(store.advertDay)) {
-            String text = store.nextAdvert();
-            store.advertDay = today; store.save();
+        // one or more times a day ("08:00, 17:30"); advertDay remembers which of today's times have gone out
+        java.util.Set<String> sent = new java.util.TreeSet<>();
+        if (store.advertDay.startsWith(today + "|")) sent.addAll(java.util.Arrays.asList(store.advertDay.substring(today.length() + 1).split(",")));
+        boolean oldFormatToday = store.advertDay.equals(today);   // saved by an older version: today's advert already went out
+        java.util.List<String> dueNow = new java.util.ArrayList<>();
+        for (String slot : store.advertTime.split("[,; ]+")) {
+            if (slot.isBlank() || !due(now, slot)) continue;
+            if (!sent.contains(slot.trim())) dueNow.add(slot.trim());
+        }
+        if (!dueNow.isEmpty()) {
+            sent.addAll(dueNow);                                  // after a restart, several missed times send just one advert
+            store.advertDay = today + "|" + String.join(",", sent); store.save();
+            if (oldFormatToday) return;
+            String text = store.nextAdvert(); store.save();
             try { client.sendOnce(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); }
             catch (IOException e) { log("advert failed: " + e.getMessage()); }
         }

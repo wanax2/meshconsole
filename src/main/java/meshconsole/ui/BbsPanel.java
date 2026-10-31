@@ -79,7 +79,8 @@ class BbsPanel extends JPanel {
         JButton clearEvents = new JButton("Clear past events"); clearEvents.addActionListener(e -> { long now = System.currentTimeMillis(); store.events.removeIf(ev -> ev.when > 0 && ev.when < now); store.save(); reload(); });
         r2b.add(postEvent); r2b.add(clearEvents);
         JPanel r2c = row();
-        JCheckBox advOn = new JCheckBox("Advertise daily at", store.advertOn); JTextField advTime = new JTextField(store.advertTime, 5);
+        JCheckBox advOn = new JCheckBox("Advertise daily at", store.advertOn); JTextField advTime = new JTextField(store.advertTime, 11);
+        advTime.setToolTipText("One or more times, e.g. 08:00, 17:30 – each sends the next advert in the rotation");
         JTextArea advText = new JTextArea(store.advertText.isBlank() ? store.defaultAdvert() : store.advertText, 3, 60); advText.setLineWrap(true); advText.setWrapStyleWord(true);
         advText.setToolTipText("Several messages separated by a line containing only --- rotate: one per day, in order. Each must fit 200 bytes.");
         JLabel advCount = new JLabel();

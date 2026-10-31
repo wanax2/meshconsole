@@ -72,7 +72,7 @@ public class MainWindow extends JFrame {
     }
 
     public MainWindow(MeshClient client) {
-        super(meshconsole.Version.NAME + " " + meshconsole.Version.VERSION);
+        super(meshconsole.Version.NAME + " " + meshconsole.Version.VERSION + " – " + meshconsole.DataDir.get().getFileName());   // the data folder in the title tells two windows apart
         this.client = client;
         this.state = client.state();
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);

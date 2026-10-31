@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.16.3 — 2026-10-31
+
+- BBS adverts: "Advertise daily at" takes several times, e.g. `08:00, 17:30` – each time sends the next advert in the rotation (or shuffle). After a restart, missed times send a single advert rather than a burst.
+- The window title shows the data folder ("Mesh Console 1.16.3 – mesh_data"), so two windows on one machine are easy to tell apart.
+
+
 ## 1.16.2 — 2026-10-30
 
 - Start-up auto-connect no longer gives up: if the last radio isn't there when the app opens (a USB radio can appear a few seconds after boot), it keeps looking every 10 s until it appears or you connect by hand.
