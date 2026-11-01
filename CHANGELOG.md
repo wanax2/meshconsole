@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.0 — 2026-11-01
+
+- BBS scanner commands, from a ScannerDeck page (BBS tab → Scanner: e.g. `http://scanner.local:3100`):
+  `SCAN` newest transcribed calls, `FIRE` / `POLICE` / `EMS` the same by service, `INC [hours]` recent incidents
+  (places named in transcripts), and `SUB SCAN` – new fire and crash incidents sent to subscribers, at most one
+  message each every 15 minutes. Everything else is pulled on request, so the channel isn't flooded.
+
+
 ## 1.16.4 — 2026-10-31
 
 - Nodes tab: **Find** box – type part of a name, a node ID (with or without "!", e.g. 33357952), hardware or role, and the list narrows as you type.

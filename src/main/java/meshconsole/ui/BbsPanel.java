@@ -66,7 +66,10 @@ class BbsPanel extends JPanel {
         profile.setToolTipText("Which command groups and trivia categories this board offers, and regional presets");
         profile.addActionListener(e -> { boardProfile(); av.setText(store.avStations); cat.setText(store.catStations); reload(); });
         r2b.add(profile);
-        JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.avStations = av.getText().trim().toUpperCase(); store.catStations = cat.getText().trim().toUpperCase(); store.station = station.getText().trim().toUpperCase(); store.wmataKey = new String(((JPasswordField) wmata).getPassword()).trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
+        JTextField scanner = new JTextField(store.scannerUrl, 20);
+        scanner.setToolTipText("A ScannerDeck page for the SCAN, FIRE, POLICE, EMS and INC commands, e.g. http://scanner.local:3100 – blank = off");
+        r2b.add(new JLabel(" Scanner:")); r2b.add(scanner);
+        JButton saveX = new JButton("Save"); saveX.addActionListener(e -> { store.scannerUrl = scanner.getText().trim(); store.avStations = av.getText().trim().toUpperCase(); store.catStations = cat.getText().trim().toUpperCase(); store.station = station.getText().trim().toUpperCase(); store.wmataKey = new String(((JPasswordField) wmata).getPassword()).trim(); store.discordWebhook = discord.getText().trim(); store.save(); }); r2b.add(saveX);
         JButton postEvent = new JButton("Post event…");
         postEvent.addActionListener(e -> {
             JTextField when = new JTextField("", 12), text = new JTextField("", 30);

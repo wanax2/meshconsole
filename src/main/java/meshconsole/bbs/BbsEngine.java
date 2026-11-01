@@ -82,6 +82,7 @@ public class BbsEngine {
         if (store.netOn && due(now, store.netTime) && !today.equals(store.netDay) && !store.peers.isEmpty()) { store.netDay = today; store.save(); int n = netExchangeNow(); log("MeshNet daily exchange: " + n + " post(s) sent"); }
         if (System.currentTimeMillis() - lastDiscordPoll > 5 * 60_000L) { lastDiscordPoll = System.currentTimeMillis(); pollDiscord(); }
         if (!store.outbox.isEmpty()) netPump();
+        if (!store.scannerUrl.isBlank() && System.currentTimeMillis() - lastScanPoll > 120_000L) { lastScanPoll = System.currentTimeMillis(); final String u = store.scannerUrl; bg.submit(() -> scannerAlerts(u)); }
         if (store.nwsBroadcast && System.currentTimeMillis() - lastNwsCheck > 10 * 60_000L) { lastNwsCheck = System.currentTimeMillis(); checkNws(); }
         if (!store.advertOn) return;
         // one or more times a day ("08:00, 17:30"); advertDay remembers which of today's times have gone out
@@ -191,6 +192,26 @@ public class BbsEngine {
     private boolean on(String group) { return !store.offGroups.contains(group); }
 
     /** The ? and ?2 menus, built from the groups this board offers. */
+    private long lastScanPoll;
+    private final Set<String> scanSent = Collections.synchronizedSet(new HashSet<>());
+    private final Map<Integer, Long> scanLastSent = new HashMap<>();
+    private boolean scanPrimed;
+
+    /** SUB SCAN: new fire/crash incidents to subscribers, at most one message per subscriber every 15 minutes. */
+    private void scannerAlerts(String url) {
+        List<String> alerts = BbsScanner.newAlerts(url, scanSent);
+        if (!scanPrimed) { scanPrimed = true; return; }   // first look after starting: just note what's already there
+        if (alerts.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        for (Map.Entry<Integer, Set<String>> e : new ArrayList<>(store.subs.entrySet())) {
+            if (!e.getValue().contains("SCAN")) continue;
+            Long last = scanLastSent.get(e.getKey());
+            if (last != null && now - last < 15 * 60_000L) continue;
+            scanLastSent.put(e.getKey(), now);
+            send(e.getKey(), BbsScanner.clip(alerts.get(0) + (alerts.size() > 1 ? " (+" + (alerts.size() - 1) + " more: INC)" : ""), 200));
+        }
+    }
+
     private String menu(boolean detail) {
         List<String> parts = new ArrayList<>();
         if (on("COMMUNITY")) parts.add(detail ? "B list (B 2) R n read P text post D n | M mail, M name text, M board!name text | GB guestbook E events POLL/V n SUB" : "B P M mail");
@@ -199,6 +220,7 @@ public class BbsEngine {
         if (on("AVIATION")) parts.add(detail ? "METAR or any airport code (KBUF), TAF CAT DA WINDS PIREP DELAY PLANES (AV)" : "AV aviation (METAR or any airport code)");
         if (on("HAM")) parts.add(detail ? "SOLAR HF bands ISS C callsign" : "SOLAR ISS C call");
         if (on("TRANSIT")) parts.add(detail ? "METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station]" : "METRO NEXT station BUS stop ELEV");
+        if (!store.scannerUrl.isBlank()) parts.add(detail ? "SCAN latest calls, FIRE POLICE EMS, INC incidents, SUB SCAN alerts" : "SCAN INC");
         if (on("GAMES")) parts.add(detail ? "TRIVIA (A answer) GUESS (G n) ADV" : "TRIVIA GUESS ADV");
         if (on("BUFFALO") && detail) parts.add("GO BILLS GO SABRES 716 SCORE");
         if (detail && !store.peers.isEmpty()) parts.add("NET");
@@ -246,6 +268,27 @@ public class BbsEngine {
             case "?", "H", "HELP", "MENU", "COMMANDS", "COMMAND", "START", "HI", "HELLO" -> { return menu(false); }
             case "?2", "HELP2" -> { return menu(true); }
             case "PING" -> { return "PONG from " + store.name; }
+            case "SCAN", "SCANNER" -> {
+                if (store.scannerUrl.isBlank()) return "No scanner on this board.";
+                final String u = store.scannerUrl;
+                bg.submit(() -> { for (String msg : BbsScanner.pack("Scanner, newest first: ", BbsScanner.latest(u, null, 4))) send(from, msg); });
+                return null;
+            }
+            case "FIRE", "POLICE", "EMS", "LAW" -> {
+                if (store.scannerUrl.isBlank()) return "No scanner on this board.";
+                final String u = store.scannerUrl, f = switch (cmd) { case "FIRE" -> "fire"; case "EMS" -> "ems|medic|ambulance|rescue"; default -> "police|sheriff|law|trooper|pd"; };
+                final String head = cmd.substring(0, 1) + cmd.substring(1).toLowerCase() + ", newest first: ";
+                bg.submit(() -> { for (String msg : BbsScanner.pack(head, BbsScanner.latest(u, f, 4))) send(from, msg); });
+                return null;
+            }
+            case "INC", "INCIDENTS", "INCIDENT" -> {
+                if (store.scannerUrl.isBlank()) return "No scanner on this board.";
+                final String u = store.scannerUrl; int h = 6;
+                try { if (!arg.isBlank()) h = Math.max(1, Math.min(48, Integer.parseInt(arg.trim().replaceAll("\\D", "")))); } catch (NumberFormatException ignored) { }
+                final int hours = h;
+                bg.submit(() -> { for (String msg : BbsScanner.pack("Incidents (" + hours + " h): ", BbsScanner.incidents(u, hours, 6))) send(from, msg); });
+                return null;
+            }
             case "I", "INFO" -> {
                 long up = (System.currentTimeMillis() - store.started) / 60000;
                 return store.name + " on " + state.nodeName(state.myNodeNum()) + ". " + store.posts.size() + " posts, " + store.mail.size() + " mail, " + store.commandsServed + " cmds, up " + up / 60 + "h" + up % 60 + "m. " + store.welcome;
@@ -358,8 +401,10 @@ public class BbsEngine {
             }
             case "SUB", "SUBSCRIBE" -> {
                 String what = arg.trim().toUpperCase();
-                if (!what.equals("WX") && !what.equals("EVENTS")) { Set<String> cur = store.subs.getOrDefault(from, Set.of()); return "SUB WX = daily weather at " + store.digestTime + ", SUB EVENTS = new events. UNSUB to stop. You have: " + (cur.isEmpty() ? "none" : String.join(",", cur)); }
+                if (what.equals("SCANNER")) what = "SCAN";
+                if (!what.equals("WX") && !what.equals("EVENTS") && !(what.equals("SCAN") && !store.scannerUrl.isBlank())) { Set<String> cur = store.subs.getOrDefault(from, Set.of()); return "SUB WX = daily weather at " + store.digestTime + ", SUB EVENTS = new events" + (store.scannerUrl.isBlank() ? "" : ", SUB SCAN = fire & crash alerts from the scanner") + ". UNSUB to stop. You have: " + (cur.isEmpty() ? "none" : String.join(",", cur)); }
                 store.subs.computeIfAbsent(from, k -> new HashSet<>()).add(what);
+                if (what.equals("SCAN")) return "Subscribed to scanner alerts: new fires and crashes, at most one every 15 min. UNSUB to stop.";
                 return "Subscribed to " + what + ". Daily at " + store.digestTime + ". UNSUB to stop.";
             }
             case "UNSUB" -> { store.subs.remove(from); return "Unsubscribed from everything."; }
