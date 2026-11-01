@@ -220,7 +220,7 @@ public class BbsEngine {
         if (on("AVIATION")) parts.add(detail ? "METAR or any airport code (KBUF), TAF CAT DA WINDS PIREP DELAY PLANES (AV)" : "AV aviation (METAR or any airport code)");
         if (on("HAM")) parts.add(detail ? "SOLAR HF bands ISS C callsign" : "SOLAR ISS C call");
         if (on("TRANSIT")) parts.add(detail ? "METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station]" : "METRO NEXT station BUS stop ELEV");
-        if (!store.scannerUrl.isBlank()) parts.add(detail ? "SCAN latest calls, FIRE POLICE EMS, INC incidents, SUB SCAN alerts" : "SCAN INC");
+        if (!store.scannerUrl.isBlank()) parts.add(detail ? "SCAN [area] latest calls (area e.g. ARL ALX), FIRE POLICE EMS [area], INC [area] [hours], SUB SCAN alerts" : "SCAN INC");
         if (on("GAMES")) parts.add(detail ? "TRIVIA (A answer) GUESS (G n) ADV" : "TRIVIA GUESS ADV");
         if (on("BUFFALO") && detail) parts.add("GO BILLS GO SABRES 716 SCORE");
         if (detail && !store.peers.isEmpty()) parts.add("NET");
@@ -271,22 +271,27 @@ public class BbsEngine {
             case "SCAN", "SCANNER" -> {
                 if (store.scannerUrl.isBlank()) return "No scanner on this board.";
                 final String u = store.scannerUrl;
-                bg.submit(() -> { for (String msg : BbsScanner.pack("Scanner, newest first: ", BbsScanner.latest(u, null, 4))) send(from, msg); });
+                final String want = arg.trim();
+                bg.submit(() -> { for (String msg : BbsScanner.pack("Scanner" + (want.isEmpty() ? "" : " " + want.toUpperCase()) + ", newest first: ", BbsScanner.latest(u, null, 4, want))) send(from, msg); });
                 return null;
             }
             case "FIRE", "POLICE", "EMS", "LAW" -> {
                 if (store.scannerUrl.isBlank()) return "No scanner on this board.";
                 final String u = store.scannerUrl, f = switch (cmd) { case "FIRE" -> "fire"; case "EMS" -> "ems|medic|ambulance|rescue"; default -> "police|sheriff|law|trooper|pd"; };
                 final String head = cmd.substring(0, 1) + cmd.substring(1).toLowerCase() + ", newest first: ";
-                bg.submit(() -> { for (String msg : BbsScanner.pack(head, BbsScanner.latest(u, f, 4))) send(from, msg); });
+                final String want = arg.trim();
+                bg.submit(() -> { for (String msg : BbsScanner.pack(head, BbsScanner.latest(u, f, 4, want))) send(from, msg); });
                 return null;
             }
             case "INC", "INCIDENTS", "INCIDENT" -> {
                 if (store.scannerUrl.isBlank()) return "No scanner on this board.";
-                final String u = store.scannerUrl; int h = 6;
-                try { if (!arg.isBlank()) h = Math.max(1, Math.min(48, Integer.parseInt(arg.trim().replaceAll("\\D", "")))); } catch (NumberFormatException ignored) { }
-                final int hours = h;
-                bg.submit(() -> { for (String msg : BbsScanner.pack("Incidents (" + hours + " h): ", BbsScanner.incidents(u, hours, 6))) send(from, msg); });
+                final String u = store.scannerUrl; int h = 6; String w = "";
+                for (String a : arg.trim().split("\\s+")) {   // INC, INC 12, INC ALX, INC ALX 12
+                    if (a.isEmpty()) continue;
+                    if (a.matches("\\d+")) h = Math.max(1, Math.min(48, Integer.parseInt(a))); else w = a;
+                }
+                final int hours = h; final String want = w;
+                bg.submit(() -> { for (String msg : BbsScanner.pack("Incidents" + (want.isEmpty() ? "" : " " + want.toUpperCase()) + " (" + hours + " h): ", BbsScanner.incidents(u, hours, 6, want))) send(from, msg); });
                 return null;
             }
             case "I", "INFO" -> {

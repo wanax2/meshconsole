@@ -17,8 +17,27 @@ final class BbsScanner {
 
     private static String base(String url) { return url.trim().replaceAll("/+$", ""); }
 
+    /** Short label for a system: ARL, ALX, DC, CAY … (shown on each line so people know where a call is from). */
+    static String code(String sysLabel) {
+        String l = sysLabel.toLowerCase();
+        if (l.startsWith("alex")) return "ALX";
+        if (l.startsWith("arl")) return "ARL";
+        if (l.contains("district of columbia") || l.startsWith("dc") || l.startsWith("washington")) return "DC";
+        String c = sysLabel.replaceAll("[^A-Za-z]", "").toUpperCase();
+        return c.length() > 3 ? c.substring(0, 3) : c;
+    }
+
+    /** Does a system match the area asked for ("ALX", "Alexandria", "ARL", "DC" …)? Blank = everything. */
+    static boolean area(String sysLabel, String want) {
+        if (want == null || want.isBlank()) return true;
+        String w = want.trim().toLowerCase();
+        return code(sysLabel).equalsIgnoreCase(w) || sysLabel.toLowerCase().startsWith(w);
+    }
+
     /** The newest transcribed calls in the last hour, optionally only groups/talkgroups matching a filter. */
-    static List<String> latest(String url, String filter, int n) {
+    static List<String> latest(String url, String filter, int n) { return latest(url, filter, n, null); }
+
+    static List<String> latest(String url, String filter, int n, String want) {
         List<String> out = new ArrayList<>();
         try {
             long from = System.currentTimeMillis() - 3600_000L;
@@ -30,8 +49,10 @@ final class BbsScanner {
                 String text = Json.str(c.get("text")).trim(), tg = Json.str(c.get("tgLabel")), group = Json.str(c.get("group"));
                 if (text.isEmpty()) continue;
                 if (re != null && !(tg + " " + group).matches(re)) continue;
+                String sys = Json.str(c.get("sysLabel"));
+                if (!area(sys, want)) continue;
                 long t = (long) Double.parseDouble(Json.str(c.get("start")));
-                out.add(HM.format(Instant.ofEpochMilli(t)) + " " + shortTg(tg) + ": " + clip(text, 110));
+                out.add(code(sys) + " " + HM.format(Instant.ofEpochMilli(t)) + " " + shortTg(tg) + ": " + clip(text, 105));
             }
         } catch (Exception e) { out.add("Scanner not reachable right now."); }
         if (out.isEmpty()) out.add("Nothing transcribed in the last hour" + (filter == null ? "." : " for that."));
@@ -39,7 +60,9 @@ final class BbsScanner {
     }
 
     /** Recent incidents (places named in transcripts), newest first. */
-    static List<String> incidents(String url, int hours, int n) {
+    static List<String> incidents(String url, int hours, int n) { return incidents(url, hours, n, null); }
+
+    static List<String> incidents(String url, int hours, int n, String want) {
         List<String> out = new ArrayList<>();
         try {
             Object root = Json.parse(BbsExtras.get(base(url) + "/api/incidents?hours=" + hours));
@@ -47,9 +70,10 @@ final class BbsScanner {
             for (Object o : list) {
                 if (out.size() >= n) break;
                 Map<?, ?> i = (Map<?, ?>) o;
+                if (!area(Json.str(i.get("sysLabel")), want)) continue;
                 long t = (long) Double.parseDouble(Json.str(i.get("last")));
                 int calls = i.get("calls") instanceof List<?> cl ? cl.size() : 1;
-                out.add(HM.format(Instant.ofEpochMilli(t)) + " " + Json.str(i.get("type")).toUpperCase() + " " + Json.str(i.get("place")) + " (" + calls + ")");
+                out.add(code(Json.str(i.get("sysLabel"))) + " " + HM.format(Instant.ofEpochMilli(t)) + " " + Json.str(i.get("type")).toUpperCase() + " " + Json.str(i.get("place")) + " (" + calls + ")");
             }
         } catch (Exception e) { return List.of("Scanner not reachable right now."); }
         if (out.isEmpty()) out.add("No incidents in the last " + hours + " h.");
@@ -70,7 +94,7 @@ final class BbsScanner {
                 String first = "";
                 if (i.get("notes") instanceof List<?> notes && !notes.isEmpty()) first = Json.str(((Map<?, ?>) notes.get(0)).get("text"));
                 long t = (long) Double.parseDouble(Json.str(i.get("first")));
-                out.add("Scanner " + HM.format(Instant.ofEpochMilli(t)) + ": " + type.toUpperCase() + " at " + Json.str(i.get("place")) + (first.isEmpty() ? "" : " - " + clip(first, 90)));
+                out.add("Scanner " + code(Json.str(i.get("sysLabel"))) + " " + HM.format(Instant.ofEpochMilli(t)) + ": " + type.toUpperCase() + " at " + Json.str(i.get("place")) + (first.isEmpty() ? "" : " - " + clip(first, 90)));
             }
         } catch (Exception ignored) { }
         return out;

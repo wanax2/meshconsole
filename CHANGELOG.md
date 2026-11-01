@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.1 — 2026-11-01
+
+- BBS scanner replies say where each call is from (ARL, ALX, DC, CAY …), and take an area: `SCAN ALX`,
+  `FIRE ARL`, `INC ALX 12`. Ready for more systems (e.g. DC) as they're added to the ScannerDeck.
+
+
 ## 1.17.0 — 2026-11-01
 
 - BBS scanner commands, from a ScannerDeck page (BBS tab → Scanner: e.g. `http://scanner.local:3100`):
