@@ -123,6 +123,21 @@ class NodesPanel extends JPanel {
             try { state.resetNodeDb(); refreshDbInfo(); } catch (IOException ex) { error(ex); }
         });
         dbBar.add(save); dbBar.add(reset);
+        // search: name, short name, node ID (with or without "!"), hardware or role – any column
+        JTextField find = new JTextField(18);
+        find.setToolTipText("Type part of a name, a node ID such as !33357952 or 33357952, hardware or role");
+        find.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            void apply() {
+                String q = find.getText().trim();
+                if (q.startsWith("!")) q = q.substring(1);
+                if (q.isEmpty()) { sorter.setRowFilter(null); return; }
+                sorter.setRowFilter(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(q)));
+            }
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { apply(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { apply(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { apply(); }
+        });
+        dbBar.add(new JLabel("   Find:")); dbBar.add(find);
         add(dbBar, BorderLayout.NORTH);
 
         JPanel south = new JPanel(new BorderLayout(4, 4));

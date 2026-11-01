@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.16.4 — 2026-10-31
+
+- Nodes tab: **Find** box – type part of a name, a node ID (with or without "!", e.g. 33357952), hardware or role, and the list narrows as you type.
+
+
 ## 1.16.3 — 2026-10-31
 
 - BBS adverts: "Advertise daily at" takes several times, e.g. `08:00, 17:30` – each time sends the next advert in the rotation (or shuffle). After a restart, missed times send a single advert rather than a burst.
