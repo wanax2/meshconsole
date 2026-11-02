@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.19.2 — 2026-11-02
+
+- Web console: the password box now goes away once the password is accepted (its own styling kept it on screen).
+
+
 ## 1.19.1 — 2026-11-01
 
 - Web console → Status: **Check for update now** (runs Mesh Console's updater from the browser, using the source set

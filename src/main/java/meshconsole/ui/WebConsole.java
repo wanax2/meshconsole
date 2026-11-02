@@ -277,6 +277,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
 .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; }
 .grid div b { display:block; font-size:20px; }
 #login { position:fixed; inset:0; background:rgba(0,0,0,.75); display:flex; align-items:center; justify-content:center; }
+#login[hidden] { display:none; }
 #login .card { width:min(360px, 92vw); }
 .mini { padding:2px 8px; font-size:12px; }
 </style>
