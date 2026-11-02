@@ -32,6 +32,7 @@ public final class WebConsole {
     private WebConsole() { }
     private static volatile int port = -1;
     private static volatile String updateResult = "";
+    private static final Map<String, Long> exportTokens = new java.util.concurrent.ConcurrentHashMap<>();   // one-use download links
     public static int port() { return port; }
 
     public static void start(MeshClient client, Supplier<BbsEngine> bbs, Path dataDir, java.util.function.Consumer<String> log) {
@@ -45,6 +46,12 @@ public final class WebConsole {
                 HttpServer s = HttpServer.create(new InetSocketAddress(p), 0);
                 s.createContext("/", ex -> send(ex, 200, "text/html; charset=utf-8", PAGE));
                 s.createContext("/api/", ex -> {
+                    if (ex.getRequestURI().getPath().equals("/api/export")) {   // a plain browser download: one-use token instead of the password header
+                        String q = Optional.ofNullable(ex.getRequestURI().getQuery()).orElse("");
+                        String tok = q.startsWith("token=") ? q.substring(6) : "";
+                        Long exp = exportTokens.remove(tok);
+                        if (exp != null && exp > System.currentTimeMillis()) { try { exportZip(ex, dataDir); } catch (Exception e) { ex.close(); } return; }
+                    }
                     if (!authorised(ex, password)) { send(ex, 401, "application/json", "{\"error\":\"password\"}"); return; }
                     String path = ex.getRequestURI().getPath();
                     try {
@@ -55,6 +62,11 @@ public final class WebConsole {
                             case "/api/bbs" -> send(ex, 200, "application/json", bbsJson(state, bbs.get()));
                             case "/api/send" -> sendText(ex, client);
                             case "/api/export" -> exportZip(ex, dataDir);
+                            case "/api/export-token" -> {
+                                String tok = Long.toHexString(new SecureRandom().nextLong()) + Long.toHexString(System.nanoTime());
+                                exportTokens.put(tok, System.currentTimeMillis() + 60_000L);
+                                send(ex, 200, "application/json", "{\"token\":" + q(tok) + "}");
+                            }
                             case "/api/signal" -> send(ex, 200, "application/json", signal(state, dataDir, ex.getRequestURI().getRawQuery()));
                             case "/api/update-check" -> {
                                 if (meshconsole.tools.AppUpdater.source().isBlank()) { send(ex, 200, "application/json", "{\"result\":\"No update source set – Help → Updates… in the window first.\"}"); break; }
@@ -455,17 +467,13 @@ $("sendBtn").onclick = async () => {
 $("text").onkeydown = e => { if (e.key === "Enter") $("sendBtn").click(); };
 $("statusBox").addEventListener("click", async e => {
   if (e.target.id === "expBtn") {
-    e.target.disabled = true; $("expNote").textContent = "preparing…";
     try {
-      const r = await fetch("api/export", { headers: { "X-Pass": pass } });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const name = (r.headers.get("Content-Disposition") || "").split("filename=")[1]?.replaceAll('"', "") || "meshconsole-export.zip";
-      const blob = await r.blob(), a = document.createElement("a");
-      a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      $("expNote").textContent = "downloaded " + name + " (" + (blob.size / 1048576).toFixed(1) + " MB)";
+      const t = await api("api/export-token", {});
+      const a = document.createElement("a"); a.href = "api/export?token=" + encodeURIComponent(t.token); a.download = "";
+      document.body.appendChild(a); a.click(); a.remove();
+      $("expNote").textContent = "download started – your browser shows its progress (the file can be tens of MB)";
     } catch (err) { $("expNote").textContent = "failed: " + err.message; }
-    e.target.disabled = false; return;
+    return;
   }
   if (e.target.id !== "updBtn") return;
   e.target.disabled = true;

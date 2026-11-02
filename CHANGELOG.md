@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.20.2 — 2026-11-02
+
+- Web console → Download logs: now a normal browser download (with the browser's own progress and save prompt) via a
+  one-use link, instead of being assembled inside the page first – which could look stuck on large data folders.
+
+
 ## 1.20.1 — 2026-11-02
 
 - Updating from the web console (or Help → Updates) no longer leaves the window closed on Linux: the restarted copy is
