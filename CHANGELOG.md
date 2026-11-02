@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.20.1 — 2026-11-02
+
+- Updating from the web console (or Help → Updates) no longer leaves the window closed on Linux: the restarted copy is
+  fully detached (survives the old process and any SSH session it came from), gets the desktop session settings it
+  needs, is started the same way as the autostart entries (so watchdogs recognise it), and writes what happened to
+  restart.log in the data folder.
+
+
 ## 1.20.0 — 2026-11-02
 
 - Web console → **Signal** tab: received-signal charts over 6 h to 14 days – median RSSI and SNR with packet counts

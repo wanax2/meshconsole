@@ -180,14 +180,26 @@ public final class AppUpdater {
         try { beforeExit.run(); } catch (Exception ignored) { }
         if (System.getenv("INVOCATION_ID") != null) { log.accept("Exiting; systemd will restart the service."); System.exit(0); }   // under systemd (Restart=always)
         try {
-            String java = ProcessHandle.current().info().command().orElse("java");
-            Path jar = installDir().resolve("meshconsole.jar");
-            String sep = File.pathSeparator, dir = installDir().toString();
-            List<String> cmd = new ArrayList<>(List.of("sh", "-c", "sleep 4; exec \"$@\"", "sh", java));
-            cmd.addAll(jvmOptions());
-            cmd.addAll(List.of("-cp", dir + "/meshconsole.jar" + sep + dir + "/protobuf-java.jar" + sep + dir + "/jSerialComm.jar", "meshconsole.Main"));
-            cmd.addAll(Arrays.asList(args));
-            new ProcessBuilder(cmd).inheritIO().start();
+            String javaBin = ProcessHandle.current().info().command().orElse("java");
+            String jar = installDir().resolve("meshconsole.jar").toString();
+            // Same form as the autostart entries ("java … -jar …/meshconsole.jar <data folder>"), so watchdogs that look
+            // for that recognise the restarted window. Fully detached (setsid, own log), so it survives this process
+            // exiting and any SSH session it was started from closing.
+            List<String> inner = new ArrayList<>();
+            inner.add(javaBin); inner.addAll(jvmOptions()); inner.add("-jar"); inner.add(jar); inner.addAll(Arrays.asList(args));
+            StringBuilder line = new StringBuilder("sleep 5; exec");
+            for (String a : inner) line.append(" '").append(a.replace("'", "'\\''")).append('\'');
+            ProcessBuilder pb = new ProcessBuilder(List.of("setsid", "sh", "-c", line.toString()));
+            Path rl = meshconsole.DataDir.file("restart.log");
+            pb.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.appendTo(rl.toFile()));
+            pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+            Map<String, String> env = pb.environment();   // the desktop session a window needs, in case it wasn't inherited
+            env.putIfAbsent("DISPLAY", ":0");
+            String uid = String.valueOf(new com.sun.security.auth.module.UnixSystem().getUid());
+            env.putIfAbsent("XDG_RUNTIME_DIR", "/run/user/" + uid);
+            if (!env.containsKey("WAYLAND_DISPLAY") && Files.exists(Path.of("/run/user/" + uid + "/wayland-0"))) env.put("WAYLAND_DISPLAY", "wayland-0");
+            Files.writeString(rl, LocalDateTime.now() + " restarting: " + line + "\n", java.nio.charset.StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            pb.start();
         } catch (Exception e) { log.accept("Restart failed (" + e.getMessage() + ") – start Mesh Console again by hand."); }
         System.exit(0);
     }
