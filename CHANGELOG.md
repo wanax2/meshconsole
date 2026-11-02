@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.20.0 — 2026-11-02
+
+- Web console → **Signal** tab: received-signal charts over 6 h to 14 days – median RSSI and SNR with packet counts
+  per time slot, or every packet from one chosen node (the 60 most-heard are listed) – plus channel utilisation and
+  this radio's air-time.
+- Web console → Status: **Download logs (zip)** – the whole data folder (like the app's export, without the web
+  password) straight to the device you're browsing from.
+
+
 ## 1.19.2 — 2026-11-02
 
 - Web console: the password box now goes away once the password is accepted (its own styling kept it on screen).

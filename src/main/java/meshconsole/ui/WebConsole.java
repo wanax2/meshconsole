@@ -54,6 +54,8 @@ public final class WebConsole {
                             case "/api/status" -> send(ex, 200, "application/json", status(client, bbs.get()));
                             case "/api/bbs" -> send(ex, 200, "application/json", bbsJson(state, bbs.get()));
                             case "/api/send" -> sendText(ex, client);
+                            case "/api/export" -> exportZip(ex, dataDir);
+                            case "/api/signal" -> send(ex, 200, "application/json", signal(state, dataDir, ex.getRequestURI().getRawQuery()));
                             case "/api/update-check" -> {
                                 if (meshconsole.tools.AppUpdater.source().isBlank()) { send(ex, 200, "application/json", "{\"result\":\"No update source set – Help → Updates… in the window first.\"}"); break; }
                                 updateResult = "checking…";
@@ -205,6 +207,95 @@ public final class WebConsole {
         send(ex, 200, "application/json", "{\"ok\":true}");
     }
 
+    /** The data folder as one zip (like Mesh Console's own export), minus the web password. */
+    private static void exportZip(HttpExchange ex, Path dir) throws IOException {
+        String name = "meshconsole-" + dir.getFileName() + "-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".zip";
+        ex.getResponseHeaders().set("Content-Type", "application/zip");
+        ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + name + "\"");
+        ex.sendResponseHeaders(200, 0);
+        try (java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(ex.getResponseBody());
+             var files = Files.walk(dir)) {
+            for (Path f : (Iterable<Path>) files::iterator) {
+                if (!Files.isRegularFile(f)) continue;
+                String rel = dir.relativize(f).toString().replace('\\', '/');
+                if (rel.equals("web-password.txt") || rel.endsWith(".lock") || rel.contains("@eaDir")) continue;
+                z.putNextEntry(new java.util.zip.ZipEntry(rel));
+                try { Files.copy(f, z); } catch (IOException ignored) { }
+                z.closeEntry();
+            }
+            z.putNextEntry(new java.util.zip.ZipEntry("export_info.txt"));
+            z.write(("Mesh Console " + meshconsole.Version.VERSION + "\nexported " + java.time.ZonedDateTime.now() + " (web console)\nfrom " + dir + "\n").getBytes(StandardCharsets.UTF_8));
+            z.closeEntry();
+        }
+    }
+
+    /** Received-signal history (median RSSI/SNR and packet counts per time slot), channel use, and one node's packets. */
+    static String signal(MeshState st, Path dir, String rawQuery) throws IOException {
+        Map<String, String> p = new HashMap<>();
+        for (String kv : Optional.ofNullable(rawQuery).orElse("").split("&")) { int i = kv.indexOf('='); if (i > 0) p.put(kv.substring(0, i), URLDecoder.decode(kv.substring(i + 1), StandardCharsets.UTF_8)); }
+        int hours = Math.max(1, Math.min(24 * 14, Integer.parseInt(p.getOrDefault("hours", "24"))));
+        long now = System.currentTimeMillis(), from = now - hours * 3600_000L;
+        long slot = hours <= 6 ? 300_000L : hours <= 48 ? 900_000L : 3600_000L;
+        long my = Integer.toUnsignedLong(st.myNodeNum());
+        String want = p.getOrDefault("node", "");
+        long wantNum = want.isEmpty() ? -1 : Integer.toUnsignedLong(nodeNum(want));
+        TreeMap<Long, List<double[]>> buckets = new TreeMap<>();
+        Map<Long, Integer> counts = new HashMap<>();
+        List<String> points = new ArrayList<>();
+        Path sh = dir.resolve("signal_history.csv");
+        if (Files.exists(sh)) try (var lines = Files.lines(sh)) {
+            lines.forEach(l -> {
+                String[] c = l.trim().split(",");
+                if (c.length < 5) return;
+                try {
+                    long t = Long.parseLong(c[0]);
+                    if (t < from) return;
+                    if (c.length >= 7 && !c[6].isEmpty() && my != 0 && Long.parseLong(c[6]) != my) return;   // only what this radio heard
+                    long n = Long.parseLong(c[1]); double rssi = Double.parseDouble(c[2]), snr = Double.parseDouble(c[3]);
+                    buckets.computeIfAbsent(t / slot * slot, k -> new ArrayList<>()).add(new double[]{rssi, snr});
+                    counts.merge(n, 1, Integer::sum);
+                    if (n == wantNum) points.add("[" + t + "," + (int) rssi + "," + snr + "]");
+                } catch (NumberFormatException ignored) { }
+            });
+        }
+        StringBuilder sb = new StringBuilder("{\"slotMin\":").append(slot / 60000).append(",\"buckets\":[");
+        boolean first = true;
+        for (var e : buckets.entrySet()) {
+            List<double[]> v = e.getValue();
+            double[] r = v.stream().mapToDouble(x -> x[0]).sorted().toArray(), sn = v.stream().mapToDouble(x -> x[1]).sorted().toArray();
+            if (!first) sb.append(',');
+            first = false;
+            sb.append('[').append(e.getKey()).append(',').append(v.size()).append(',').append(r[r.length / 2]).append(',').append(sn[sn.length / 2]).append(']');
+        }
+        sb.append("],\"util\":[");
+        List<String> util = new ArrayList<>();
+        Path uh = dir.resolve("util_history.csv");
+        if (Files.exists(uh)) try (var lines = Files.lines(uh)) {
+            for (String l : (Iterable<String>) lines::iterator) {
+                String[] c = l.split(",");
+                if (c.length < 4 || !c[0].equals("U")) continue;
+                try {
+                    long t = Long.parseLong(c[1]);
+                    if (t < from) continue;
+                    util.add("[" + t + "," + String.format(Locale.ROOT, "%.2f", Double.parseDouble(c[2])) + "," + String.format(Locale.ROOT, "%.3f", Double.parseDouble(c[3])) + "]");
+                } catch (NumberFormatException ignored) { }
+            }
+        }
+        int step = Math.max(1, util.size() / 1500);   // keep the chart light: at most ~1500 points
+        first = true;
+        for (int i = 0; i < util.size(); i += step) { if (!first) sb.append(','); first = false; sb.append(util.get(i)); }
+        sb.append("],\"nodes\":[");
+        first = true;
+        List<Map.Entry<Long, Integer>> top = new ArrayList<>(counts.entrySet());
+        top.sort((a, b) -> b.getValue() - a.getValue());
+        for (var e : top.subList(0, Math.min(60, top.size()))) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"id\":").append(q(String.format("!%08x", e.getKey()))).append(",\"name\":").append(q(st.nodeName((int) (long) e.getKey()))).append(",\"count\":").append(e.getValue()).append('}');
+        }
+        return sb.append("],\"points\":[").append(String.join(",", points)).append("]}").toString();
+    }
+
     static int nodeNum(String id) {
         String h = id.trim().replaceFirst("^!", "");
         return (int) Long.parseLong(h, 16);
@@ -285,7 +376,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
 <body>
 <header><span id="conn"></span><h1 id="title">Mesh Console</h1><span id="sub" class="dim"></span>
   <span style="flex:1"></span>
-  <span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="bbs">BBS</button><button data-tab="status">Status</button></span>
+  <span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="status">Status</button></span>
 </header>
 <main>
   <div class="pane" id="pane-messages">
@@ -297,6 +388,13 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
   <div class="pane" id="pane-nodes" hidden>
     <input type="search" id="nfind" placeholder="Find node by name or ID" style="width:min(360px,100%);margin-bottom:8px">
     <table><thead><tr><th>Node</th><th>Heard</th><th>Hops</th><th>Signal</th><th>Battery</th><th></th></tr></thead><tbody id="nlist"></tbody></table>
+  </div>
+  <div class="pane" id="pane-signal" hidden>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><span class="dim">Last</span>
+      <select id="sigHours"><option value="6">6 hours</option><option value="24" selected>24 hours</option><option value="72">3 days</option><option value="168">7 days</option><option value="336">14 days</option></select>
+      <span class="dim">Node</span><select id="sigNode"><option value="">all nodes (medians)</option></select><span id="sigNote" class="dim"></span></div>
+    <div class="card"><b>Received signal</b> <span class="dim">median RSSI (dBm) and SNR (dB), packets per slot</span><div style="height:300px"><canvas id="sigChart"></canvas></div></div>
+    <div class="card"><b>Channel use</b> <span class="dim">channel utilisation and this radio's air-time, %</span><div style="height:220px"><canvas id="utilChart"></canvas></div></div>
   </div>
   <div class="pane" id="pane-bbs" hidden><div class="card"><b>Posts</b><table><tbody id="posts"></tbody></table></div><div class="card"><b>Mail</b><table><tbody id="mail"></tbody></table></div></div>
   <div class="pane" id="pane-status" hidden><div id="statusBox"></div></div>
@@ -356,6 +454,19 @@ $("sendBtn").onclick = async () => {
 };
 $("text").onkeydown = e => { if (e.key === "Enter") $("sendBtn").click(); };
 $("statusBox").addEventListener("click", async e => {
+  if (e.target.id === "expBtn") {
+    e.target.disabled = true; $("expNote").textContent = "preparing…";
+    try {
+      const r = await fetch("api/export", { headers: { "X-Pass": pass } });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const name = (r.headers.get("Content-Disposition") || "").split("filename=")[1]?.replaceAll('"', "") || "meshconsole-export.zip";
+      const blob = await r.blob(), a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      $("expNote").textContent = "downloaded " + name + " (" + (blob.size / 1048576).toFixed(1) + " MB)";
+    } catch (err) { $("expNote").textContent = "failed: " + err.message; }
+    e.target.disabled = false; return;
+  }
   if (e.target.id !== "updBtn") return;
   e.target.disabled = true;
   try { const r = await api("api/update-check", {}); $("updNote").textContent = r.result || r.error || ""; } catch (err) { $("updNote").textContent = err.message; }
@@ -398,6 +509,46 @@ $("nlist").onclick = async e => {
   if (t) { await api("api/traceroute", { to: t.dataset.tr }); t.textContent = "sent – see the radio's log"; }
 };
 
+// ---------------- signal charts
+let sigChart = null, utilChart = null;
+function loadChart(cb) {
+  if (window.Chart) { cb(); return; }
+  const js = document.createElement("script"); js.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"; js.onload = cb;
+  js.onerror = () => { $("sigNote").textContent = "the charts need an internet connection (Chart.js)"; }; document.head.appendChild(js);
+}
+async function renderSignal() {
+  $("sigNote").textContent = "loading…";
+  const node = $("sigNode").value, d = await api("api/signal?hours=" + $("sigHours").value + (node ? "&node=" + encodeURIComponent(node) : ""));
+  const keep = $("sigNode").value;
+  $("sigNode").innerHTML = '<option value="">all nodes (medians)</option>' + d.nodes.map(n => `<option value="${esc(n.id)}">${esc(n.name)} (${n.count})</option>`).join("");
+  $("sigNode").value = keep;
+  const opts = (y1, y2) => ({ responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
+    scales: { x: { type: "linear", ticks: { color: "#8b949e", callback: v => new Date(v).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) }, grid: { color: "#2c333b" } },
+      y: { title: { display: true, text: y1, color: "#8b949e" }, ticks: { color: "#8b949e" }, grid: { color: "#2c333b" } },
+      ...(y2 ? { y2: { position: "right", title: { display: true, text: y2, color: "#8b949e" }, ticks: { color: "#8b949e" }, grid: { display: false } } } : {}) },
+    plugins: { legend: { labels: { color: "#e6e9ec" } }, tooltip: { callbacks: { title: it => new Date(it[0].parsed.x).toLocaleString() } } } });
+  let sets;
+  if (node) {
+    sets = [{ label: "RSSI (dBm)", data: d.points.map(p => ({ x: p[0], y: p[1] })), borderColor: "#58a6ff", backgroundColor: "#58a6ff", showLine: false, pointRadius: 3, yAxisID: "y" },
+            { label: "SNR (dB)", data: d.points.map(p => ({ x: p[0], y: p[2] })), borderColor: "#f0883e", backgroundColor: "#f0883e", showLine: false, pointRadius: 3, yAxisID: "y2" }];
+    $("sigNote").textContent = d.points.length + " packets from this node";
+  } else {
+    sets = [{ label: "median RSSI (dBm)", data: d.buckets.map(b => ({ x: b[0], y: b[2] })), borderColor: "#58a6ff", pointRadius: 0, borderWidth: 1.5, yAxisID: "y" },
+            { label: "median SNR (dB)", data: d.buckets.map(b => ({ x: b[0], y: b[3] })), borderColor: "#f0883e", pointRadius: 0, borderWidth: 1.5, yAxisID: "y2" },
+            { label: "packets per " + d.slotMin + " min", type: "bar", data: d.buckets.map(b => ({ x: b[0], y: b[1] })), backgroundColor: "rgba(63,185,80,.35)", yAxisID: "y3", barThickness: 3 }];
+    $("sigNote").textContent = d.buckets.reduce((a, b) => a + b[1], 0) + " packets";
+  }
+  const o = opts("RSSI dBm", "SNR dB");
+  if (!node) o.scales.y3 = { display: false, position: "right", beginAtZero: true };
+  if (sigChart) sigChart.destroy();
+  sigChart = new Chart($("sigChart"), { type: "line", data: { datasets: sets }, options: o });
+  if (utilChart) utilChart.destroy();
+  utilChart = new Chart($("utilChart"), { type: "line", data: { datasets: [
+      { label: "channel utilisation %", data: d.util.map(u => ({ x: u[0], y: u[1] })), borderColor: "#58a6ff", pointRadius: 0, borderWidth: 1.2 },
+      { label: "air-time TX %", data: d.util.map(u => ({ x: u[0], y: u[2] })), borderColor: "#f0883e", pointRadius: 0, borderWidth: 1.2 }] }, options: opts("%", null) });
+}
+$("sigHours").onchange = renderSignal; $("sigNode").onchange = renderSignal;
+
 // ---------------- BBS and status
 async function renderBbs() {
   const b = await api("api/bbs");
@@ -414,7 +565,9 @@ function renderStatus(s) {
     ${s.bbs ? `<div class="card">BBS<b>${s.bbs.enabled ? "ON" : "off"}</b><span class="dim">${s.bbs.posts} posts · ${s.bbs.mail} mail · ${s.bbs.callers} callers</span></div>` : ""}
    </div>
    <div class="card"><b>Mesh Console ${esc(s.version)}</b> <span class="dim">updates from ${esc(s.updateSource || "(no source set)")}${s.updateAuto ? " · daily at " + esc(s.updateTime) : " · automatic updates off"}</span>
-     <p><button id="updBtn">Check for update now</button> <span id="updNote" class="dim">${esc(s.updateResult || "")}</span></p></div>`;
+     <p><button id="updBtn">Check for update now</button> <span id="updNote" class="dim">${esc(s.updateResult || "")}</span></p></div>
+   <div class="card"><b>Logs</b> <span class="dim">everything in this radio's data folder (signal history, nodes, messages, BBS, antenna log …) as one zip</span>
+     <p><button id="expBtn">Download logs (zip)</button> <span id="expNote" class="dim"></span></p></div>`;
 }
 
 // ---------------- plumbing
@@ -422,7 +575,8 @@ let current = "messages";
 function show(t) {
   current = t;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  for (const p of ["messages", "map", "nodes", "bbs", "status"]) $("pane-" + p).hidden = p !== t;
+  for (const p of ["messages", "map", "nodes", "signal", "bbs", "status"]) $("pane-" + p).hidden = p !== t;
+  if (t === "signal") loadChart(renderSignal);
   if (t === "map") loadLeaflet(renderMap);
   if (t === "bbs") renderBbs();
   if (t === "nodes") renderNodes();
