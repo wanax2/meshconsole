@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.19.1 — 2026-11-01
+
+- Web console → Status: **Check for update now** (runs Mesh Console's updater from the browser, using the source set
+  in Help → Updates…; if a newer version is found it installs and the window restarts), plus the update source and
+  schedule at a glance.
+
+
 ## 1.19.0 — 2026-11-01
 
 - **Web console** (replaces the 1.18 web map, same address: `http://<computer>:3500`, 3501 for a second window):

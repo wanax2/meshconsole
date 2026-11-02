@@ -31,6 +31,7 @@ import java.util.function.Supplier;
 public final class WebConsole {
     private WebConsole() { }
     private static volatile int port = -1;
+    private static volatile String updateResult = "";
     public static int port() { return port; }
 
     public static void start(MeshClient client, Supplier<BbsEngine> bbs, Path dataDir, java.util.function.Consumer<String> log) {
@@ -53,6 +54,18 @@ public final class WebConsole {
                             case "/api/status" -> send(ex, 200, "application/json", status(client, bbs.get()));
                             case "/api/bbs" -> send(ex, 200, "application/json", bbsJson(state, bbs.get()));
                             case "/api/send" -> sendText(ex, client);
+                            case "/api/update-check" -> {
+                                if (meshconsole.tools.AppUpdater.source().isBlank()) { send(ex, 200, "application/json", "{\"result\":\"No update source set – Help → Updates… in the window first.\"}"); break; }
+                                updateResult = "checking…";
+                                Thread t = new Thread(() -> {
+                                    try {
+                                        String res = meshconsole.tools.AppUpdater.checkAndApply(state::emitLog, () -> { client.disconnect("update"); client.saveDbQuietly(); }, meshconsole.Main.ARGS, true);
+                                        updateResult = res; state.emitLog("[update] " + res);
+                                    } catch (Exception e) { updateResult = "update check failed: " + e.getMessage(); }
+                                }, "web-update");
+                                t.setDaemon(true); t.start();
+                                send(ex, 200, "application/json", "{\"result\":\"Checking – if there's a newer version it installs it and this window restarts in about 10 seconds.\"}");
+                            }
                             case "/api/traceroute" -> {
                                 Map<String, String> f = form(ex);
                                 client.traceroute(nodeNum(f.getOrDefault("to", "")));
@@ -135,6 +148,10 @@ public final class WebConsole {
         long day = nodes.stream().filter(n -> n.lastHeardMillis() > now - 86_400_000L).count();
         StringBuilder sb = new StringBuilder("{\"connected\":").append(client.isConnected())
             .append(",\"version\":").append(q(meshconsole.Version.VERSION))
+            .append(",\"updateSource\":").append(q(meshconsole.tools.AppUpdater.source()))
+            .append(",\"updateAuto\":").append(meshconsole.tools.AppUpdater.enabled())
+            .append(",\"updateTime\":").append(q(meshconsole.tools.AppUpdater.time()))
+            .append(",\"updateResult\":").append(q(updateResult))
             .append(",\"folder\":").append(q(meshconsole.DataDir.get().getFileName().toString()))
             .append(",\"name\":").append(q(me == null ? "" : me.displayName()))
             .append(",\"id\":").append(q(String.format("!%08x", st.myNodeNum())))
@@ -337,6 +354,12 @@ $("sendBtn").onclick = async () => {
   catch (e) { $("sendNote").textContent = e.message; }
 };
 $("text").onkeydown = e => { if (e.key === "Enter") $("sendBtn").click(); };
+$("statusBox").addEventListener("click", async e => {
+  if (e.target.id !== "updBtn") return;
+  e.target.disabled = true;
+  try { const r = await api("api/update-check", {}); $("updNote").textContent = r.result || r.error || ""; } catch (err) { $("updNote").textContent = err.message; }
+  setTimeout(() => { const b = $("updBtn"); if (b) b.disabled = false; }, 15000);
+});
 
 // ---------------- map and nodes
 function loadLeaflet(cb) {
@@ -388,7 +411,9 @@ function renderStatus(s) {
     <div class="card">Nodes heard<b>${s.heardHour}</b><span class="dim">last hour · ${s.heardDay} today · ${s.nodes} known</span></div>
     <div class="card">Radio uptime<b>${s.uptime >= 0 ? Math.floor(s.uptime / 3600) + " h " + Math.floor(s.uptime % 3600 / 60) + " m" : "?"}</b></div>
     ${s.bbs ? `<div class="card">BBS<b>${s.bbs.enabled ? "ON" : "off"}</b><span class="dim">${s.bbs.posts} posts · ${s.bbs.mail} mail · ${s.bbs.callers} callers</span></div>` : ""}
-   </div>`;
+   </div>
+   <div class="card"><b>Mesh Console ${esc(s.version)}</b> <span class="dim">updates from ${esc(s.updateSource || "(no source set)")}${s.updateAuto ? " · daily at " + esc(s.updateTime) : " · automatic updates off"}</span>
+     <p><button id="updBtn">Check for update now</button> <span id="updNote" class="dim">${esc(s.updateResult || "")}</span></p></div>`;
 }
 
 // ---------------- plumbing
