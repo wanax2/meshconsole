@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.21.0 — 2026-11-02
+
+- Web console → **Settings**: owner, role, LoRa (region, preset, hops, RX boost, OK to MQTT), fixed position, WiFi,
+  channels (name, key, uplink/downlink – and **copy channels from the other window** on the same computer), MQTT.
+- **Mesh alerts** (Settings tab, ntfy + e-mail): watched nodes not heard for N hours (and back again), new node heard
+  directly, first-time BBS callers (any check-in by a watched node), radio not connected for 10 minutes.
+- Read-only **peer feed** (/api/peer/summary, nodes, public messages) for the PiHealth dashboard's both-houses page and
+  daily digest – answers only this computer and the dashboard's Pi, without the password.
+- Desktop windows no longer stay blank grey on the Pi's desktop after an update restart (or via meshconsole.sh).
+
+
 ## 1.20.2 — 2026-11-02
 
 - Web console → Download logs: now a normal browser download (with the browser's own progress and save prompt) via a

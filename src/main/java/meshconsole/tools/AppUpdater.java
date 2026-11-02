@@ -195,6 +195,7 @@ public final class AppUpdater {
             pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
             Map<String, String> env = pb.environment();   // the desktop session a window needs, in case it wasn't inherited
             env.putIfAbsent("DISPLAY", ":0");
+            env.putIfAbsent("_JAVA_AWT_WM_NONREPARENTING", "1");   // otherwise Java windows can stay blank grey on the Pi's desktop
             String uid = String.valueOf(new com.sun.security.auth.module.UnixSystem().getUid());
             env.putIfAbsent("XDG_RUNTIME_DIR", "/run/user/" + uid);
             if (!env.containsKey("WAYLAND_DISPLAY") && Files.exists(Path.of("/run/user/" + uid + "/wayland-0"))) env.put("WAYLAND_DISPLAY", "wayland-0");

@@ -38,13 +38,27 @@ public final class WebConsole {
     public static void start(MeshClient client, Supplier<BbsEngine> bbs, Path dataDir, java.util.function.Consumer<String> log) {
         MeshState state = client.state();
         String password = password(dataDir, log);
+        MeshAlerts alerts = new MeshAlerts(client, bbs, dataDir);
         Path pf = dataDir.resolve("webmap-port.txt");
         int want = 3500;
         try { want = Integer.parseInt(Files.readString(pf).trim()); } catch (Exception ignored) { }
         for (int p = want; p < want + 10; p++) {
             try {
                 HttpServer s = HttpServer.create(new InetSocketAddress(p), 0);
+                final int myPort = p;
                 s.createContext("/", ex -> send(ex, 200, "text/html; charset=utf-8", PAGE));
+                s.createContext("/api/peer/", ex -> {   // read-only feed: this computer and the dashboard's Pi, no password
+                    String path = ex.getRequestURI().getPath();
+                    boolean keys = path.equals("/api/peer/channels");
+                    if (!WebSettings.peerAllowed(ex, keys)) { send(ex, 403, "application/json", "{\"error\":\"not from here\"}"); return; }
+                    switch (path) {
+                        case "/api/peer/summary" -> send(ex, 200, "application/json", WebSettings.summary(client, bbs.get(), alerts));
+                        case "/api/peer/nodes" -> send(ex, 200, "application/json", WebMap.json(state));
+                        case "/api/peer/messages" -> send(ex, 200, "application/json", WebSettings.publicMessages(state));
+                        case "/api/peer/channels" -> send(ex, 200, "application/json", WebSettings.channelsJson(state));
+                        default -> send(ex, 404, "application/json", "{}");
+                    }
+                });
                 s.createContext("/api/", ex -> {
                     if (ex.getRequestURI().getPath().equals("/api/export")) {   // a plain browser download: one-use token instead of the password header
                         String q = Optional.ofNullable(ex.getRequestURI().getQuery()).orElse("");
@@ -80,6 +94,14 @@ public final class WebConsole {
                                 t.setDaemon(true); t.start();
                                 send(ex, 200, "application/json", "{\"result\":\"Checking – if there's a newer version it installs it and this window restarts in about 10 seconds.\"}");
                             }
+                            case "/api/settings" -> send(ex, 200, "application/json",
+                                    "{\"radio\":" + WebSettings.json(client) + ",\"alerts\":" + alerts.json() + ",\"others\":" + WebSettings.otherWindows(myPort) + "}");
+                            case "/api/settings/save" -> {
+                                Map<String, String> f = form(ex);
+                                send(ex, 200, "application/json", "{\"result\":" + q(WebSettings.save(client, f.getOrDefault("what", ""), f, myPort)) + "}");
+                            }
+                            case "/api/settings/alerts" -> { alerts.save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"alert settings saved\"}"); }
+                            case "/api/settings/test-alert" -> { alerts.send("Mesh Console test", "If you see this, mesh alerts work.", "default"); send(ex, 200, "application/json", "{\"result\":\"test sent\"}"); }
                             case "/api/traceroute" -> {
                                 Map<String, String> f = form(ex);
                                 client.traceroute(nodeNum(f.getOrDefault("to", "")));
@@ -388,7 +410,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
 <body>
 <header><span id="conn"></span><h1 id="title">Mesh Console</h1><span id="sub" class="dim"></span>
   <span style="flex:1"></span>
-  <span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="status">Status</button></span>
+  <span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
 </header>
 <main>
   <div class="pane" id="pane-messages">
@@ -410,6 +432,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
   </div>
   <div class="pane" id="pane-bbs" hidden><div class="card"><b>Posts</b><table><tbody id="posts"></tbody></table></div><div class="card"><b>Mail</b><table><tbody id="mail"></tbody></table></div></div>
   <div class="pane" id="pane-status" hidden><div id="statusBox"></div></div>
+  <div class="pane" id="pane-settings" hidden><div id="setBox"><p class="dim">Loading…</p></div></div>
 </main>
 <div id="login" hidden><div class="card"><b>Mesh Console</b><p class="dim">Enter the web console password. It's in <code>web-password.txt</code> in this radio's data folder (and in Mesh Console's log at start-up).</p>
   <input type="password" id="pw" style="width:100%" placeholder="password"><p><button id="pwGo">Open</button> <span id="pwNote" class="dim"></span></p></div></div>
@@ -557,6 +580,58 @@ async function renderSignal() {
 }
 $("sigHours").onchange = renderSignal; $("sigNode").onchange = renderSignal;
 
+// ---------------- settings
+const opt = (list, cur) => list.map(v => `<option${v === cur ? " selected" : ""}>${esc(v)}</option>`).join("");
+const chk = (id, on, label) => `<label><input type="checkbox" id="${id}"${on ? " checked" : ""}> ${label}</label>`;
+async function loadSettings() {
+  const d = await api("api/settings"), r = d.radio, a = d.alerts, l = r.lora || {}, w = r.wifi || {}, m = r.mqtt || {};
+  const chRows = r.channels.map(c => `<tr data-idx="${c.index}"><td>${c.index}</td>
+    <td><select class="cRole">${opt(c.index === 0 ? ["PRIMARY"] : ["SECONDARY", "DISABLED"], c.role)}</select></td>
+    <td><input class="cName" value="${esc(c.name)}" size="10"></td><td><input class="cPsk" value="${esc(c.psk)}" size="46"></td>
+    <td><input type="checkbox" class="cUp"${c.up ? " checked" : ""}></td><td><input type="checkbox" class="cDown"${c.down ? " checked" : ""}></td>
+    <td><button class="mini cSave">Save</button></td></tr>`).join("");
+  $("setBox").innerHTML = `
+  <p class="dim">Changes go straight to the radio, like the desktop window. LoRa, role, WiFi and MQTT changes restart the radio (it reconnects by itself in about 30 s).</p>
+  <div class="card"><b>Owner</b><p><input id="sLong" value="${esc(r.long)}" size="28"> <input id="sShort" value="${esc(r.short)}" size="4" maxlength="4"> <button data-save="owner">Save</button></p>
+    <b>Role</b><p><select id="sRole">${opt(r.roles, r.role)}</select> <button data-save="role">Save</button></p></div>
+  <div class="card"><b>LoRa</b><p>Region <select id="sRegion">${opt(r.regions, l.region)}</select> Preset <select id="sPreset">${opt(r.presets, l.preset)}</select>
+    Hops <input id="sHops" type="number" min="1" max="7" value="${l.hops || 3}" style="width:4em"> ${chk("sRx", l.rxBoost, "RX boost")} ${chk("sOk", l.okToMqtt, "OK to MQTT")} <button data-save="lora">Save</button></p>
+    <p class="dim">Transmit power: ${l.txPower ?? "?"} – set it on the desktop window's Station G2 tab, which checks it against your antenna.</p></div>
+  <div class="card"><b>Fixed position</b><p><input id="sLat" value="${r.lat ?? ""}" size="10"> <input id="sLon" value="${r.lon ?? ""}" size="10"> altitude m <input id="sAlt" value="${r.alt ?? 0}" size="5"> <button data-save="position">Set</button> <span class="dim">${r.fixed ? "fixed position on" : "no fixed position"}</span></p></div>
+  <div class="card"><b>WiFi</b><p>${chk("sWifi", w.on, "on")} SSID <input id="sSsid" value="${esc(w.ssid || "")}" size="14"> password <input id="sPsk" type="password" placeholder="(unchanged)" size="14"> <button data-save="wifi">Save</button></p></div>
+  <div class="card"><b>Channels</b> ${d.others.length ? `<span class="dim">copy channels 1–7 from</span> <select id="sFrom">${d.others.map(o => `<option value="${o.port}">${esc(o.name)} (:${o.port})</option>`).join("")}</select> <button id="sCopy">Copy</button>` : ""}
+    <table><thead><tr><th>#</th><th>Role</th><th>Name</th><th>Key (Base64)</th><th>Up</th><th>Down</th><th></th></tr></thead><tbody id="chRows">${chRows}</tbody></table></div>
+  <div class="card"><b>MQTT</b><p>${chk("sMq", m.on, "enabled")} server <input id="sMqAddr" value="${esc(m.address || "mqtt.meshtastic.org")}" size="20"> user <input id="sMqUser" value="${esc(m.user || "meshdev")}" size="8">
+    password <input id="sMqPw" type="password" placeholder="(unchanged)" size="8"> root <input id="sMqRoot" value="${esc(m.root || "msh/US")}" size="8"></p>
+    <p>${chk("sMqEnc", m.encryption, "encryption")} ${chk("sMqJson", m.json, "JSON")} ${chk("sMqTls", m.tls, "TLS")} ${chk("sMqMap", m.map, "map reporting")} ${chk("sMqProxy", m.proxy, "proxy to client")} <button data-save="mqtt">Save</button></p></div>
+  <div class="card"><b>Mesh alerts</b> <span class="dim">to your phone with ntfy (and e-mail for the important ones)</span>
+    <p>ntfy topic <input id="aNtfy" value="${esc(a.ntfy)}" size="22"> e-mail <input id="aEmail" value="${esc(a.email)}" size="22"></p>
+    <p>Watch nodes <input id="aWatch" value="${esc(a.watch)}" size="60" placeholder="!a1b2c3d4=2, !12345678=12   (node=hours not heard)"></p>
+    <p>${chk("aDirect", a.newDirect, "new node heard directly")} ${chk("aCallers", a.newCallers, "first-time BBS callers (watched nodes: every check-in)")} ${chk("aRadio", a.radioDown, "radio not connected for 10 min")}
+      <button id="aSave">Save alerts</button> <button id="aTest">Send test</button></p></div>
+  <p id="setNote" class="dim"></p>`;
+}
+async function saveSetting(what, body) {
+  if (!confirm("Save " + what + " to the radio?")) return;
+  const r = await api("api/settings/save", { what, ...body }); $("setNote").textContent = r.result || r.error; alert(r.result || r.error);
+}
+$("setBox").addEventListener("click", async e => {
+  const t = e.target, b = t.dataset.save, v = id => $(id).value, c = id => $(id).checked;
+  if (b === "owner") saveSetting("owner", { long: v("sLong"), short: v("sShort") });
+  if (b === "role") saveSetting("role", { role: v("sRole") });
+  if (b === "lora") saveSetting("lora", { region: v("sRegion"), preset: v("sPreset"), hops: v("sHops"), rxBoost: c("sRx"), okToMqtt: c("sOk") });
+  if (b === "position") saveSetting("position", { lat: v("sLat"), lon: v("sLon"), alt: v("sAlt") });
+  if (b === "wifi") saveSetting("wifi", { on: c("sWifi"), ssid: v("sSsid"), psk: v("sPsk") });
+  if (b === "mqtt") saveSetting("mqtt", { on: c("sMq"), address: v("sMqAddr"), user: v("sMqUser"), password: v("sMqPw"), root: v("sMqRoot"), encryption: c("sMqEnc"), json: c("sMqJson"), tls: c("sMqTls"), map: c("sMqMap"), proxy: c("sMqProxy") });
+  if (t.classList.contains("cSave")) {
+    const tr = t.closest("tr");
+    saveSetting("channel " + tr.dataset.idx, { index: tr.dataset.idx, role: tr.querySelector(".cRole").value, name: tr.querySelector(".cName").value, psk: tr.querySelector(".cPsk").value, up: tr.querySelector(".cUp").checked, down: tr.querySelector(".cDown").checked });
+  }
+  if (t.id === "sCopy") { if (!confirm("Copy channels 1–7 (names, keys, uplink/downlink) from the other window to this radio?")) return; const r = await api("api/settings/save", { what: "copy-channels", from: v("sFrom") }); alert(r.result); loadSettings(); }
+  if (t.id === "aSave") { const r = await api("api/settings/alerts", { ntfy: v("aNtfy"), email: v("aEmail"), watch: v("aWatch"), newDirect: c("aDirect"), newCallers: c("aCallers"), radioDown: c("aRadio") }); $("setNote").textContent = r.result; }
+  if (t.id === "aTest") { const r = await api("api/settings/test-alert", {}); $("setNote").textContent = r.result; }
+});
+
 // ---------------- BBS and status
 async function renderBbs() {
   const b = await api("api/bbs");
@@ -583,7 +658,8 @@ let current = "messages";
 function show(t) {
   current = t;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  for (const p of ["messages", "map", "nodes", "signal", "bbs", "status"]) $("pane-" + p).hidden = p !== t;
+  for (const p of ["messages", "map", "nodes", "signal", "bbs", "status", "settings"]) $("pane-" + p).hidden = p !== t;
+  if (t === "settings") loadSettings();
   if (t === "signal") loadChart(renderSignal);
   if (t === "map") loadLeaflet(renderMap);
   if (t === "bbs") renderBbs();
