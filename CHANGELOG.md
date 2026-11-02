@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.19.0 — 2026-11-01
+
+- **Web console** (replaces the 1.18 web map, same address: `http://<computer>:3500`, 3501 for a second window):
+  Messages (all channels and DMs, send to a channel or DM anyone – click a sender's name), Map (nodes heard in the
+  last 24 h, lines to direct neighbours), Nodes (search, DM, traceroute), BBS (posts and mail), Status (radio, channel
+  use, nodes heard, uptime, BBS). Password-protected: the password is made up on first start, shown in the log and kept
+  in `web-password.txt` in the data folder (edit it to choose your own). Refreshes every 10 s; works on phones.
+
+
 ## 1.18.0 — 2026-11-01
 
 - **Web map**: each window serves a live, read-only map of every node it knows at `http://<computer>:3500`
