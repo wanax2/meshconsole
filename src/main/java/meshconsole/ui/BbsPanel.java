@@ -168,7 +168,10 @@ class BbsPanel extends JPanel {
         JScrollPane act = new JScrollPane(activity); act.setBorder(BorderFactory.createTitledBorder("Activity"));
         dash.setPreferredSize(new Dimension(600, 120));
         JPanel dashBox = new JPanel(new BorderLayout()); dashBox.setBorder(BorderFactory.createTitledBorder("Usage – calls per day (last 30), busiest hours, top commands")); dashBox.add(dash, BorderLayout.CENTER); dashBox.add(dashText, BorderLayout.SOUTH);
+        // minimum heights, so a short window can't squeeze the Usage box until its title and summary line overlap
+        act.setMinimumSize(new Dimension(100, 70)); dashBox.setMinimumSize(new Dimension(100, 110)); dash.setMinimumSize(new Dimension(100, 60));
         JSplitPane lower = new JSplitPane(JSplitPane.VERTICAL_SPLIT, act, dashBox); lower.setResizeWeight(0.6);
+        lower.setMinimumSize(new Dimension(100, 190));
         JSplitPane main = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tables, lower); main.setResizeWeight(0.55);
         add(main, BorderLayout.CENTER);
 

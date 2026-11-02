@@ -75,6 +75,7 @@ public class MainWindow extends JFrame {
         super(meshconsole.Version.NAME + " " + meshconsole.Version.VERSION + " – " + meshconsole.DataDir.get().getFileName());   // the data folder in the title tells two windows apart
         this.client = client;
         this.state = client.state();
+        WebMap.start(state, meshconsole.DataDir.get(), msg -> state.emitLog(msg));   // live map in any browser (port 3500, 3501 …)
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) { client.disconnect("window closing"); client.saveDbQuietly(); dispose(); System.exit(0); }

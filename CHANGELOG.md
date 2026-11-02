@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.18.0 — 2026-11-01
+
+- **Web map**: each window serves a live, read-only map of every node it knows at `http://<computer>:3500`
+  (a second window on the same computer gets 3501, and so on – remembered per data folder; the address is in the
+  log at start-up). Colours by how recently heard (green = heard directly, with optional lines to them), a
+  searchable list beside the map, filters for age and MQTT-only nodes, refreshes every 30 s. Works on phones too –
+  open it over Tailscale instead of screen-sharing the Pi.
+- BBS tab: the Usage box can no longer be squeezed until its title and summary line overlap.
+
+
 ## 1.17.1 — 2026-11-01
 
 - BBS scanner replies say where each call is from (ARL, ALX, DC, CAY …), and take an area: `SCAN ALX`,
