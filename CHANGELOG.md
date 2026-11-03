@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.22.0 — 2026-11-02
+
+- **Chat** (http://<computer>:3500/chat, also linked from the web console): a proper messaging page.
+  Conversations on the left – every channel and every DM, newest first, unread counts, previews, search, ✎ to start
+  a DM with any node heard. The thread: day separators, sender names in their own colours, **replies** (quoted, tap
+  to jump to the original), **emoji reactions** (shown under the message, who reacted on hover), delivery ticks
+  (⏳ queued, ✓ sent, ✓✓ acknowledged, ⚠ failed with **Retry**), hops and signal on every received message, your
+  name highlighted when mentioned, search within a chat. Composer with a live 200-byte counter, Enter to send
+  (Shift+Enter for a new line), emoji picker and editable quick replies. Node details on the right: hardware, role,
+  last heard, hops, signal, battery, position, a 7-day signal plot, Trace route (the answer appears there) and Copy ID.
+  **Live**: new messages, delivery receipts and traceroute answers arrive instantly (server-sent events), browser
+  notifications for DMs and mentions while the tab is in the background, unread count in the tab title.
+  Works on phones (list ↔ thread).
+- Web console messages carry reply / reaction / delivery details; the old Messages tab hides reactions.
+
+
 ## 1.21.0 — 2026-11-02
 
 - Web console → **Settings**: owner, role, LoRa (region, preset, hops, RX boost, OK to MQTT), fixed position, WiFi,

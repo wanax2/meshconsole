@@ -33,6 +33,7 @@ public final class WebConsole {
     private static volatile int port = -1;
     private static volatile String updateResult = "";
     private static final Map<String, Long> exportTokens = new java.util.concurrent.ConcurrentHashMap<>();   // one-use download links
+    private static final Map<String, Long> sessions = new java.util.concurrent.ConcurrentHashMap<>();       // live-update tokens (24 h)
     public static int port() { return port; }
 
     public static void start(MeshClient client, Supplier<BbsEngine> bbs, Path dataDir, java.util.function.Consumer<String> log) {
@@ -47,6 +48,7 @@ public final class WebConsole {
                 HttpServer s = HttpServer.create(new InetSocketAddress(p), 0);
                 final int myPort = p;
                 s.createContext("/", ex -> send(ex, 200, "text/html; charset=utf-8", PAGE));
+                s.createContext("/chat", ex -> send(ex, 200, "text/html; charset=utf-8", ChatPage.HTML));
                 s.createContext("/api/peer/", ex -> {   // read-only feed: this computer and the dashboard's Pi, no password
                     String path = ex.getRequestURI().getPath();
                     boolean keys = path.equals("/api/peer/channels");
@@ -94,6 +96,22 @@ public final class WebConsole {
                                 t.setDaemon(true); t.start();
                                 send(ex, 200, "application/json", "{\"result\":\"Checking – if there's a newer version it installs it and this window restarts in about 10 seconds.\"}");
                             }
+                            case "/api/session" -> {
+                                String tok = Long.toHexString(new SecureRandom().nextLong()) + Long.toHexString(new SecureRandom().nextLong());
+                                sessions.entrySet().removeIf(e -> e.getValue() < System.currentTimeMillis());
+                                sessions.put(tok, System.currentTimeMillis() + 24 * 3600_000L);
+                                send(ex, 200, "application/json", "{\"session\":" + q(tok) + "}");
+                            }
+                            case "/api/events" -> { liveEvents(ex, client); return; }
+                            case "/api/retry" -> {
+                                long id = Long.parseLong(form(ex).getOrDefault("id", "0"));
+                                ChatMessage old = null;
+                                for (ChatMessage m : state.messages()) if (m.outgoing && Integer.toUnsignedLong(m.packetId) == id) old = m;
+                                if (old == null) { send(ex, 404, "application/json", "{\"error\":\"message not found\"}"); break; }
+                                if (!client.isConnected()) { send(ex, 409, "application/json", "{\"error\":\"radio not connected\"}"); break; }
+                                client.sendText(old.text, old.to, old.channel, old.replyId, old.emoji);
+                                send(ex, 200, "application/json", "{\"ok\":true}");
+                            }
                             case "/api/settings" -> send(ex, 200, "application/json",
                                     "{\"radio\":" + WebSettings.json(client) + ",\"alerts\":" + alerts.json() + ",\"others\":" + WebSettings.otherWindows(myPort) + "}");
                             case "/api/settings/save" -> {
@@ -113,7 +131,7 @@ public final class WebConsole {
                         send(ex, 500, "application/json", "{\"error\":" + q(String.valueOf(e.getMessage())) + "}");
                     }
                 });
-                s.setExecutor(Executors.newFixedThreadPool(3, r -> { Thread t = new Thread(r, "webconsole"); t.setDaemon(true); return t; }));
+                s.setExecutor(Executors.newCachedThreadPool(r -> { Thread t = new Thread(r, "webconsole"); t.setDaemon(true); return t; }));
                 s.start();
                 port = p;
                 try { Files.writeString(pf, Integer.toString(p)); } catch (IOException ignored) { }
@@ -137,6 +155,9 @@ public final class WebConsole {
     }
 
     private static boolean authorised(HttpExchange ex, String password) {
+        String qs = Optional.ofNullable(ex.getRequestURI().getQuery()).orElse("");
+        java.util.regex.Matcher tm = java.util.regex.Pattern.compile("(?:^|&)session=([0-9a-f]+)").matcher(qs);
+        if (tm.find()) { Long exp = sessions.get(tm.group(1)); if (exp != null && exp > System.currentTimeMillis()) return true; }
         String given = Optional.ofNullable(ex.getRequestHeaders().getFirst("X-Pass")).orElse("");
         return MessageDigest.isEqual(given.getBytes(StandardCharsets.UTF_8), password.getBytes(StandardCharsets.UTF_8));
     }
@@ -159,20 +180,22 @@ public final class WebConsole {
         sb.append("],\"messages\":[");
         first = true;
         for (ChatMessage m : last) {
-            if (m.emoji) continue;
             if (!first) sb.append(',');
             first = false;
-            sb.append("{\"time\":").append(m.time)
-              .append(",\"from\":").append(q(String.format("!%08x", m.from))).append(",\"fromName\":").append(q(nameOf(st, m.from)))
-              .append(",\"to\":").append(q(m.isBroadcast() ? "^all" : String.format("!%08x", m.to))).append(",\"toName\":").append(q(m.isBroadcast() ? "" : nameOf(st, m.to)))
-              .append(",\"channel\":").append(m.channel)
-              .append(",\"text\":").append(q(m.text))
-              .append(",\"out\":").append(m.outgoing)
-              .append(",\"status\":").append(q(m.status == null ? "" : m.status.name()))
-              .append(",\"rssi\":").append(m.rssi).append(",\"snr\":").append(m.snr)
-              .append('}');
+            sb.append(msgJson(st, m));
         }
         return sb.append("]}").toString();
+    }
+
+    static String msgJson(MeshState st, ChatMessage m) {
+        NodeEntry fn = st.node(m.from);
+        return "{\"time\":" + m.time + ",\"id\":" + Integer.toUnsignedLong(m.packetId)
+            + ",\"from\":" + q(String.format("!%08x", m.from)) + ",\"fromName\":" + q(nameOf(st, m.from)) + ",\"fromShort\":" + q(fn == null ? "" : fn.shortName)
+            + ",\"to\":" + q(m.isBroadcast() ? "^all" : String.format("!%08x", m.to)) + ",\"toName\":" + q(m.isBroadcast() ? "" : nameOf(st, m.to))
+            + ",\"channel\":" + m.channel + ",\"text\":" + q(m.text) + ",\"out\":" + m.outgoing
+            + ",\"status\":" + q(m.status == null ? "" : m.status.name()) + ",\"detail\":" + q(m.statusDetail == null ? "" : m.statusDetail)
+            + ",\"rssi\":" + m.rssi + ",\"snr\":" + m.snr + ",\"hops\":" + m.hops + ",\"attempt\":" + m.attempt
+            + ",\"replyId\":" + Integer.toUnsignedLong(m.replyId) + ",\"emoji\":" + m.emoji + ",\"ackTime\":" + m.ackTime + "}";
     }
 
     static String status(MeshClient client, BbsEngine bbs) {
@@ -237,8 +260,10 @@ public final class WebConsole {
         String to = f.getOrDefault("to", "^all");
         int channel = Integer.parseInt(f.getOrDefault("channel", "0"));
         int dest = to.equals("^all") || to.isEmpty() ? ChatMessage.BROADCAST : nodeNum(to);
-        client.sendText(text, dest, channel);
-        send(ex, 200, "application/json", "{\"ok\":true}");
+        int replyTo = (int) Long.parseLong(f.getOrDefault("replyTo", "0"));
+        boolean emoji = Boolean.parseBoolean(f.getOrDefault("emoji", "false"));
+        ChatMessage m = client.sendText(text, dest, channel, replyTo, emoji);
+        send(ex, 200, "application/json", "{\"ok\":true,\"id\":" + (m == null ? 0 : Integer.toUnsignedLong(m.packetId)) + "}");
     }
 
     /** The data folder as one zip (like Mesh Console's own export), minus the web password. */
@@ -330,6 +355,40 @@ public final class WebConsole {
         return sb.append("],\"points\":[").append(String.join(",", points)).append("]}").toString();
     }
 
+    /** Server-sent events: new or updated messages, node-list changes (at most every 15 s), status, traceroute results. */
+    private static void liveEvents(HttpExchange ex, MeshClient client) throws IOException {
+        MeshState st = client.state();
+        ex.getResponseHeaders().set("Content-Type", "text/event-stream");
+        ex.getResponseHeaders().set("Cache-Control", "no-store");
+        ex.getResponseHeaders().set("X-Accel-Buffering", "no");
+        ex.sendResponseHeaders(200, 0);
+        OutputStream out = ex.getResponseBody();
+        java.util.concurrent.LinkedBlockingQueue<String> q = new java.util.concurrent.LinkedBlockingQueue<>(500);
+        long[] lastNodes = {0};
+        MeshState.Listener l = new MeshState.Listener() {
+            @Override public void onMessage(ChatMessage m, boolean isNew) { q.offer("event: message\ndata: " + msgJson(st, m) + "\n\n"); }
+            @Override public void onNodesChanged() {
+                long now = System.currentTimeMillis();
+                if (now - lastNodes[0] > 15_000) { lastNodes[0] = now; q.offer("event: nodes\ndata: {}\n\n"); }
+            }
+            @Override public void onStatusChanged() { q.offer("event: status\ndata: {}\n\n"); }
+            @Override public void onTracerouteResult(int node, String summary) {
+                q.offer("event: trace\ndata: {\"node\":" + WebConsole.q(String.format("!%08x", node)) + ",\"text\":" + WebConsole.q(summary) + "}\n\n");
+            }
+        };
+        st.addListener(l);
+        try {
+            out.write("retry: 3000\n\n".getBytes(StandardCharsets.UTF_8)); out.flush();
+            while (true) {
+                String e = q.poll(20, java.util.concurrent.TimeUnit.SECONDS);
+                out.write((e == null ? ": ping\n\n" : e).getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        } catch (Exception gone) {
+            // browser went away
+        } finally { st.removeListener(l); try { out.close(); } catch (IOException ignored) { } }
+    }
+
     static int nodeNum(String id) {
         String h = id.trim().replaceFirst("^!", "");
         return (int) Long.parseLong(h, 16);
@@ -410,7 +469,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
 <body>
 <header><span id="conn"></span><h1 id="title">Mesh Console</h1><span id="sub" class="dim"></span>
   <span style="flex:1"></span>
-  <span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
+  <a href="chat" style="color:#58a6ff;margin-right:8px;font-weight:600">💬 Chat</a><span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
 </header>
 <main>
   <div class="pane" id="pane-messages">
@@ -465,7 +524,7 @@ function fillSelectors() {
 function renderMessages() {
   if (!M) return;
   const v = $("view").value || "all";
-  const list = M.messages.filter(m => v === "all" || (v === "dm" ? m.to !== "^all" : (m.to === "^all" && "ch" + m.channel === v)));
+  const list = M.messages.filter(m => !m.emoji).filter(m => v === "all" || (v === "dm" ? m.to !== "^all" : (m.to === "^all" && "ch" + m.channel === v)));
   const box = $("msgs"), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.innerHTML = list.map(m => {
     const where = m.to === "^all" ? "#" + m.channel : (m.out ? "DM to " + esc(m.toName || m.to) : "DM");
