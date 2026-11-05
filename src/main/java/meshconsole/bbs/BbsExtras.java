@@ -185,6 +185,85 @@ public final class BbsExtras {
     }
     public static String scores() { return "Bills: " + espn("football", "nfl", "Bills") + " | Sabres: " + espn("hockey", "nhl", "Sabres"); }
 
+    /** DC teams: only the ones playing today are listed (so off-season teams don't fill the 200 bytes). */
+    public static String scoresDc() {
+        String[][] teams = {{"football", "nfl", "Commanders"}, {"hockey", "nhl", "Capitals"}, {"basketball", "nba", "Wizards"},
+                            {"baseball", "mlb", "Nationals"}, {"soccer", "usa.1", "D.C. United"}, {"basketball", "wnba", "Mystics"}};
+        List<String> out = new ArrayList<>();
+        for (String[] t : teams) { String r = espn(t[0], t[1], t[2]); if (!r.contains("no game today") && !r.contains("unavailable")) out.add(r); }
+        return out.isEmpty() ? "No DC team plays today (Commanders, Capitals, Wizards, Nationals, United, Mystics)." : "DC: " + String.join(" | ", out);
+    }
+
+    // ---- Capital Bikeshare (public GBFS feed, no key) -------------------------------------------
+    private static String gbfsInfo, gbfsStatus; private static long gbfsInfoTime, gbfsStatusTime;
+    private static final String[] GBFS = {"https://gbfs.lyft.com/gbfs/1.1/dca-cabi/en/", "https://gbfs.capitalbikeshare.com/gbfs/en/"};
+    private static String gbfs(String feed) throws IOException {
+        IOException last = null;
+        for (String base : GBFS) { try { return get(base + feed + ".json"); } catch (IOException e) { last = e; } }
+        throw last;
+    }
+
+    /** BIKE [words]: bikes, e-bikes and free docks at matching stations, or the stations nearest (lat, lon). */
+    public static String bike(String words, double lat, double lon) {
+        try {
+            long now = System.currentTimeMillis();
+            if (gbfsInfo == null || now - gbfsInfoTime > 6 * 3600_000L) { gbfsInfo = gbfs("station_information"); gbfsInfoTime = now; }
+            if (gbfsStatus == null || now - gbfsStatusTime > 60_000L) { gbfsStatus = gbfs("station_status"); gbfsStatusTime = now; }
+            return bikeLine(gbfsInfo, gbfsStatus, words, lat, lon);
+        } catch (IOException | RuntimeException e) { return "Bikeshare data unavailable (" + e.getMessage() + ")"; }
+    }
+
+    static String bikeLine(String infoJson, String statusJson, String words, double lat, double lon) {
+        List<?> info = (List<?>) ((Map<?, ?>) ((Map<?, ?>) Json.parse(infoJson)).get("data")).get("stations");
+        List<?> stat = (List<?>) ((Map<?, ?>) ((Map<?, ?>) Json.parse(statusJson)).get("data")).get("stations");
+        Map<String, Map<?, ?>> byId = new HashMap<>();
+        for (Object o : stat) byId.put(Json.str(((Map<?, ?>) o).get("station_id")), (Map<?, ?>) o);
+        String[] q = words.trim().toLowerCase().split("\\s+");
+        List<Object[]> hits = new ArrayList<>();   // {score, name, status}
+        for (Object o : info) {
+            Map<?, ?> st = (Map<?, ?>) o;
+            String name = Json.str(st.get("name"));
+            Map<?, ?> s2 = byId.get(Json.str(st.get("station_id")));
+            if (s2 == null) continue;
+            double score;
+            if (!words.isBlank()) {
+                String n = name.toLowerCase(); boolean all = true;
+                for (String w : q) if (!w.isEmpty() && !n.contains(w)) all = false;
+                if (!all) continue;
+                score = name.length();   // shorter = closer match
+            } else {
+                if (lat == 0) return "BIKE needs a station name (e.g. BIKE DUPONT) – this board has no position.";
+                double dy = Json.num(st.get("lat"), 0) - lat, dx = (Json.num(st.get("lon"), 0) - lon) * Math.cos(Math.toRadians(lat));
+                score = dx * dx + dy * dy;
+            }
+            hits.add(new Object[]{score, name, s2});
+        }
+        if (hits.isEmpty()) return "No Capital Bikeshare station matches '" + words.trim() + "'. Try one word, e.g. BIKE COURTHOUSE.";
+        hits.sort(Comparator.comparingDouble(h -> (double) h[0]));
+        StringBuilder sb = new StringBuilder("Bikeshare: ");
+        for (int i = 0; i < Math.min(3, hits.size()); i++) {
+            Map<?, ?> s2 = (Map<?, ?>) hits.get(i)[2];
+            int bikes = (int) Json.num(s2.get("num_bikes_available"), 0), ebikes = (int) Json.num(s2.get("num_ebikes_available"), 0), docks = (int) Json.num(s2.get("num_docks_available"), 0);
+            String nm = ((String) hits.get(i)[1]).replace(" St NW", "").replace(" St N", "").replace(" & ", "&");
+            if (nm.length() > 30) nm = nm.substring(0, 30);
+            if (i > 0) sb.append(" | ");
+            sb.append(nm).append(' ').append(bikes).append('b').append(ebikes > 0 ? "(" + ebikes + "e)" : "").append('/').append(docks).append('d');
+        }
+        return sb.append("  b=bikes e=electric d=docks").toString();
+    }
+
+    // ---- air quality (Open-Meteo, no key) ------------------------------------------------------
+    public static String aqi(double lat, double lon) {
+        if (lat == 0) return "No position set on this board.";
+        try {
+            Map<?, ?> cur = (Map<?, ?>) ((Map<?, ?>) Json.parse(get(String.format(java.util.Locale.ROOT,
+                "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%.4f&longitude=%.4f&current=us_aqi,pm2_5,ozone&timezone=auto", lat, lon)))).get("current");
+            int a = (int) Math.round(Json.num(cur.get("us_aqi"), -1));
+            String word = a < 0 ? "?" : a <= 50 ? "good" : a <= 100 ? "moderate" : a <= 150 ? "unhealthy for sensitive groups" : a <= 200 ? "unhealthy" : a <= 300 ? "very unhealthy" : "hazardous";
+            return String.format(java.util.Locale.ROOT, "Air quality: AQI %d (%s), PM2.5 %.0f µg/m³, ozone %.0f µg/m³.", a, word, Json.num(cur.get("pm2_5"), 0), Json.num(cur.get("ozone"), 0));
+        } catch (IOException | RuntimeException e) { return "Air quality unavailable (" + e.getMessage() + ")"; }
+    }
+
     // ---- sun, moon, ISS -------------------------------------------------------------------------
     public static String sun(double lat, double lon) {
         if (lat == 0) return "No position set on this board.";

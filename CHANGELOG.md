@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.24.0 — 2026-11-04
+
+- **Discord bridge** (web console → Settings): one mesh channel ↔ one Discord channel. Mesh → Discord through a webhook,
+  each message under the sender's node name with hops and signal in small print. Discord → mesh with a bot token:
+  messages go out as "[D] name: text" (cut to 200 bytes), at most N an hour (default 10) and one a minute per person,
+  never from bots or webhooks (no loops); anything held back gets a short note in Discord. Status and counts shown.
+- BBS **BIKE [station]**: Capital Bikeshare bikes, e-bikes and free docks – matching stations, or the three nearest the
+  caller (if their node shares its position) or the board.
+- BBS **AQI**: current US air-quality index, PM2.5 and ozone for the board's location (Open-Meteo, no key).
+- BBS **SCORE DC** (also DCSPORTS, HTTR, CAPS, NATS): today's Commanders, Capitals, Wizards, Nationals, D.C. United
+  and Mystics games – only the teams playing.
+
+
 ## 1.23.0 — 2026-11-04
 
 - BBS **RANGE** (also TEST, HEARD; and PING now answers with it): how well this station hears you – direct or how many

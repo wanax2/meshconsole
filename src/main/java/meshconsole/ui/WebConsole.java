@@ -40,6 +40,7 @@ public final class WebConsole {
         MeshState state = client.state();
         String password = password(dataDir, log);
         MeshAlerts alerts = new MeshAlerts(client, bbs, dataDir);
+        DiscordBridge discord = new DiscordBridge(client, dataDir);
         Path pf = dataDir.resolve("webmap-port.txt");
         int want = 3500;
         try { want = Integer.parseInt(Files.readString(pf).trim()); } catch (Exception ignored) { }
@@ -113,12 +114,17 @@ public final class WebConsole {
                                 send(ex, 200, "application/json", "{\"ok\":true}");
                             }
                             case "/api/settings" -> send(ex, 200, "application/json",
-                                    "{\"radio\":" + WebSettings.json(client) + ",\"alerts\":" + alerts.json() + ",\"others\":" + WebSettings.otherWindows(myPort) + "}");
+                                    "{\"radio\":" + WebSettings.json(client) + ",\"alerts\":" + alerts.json() + ",\"discord\":" + discord.json() + ",\"others\":" + WebSettings.otherWindows(myPort) + "}");
                             case "/api/settings/save" -> {
                                 Map<String, String> f = form(ex);
                                 send(ex, 200, "application/json", "{\"result\":" + q(WebSettings.save(client, f.getOrDefault("what", ""), f, myPort)) + "}");
                             }
                             case "/api/settings/alerts" -> { alerts.save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"alert settings saved\"}"); }
+                            case "/api/settings/discord" -> { discord.save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"Discord bridge settings saved\"}"); }
+                            case "/api/settings/discord-test" -> {
+                                discord.fromMesh(testMessage());
+                                send(ex, 200, "application/json", "{\"result\":\"test message queued for Discord – check the channel\"}");
+                            }
                             case "/api/settings/test-alert" -> { alerts.send("Mesh Console test", "If you see this, mesh alerts work.", "default"); send(ex, 200, "application/json", "{\"result\":\"test sent\"}"); }
                             case "/api/traceroute" -> {
                                 Map<String, String> f = form(ex);
@@ -387,6 +393,13 @@ public final class WebConsole {
         } catch (Exception gone) {
             // browser went away
         } finally { st.removeListener(l); try { out.close(); } catch (IOException ignored) { } }
+    }
+
+    private static ChatMessage testMessage() {
+        ChatMessage m = new ChatMessage();
+        m.time = System.currentTimeMillis(); m.from = 0; m.to = ChatMessage.BROADCAST; m.channel = 0;
+        m.text = "Test from Mesh Console: the mesh → Discord bridge works."; m.outgoing = true;
+        return m;
     }
 
     static int nodeNum(String id) {
@@ -668,6 +681,14 @@ async function loadSettings() {
     <p>Watch nodes <input id="aWatch" value="${esc(a.watch)}" size="60" placeholder="!a1b2c3d4=2, !12345678=12   (node=hours not heard)"></p>
     <p>${chk("aDirect", a.newDirect, "new node heard directly")} ${chk("aCallers", a.newCallers, "first-time BBS callers (watched nodes: every check-in)")} ${chk("aRadio", a.radioDown, "radio not connected for 10 min")}
       <button id="aSave">Save alerts</button> <button id="aTest">Send test</button></p></div>
+  <div class="card"><b>Discord bridge</b> <span class="dim">one mesh channel ↔ one Discord channel · status: ${esc(d.discord.status)} · ${d.discord.toDiscordCount} to Discord, ${d.discord.toMeshCount} to the mesh${d.discord.heldBack ? ", " + d.discord.heldBack + " held back (airtime limit)" : ""}</span>
+    <p>${chk("dOn", d.discord.enabled, "bridge on")} mesh channel <select id="dChan">${r.channels.filter(c => c.role !== "DISABLED").map(c => `<option value="${c.index}"${c.index === d.discord.meshChannel ? " selected" : ""}>#${c.index} ${esc(c.name || "Primary")}</option>`).join("")}</select>
+      ${chk("dToD", d.discord.toDiscord, "mesh → Discord")} ${chk("dSig", d.discord.showSignal, "show hops/signal")}</p>
+    <p>Webhook URL (Discord channel → Integrations → Webhooks) <input id="dHook" value="${esc(d.discord.webhook)}" size="50"></p>
+    <p>${chk("dToM", d.discord.toMesh, "Discord → mesh")} bot token <input id="dTok" type="password" placeholder="${d.discord.hasBotToken ? "(saved – unchanged)" : "bot token"}" size="22">
+      channel ID <input id="dCid" value="${esc(d.discord.channelId)}" size="20"> at most <input id="dMax" type="number" min="1" max="60" value="${d.discord.maxPerHour}" style="width:4em"> an hour</p>
+    <p><button id="dSave">Save bridge</button> <button id="dTest">Send test to Discord</button>
+      <span class="dim">Discord messages go out as "[D] name: text", one a minute per person, never from bots – the channel is shared airtime.</span></p></div>
   <p id="setNote" class="dim"></p>`;
 }
 async function saveSetting(what, body) {
@@ -688,6 +709,8 @@ $("setBox").addEventListener("click", async e => {
   }
   if (t.id === "sCopy") { if (!confirm("Copy channels 1–7 (names, keys, uplink/downlink) from the other window to this radio?")) return; const r = await api("api/settings/save", { what: "copy-channels", from: v("sFrom") }); alert(r.result); loadSettings(); }
   if (t.id === "aSave") { const r = await api("api/settings/alerts", { ntfy: v("aNtfy"), email: v("aEmail"), watch: v("aWatch"), newDirect: c("aDirect"), newCallers: c("aCallers"), radioDown: c("aRadio") }); $("setNote").textContent = r.result; }
+  if (t.id === "dSave") { const r = await api("api/settings/discord", { enabled: c("dOn"), meshChannel: v("dChan"), toDiscord: c("dToD"), showSignal: c("dSig"), webhook: v("dHook"), toMesh: c("dToM"), botToken: v("dTok"), channelId: v("dCid"), maxPerHour: v("dMax") }); $("setNote").textContent = r.result; loadSettings(); }
+  if (t.id === "dTest") { const r = await api("api/settings/discord-test", {}); $("setNote").textContent = r.result; }
   if (t.id === "aTest") { const r = await api("api/settings/test-alert", {}); $("setNote").textContent = r.result; }
 });
 

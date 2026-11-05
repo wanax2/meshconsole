@@ -216,13 +216,14 @@ public class BbsEngine {
         List<String> parts = new ArrayList<>();
         if (on("COMMUNITY")) parts.add(detail ? "B list (B 2) R n read P text post D n | M mail, M name text, M board!name text | GB guestbook E events POLL/V n SUB" : "B P M mail");
         if (on("MESH")) parts.add(detail ? "RANGE how well I hear you, ME your stats, S signal, T trace, STATS TOP WHO name" : "RANGE ME S T STATS");
-        if (on("WEATHER")) parts.add(detail ? "W weather FCST forecast ALERTS SUN" : "W FCST ALERTS SUN");
+        if (on("WEATHER")) parts.add(detail ? "W weather FCST forecast ALERTS AQI air quality SUN" : "W FCST ALERTS AQI SUN");
         if (on("AVIATION")) parts.add(detail ? "METAR or any airport code (KBUF), TAF CAT DA WINDS PIREP DELAY PLANES (AV)" : "AV aviation (METAR or any airport code)");
         if (on("HAM")) parts.add(detail ? "SOLAR HF bands ISS C callsign" : "SOLAR ISS C call");
-        if (on("TRANSIT")) parts.add(detail ? "METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station]" : "METRO NEXT station BUS stop ELEV");
+        if (on("TRANSIT")) parts.add(detail ? "METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station], BIKE [station] bikeshare (nearest you if your node shares its position)" : "METRO NEXT station BUS stop ELEV BIKE");
         if (!store.scannerUrl.isBlank()) parts.add(detail ? "SCAN [area] latest calls (area e.g. ARL ALX), FIRE POLICE EMS [area], INC [area] [hours], SUB SCAN alerts" : "SCAN INC");
         if (on("GAMES")) parts.add(detail ? "TRIVIA (A answer) GUESS (G n) ADV" : "TRIVIA GUESS ADV");
         if (on("BUFFALO") && detail) parts.add("GO BILLS GO SABRES 716 SCORE");
+        if (detail) parts.add("SCORE DC (Commanders, Caps, Wizards, Nats, United, Mystics)");
         if (detail && !store.peers.isEmpty()) parts.add("NET");
         return (detail ? "" : store.name + ": ") + String.join(" | ", parts) + (detail ? "" : " | ?2 more");
     }
@@ -572,7 +573,19 @@ public class BbsEngine {
             case "SABRES", "GOSABRES" -> { return BbsExtras.sabres(); }
             case "BUFFALO", "716" -> { return BbsExtras.buffalo(); }
             case "ALERTS", "ALERT", "NWS", "WARN" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, BbsExtras.alertsLine(la, lo))); return null; }
-            case "SCORE", "SCORES" -> { bg.submit(() -> send(from, BbsExtras.scores())); return null; }
+            case "SCORE", "SCORES" -> {
+                if (arg.trim().equalsIgnoreCase("DC")) { bg.submit(() -> send(from, BbsExtras.scoresDc())); return null; }
+                bg.submit(() -> send(from, BbsExtras.scores())); return null;
+            }
+            case "DCSPORTS", "HTTR", "CAPS", "NATS" -> { bg.submit(() -> send(from, BbsExtras.scoresDc())); return null; }
+            case "BIKE", "BIKES", "CABI", "BIKESHARE" -> {
+                NodeEntry caller = state.node(from), me0 = state.myNode();
+                final double la = caller != null && caller.hasPosition ? caller.lat : me0 != null && me0.hasPosition ? me0.lat : 0;
+                final double lo = caller != null && caller.hasPosition ? caller.lon : me0 != null && me0.hasPosition ? me0.lon : 0;
+                final String w = arg;
+                bg.submit(() -> send(from, BbsExtras.bike(w, la, lo))); return null;
+            }
+            case "AQI", "AIR" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, BbsExtras.aqi(la, lo))); return null; }
             case "SUN", "MOON", "SUNSET", "SUNRISE" -> { NodeEntry me0 = state.myNode(); return BbsExtras.sun(me0 != null && me0.hasPosition ? me0.lat : 0, me0 != null && me0.hasPosition ? me0.lon : 0); }
             case "ISS" -> { NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0; bg.submit(() -> send(from, BbsExtras.iss(la, lo))); return null; }
             case "SOLAR", "HF", "PROP" -> { bg.submit(() -> send(from, BbsExtras.solar())); return null; }
