@@ -114,12 +114,17 @@ public final class WebConsole {
                                 send(ex, 200, "application/json", "{\"ok\":true}");
                             }
                             case "/api/settings" -> send(ex, 200, "application/json",
-                                    "{\"radio\":" + WebSettings.json(client) + ",\"alerts\":" + alerts.json() + ",\"discord\":" + discord.json() + ",\"others\":" + WebSettings.otherWindows(myPort) + "}");
+                                    "{\"radio\":" + WebSettings.json(client) + ",\"alerts\":" + alerts.json() + ",\"discord\":" + discord.json() + ",\"bbsExtras\":" + (bbs.get() == null ? "null" : bbs.get().community().json()) + ",\"others\":" + WebSettings.otherWindows(myPort) + "}");
                             case "/api/settings/save" -> {
                                 Map<String, String> f = form(ex);
                                 send(ex, 200, "application/json", "{\"result\":" + q(WebSettings.save(client, f.getOrDefault("what", ""), f, myPort)) + "}");
                             }
                             case "/api/settings/alerts" -> { alerts.save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"alert settings saved\"}"); }
+                            case "/api/settings/bbs-extras" -> {
+                                BbsEngine b = bbs.get();
+                                if (b == null) { send(ex, 200, "application/json", "{\"result\":\"BBS not running\"}"); break; }
+                                b.community().save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"BBS extras saved\"}");
+                            }
                             case "/api/settings/discord" -> { discord.save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"Discord bridge settings saved\"}"); }
                             case "/api/settings/discord-test" -> {
                                 discord.fromMesh(testMessage());
@@ -255,7 +260,9 @@ public final class WebConsole {
             sb.append("{\"time\":").append(m.time).append(",\"from\":").append(q(m.fromName.isEmpty() ? nameOf(st, m.from) : m.fromName)).append(",\"to\":").append(q(nameOf(st, m.to)))
               .append(",\"delivered\":").append(m.delivered).append(",\"text\":").append(q(m.text)).append('}');
         }
-        return sb.append("]}").toString();
+        sb.append("],\"advertReport\":").append(q(bbs.community() == null ? "" : bbs.community().advertReport(14)))
+          .append(",\"community\":").append(bbs.community() == null ? "{}" : bbs.community().json());
+        return sb.append("}").toString();
     }
 
     private static void sendText(HttpExchange ex, MeshClient client) throws IOException {
@@ -426,7 +433,7 @@ public final class WebConsole {
         try (OutputStream o = ex.getResponseBody()) { o.write(b); }
     }
 
-    static String q(String s) {
+    public static String q(String s) {
         StringBuilder b = new StringBuilder("\"");
         for (char c : (s == null ? "" : s).toCharArray()) {
             if (c == '"' || c == '\\') b.append('\\').append(c);
@@ -502,7 +509,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
     <div class="card"><b>Received signal</b> <span class="dim">median RSSI (dBm) and SNR (dB), packets per slot</span><div style="height:300px"><canvas id="sigChart"></canvas></div></div>
     <div class="card"><b>Channel use</b> <span class="dim">channel utilisation and this radio's air-time, %</span><div style="height:220px"><canvas id="utilChart"></canvas></div></div>
   </div>
-  <div class="pane" id="pane-bbs" hidden><div class="card"><b>Posts</b><table><tbody id="posts"></tbody></table></div><div class="card"><b>Mail</b><table><tbody id="mail"></tbody></table></div></div>
+  <div class="pane" id="pane-bbs" hidden><div class="card" id="bbsExtra"></div><div class="card"><b>Posts</b><table><tbody id="posts"></tbody></table></div><div class="card"><b>Mail</b><table><tbody id="mail"></tbody></table></div></div>
   <div class="pane" id="pane-status" hidden><div id="statusBox"></div></div>
   <div class="pane" id="pane-settings" hidden><div id="setBox"><p class="dim">Loading…</p></div></div>
 </main>
@@ -681,6 +688,12 @@ async function loadSettings() {
     <p>Watch nodes <input id="aWatch" value="${esc(a.watch)}" size="60" placeholder="!a1b2c3d4=2, !12345678=12   (node=hours not heard)"></p>
     <p>${chk("aDirect", a.newDirect, "new node heard directly")} ${chk("aCallers", a.newCallers, "first-time BBS callers (watched nodes: every check-in)")} ${chk("aRadio", a.radioDown, "radio not connected for 10 min")}
       <button id="aSave">Save alerts</button> <button id="aTest">Send test</button></p></div>
+  ${d.bbsExtras ? `<div class="card"><b>BBS extras</b> <span class="dim">net: ${esc(d.bbsExtras.netStatus)}</span>
+    <p>${chk("xNet", d.bbsExtras.netOn, "weekly check-in net")} on <select id="xDay">${opt(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"], d.bbsExtras.netDay)}</select> at <input id="xTime" value="${esc(d.bbsExtras.netTime)}" size="5">
+      <span class="dim">(announced 30 min before; CHECKIN accepted until 60 min after; roll call broadcast + posted)</span></p>
+    <p>N2YO key for SAT passes <input id="xN2yo" type="password" placeholder="${d.bbsExtras.hasN2yoKey ? "(saved – unchanged)" : "free key from n2yo.com"}" size="24"></p>
+    <p>Welcome for first-time callers <input id="xWelcome" value="${esc(d.bbsExtras.welcome)}" size="70"></p>
+    <p><button id="xSave">Save BBS extras</button></p></div>` : ""}
   <div class="card"><b>Discord bridge</b> <span class="dim">one mesh channel ↔ one Discord channel · status: ${esc(d.discord.status)} · ${d.discord.toDiscordCount} to Discord, ${d.discord.toMeshCount} to the mesh${d.discord.heldBack ? ", " + d.discord.heldBack + " held back (airtime limit)" : ""}</span>
     <p>${chk("dOn", d.discord.enabled, "bridge on")} mesh channel <select id="dChan">${r.channels.filter(c => c.role !== "DISABLED").map(c => `<option value="${c.index}"${c.index === d.discord.meshChannel ? " selected" : ""}>#${c.index} ${esc(c.name || "Primary")}</option>`).join("")}</select>
       ${chk("dToD", d.discord.toDiscord, "mesh → Discord")} ${chk("dSig", d.discord.showSignal, "show hops/signal")}</p>
@@ -709,6 +722,7 @@ $("setBox").addEventListener("click", async e => {
   }
   if (t.id === "sCopy") { if (!confirm("Copy channels 1–7 (names, keys, uplink/downlink) from the other window to this radio?")) return; const r = await api("api/settings/save", { what: "copy-channels", from: v("sFrom") }); alert(r.result); loadSettings(); }
   if (t.id === "aSave") { const r = await api("api/settings/alerts", { ntfy: v("aNtfy"), email: v("aEmail"), watch: v("aWatch"), newDirect: c("aDirect"), newCallers: c("aCallers"), radioDown: c("aRadio") }); $("setNote").textContent = r.result; }
+  if (t.id === "xSave") { const body = { netOn: c("xNet"), netDay: v("xDay"), netTime: v("xTime"), welcome: v("xWelcome") }; if (v("xN2yo")) body.n2yoKey = v("xN2yo"); const r = await api("api/settings/bbs-extras", body); $("setNote").textContent = r.result; loadSettings(); }
   if (t.id === "dSave") { const r = await api("api/settings/discord", { enabled: c("dOn"), meshChannel: v("dChan"), toDiscord: c("dToD"), showSignal: c("dSig"), webhook: v("dHook"), toMesh: c("dToM"), botToken: v("dTok"), channelId: v("dCid"), maxPerHour: v("dMax") }); $("setNote").textContent = r.result; loadSettings(); }
   if (t.id === "dTest") { const r = await api("api/settings/discord-test", {}); $("setNote").textContent = r.result; }
   if (t.id === "aTest") { const r = await api("api/settings/test-alert", {}); $("setNote").textContent = r.result; }
@@ -717,6 +731,7 @@ $("setBox").addEventListener("click", async e => {
 // ---------------- BBS and status
 async function renderBbs() {
   const b = await api("api/bbs");
+  $("bbsExtra").innerHTML = `<b>Weekly net:</b> ${esc(b.community ? b.community.netStatus : "–")}<br><b>Which adverts bring callers</b><pre style="white-space:pre-wrap;margin:4px 0 0">${esc(b.advertReport || "")}</pre>`;
   $("posts").innerHTML = b.posts.map(p => `<tr><td class="dim">${when(p.time)}</td><td><b>${esc(p.author)}</b></td><td>${esc(p.text)}</td></tr>`).join("") || '<tr><td class="dim">No posts.</td></tr>';
   $("mail").innerHTML = b.mail.map(m => `<tr><td class="dim">${when(m.time)}</td><td>${esc(m.from)} → ${esc(m.to)}</td><td>${esc(m.text)}</td><td class="dim">${m.delivered ? "delivered" : "waiting"}</td></tr>`).join("") || '<tr><td class="dim">No mail.</td></tr>';
 }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.25.0 — 2026-11-04
+
+- **Weekly check-in net** (Settings → BBS extras: day and time): announced on the public channel 30 min before,
+  callers DM **CHECKIN** [comment] until 60 min after and get their signal back; then a roll call is broadcast
+  (direct neighbours starred) and posted as a bulletin with signal reports and comments. net_log.csv keeps every check-in.
+- **SUB METRO ORANGE** (any line, or RD/OR/BL/SV/GR/YL): a DM whenever WMATA posts a disruption on that line.
+- **SAT**: next ISS, NOAA 18/19 and SO-50 passes over the caller (or the board) – needs a free N2YO key (BBS extras).
+- **MAP**: the caller's position as a map link, with distance and bearing to the board.
+- **Welcome** for first-time callers (editable in BBS extras), added to their first reply.
+- **WORD**: a daily Wordle-style word game, six guesses, 🟩🟨⬜ feedback; a new word every day.
+- **Which adverts bring callers**: every advert and caller is now logged, and the web console's BBS tab shows, for each
+  advert, how many callers (and first-timers) turned up within two hours of it – so the rotation can be pared down to
+  what works.
+
+
 ## 1.24.1 — 2026-11-04
 
 - This is a Buffalo board: the DC-team shortcuts (CAPS, NATS, HTTR, DCSPORTS) and the DC line in the menu are gone.
