@@ -215,7 +215,7 @@ public class BbsEngine {
     private String menu(boolean detail) {
         List<String> parts = new ArrayList<>();
         if (on("COMMUNITY")) parts.add(detail ? "B list (B 2) R n read P text post D n | M mail, M name text, M board!name text | GB guestbook E events POLL/V n SUB" : "B P M mail");
-        if (on("MESH")) parts.add(detail ? "S signal T trace STATS TOP WHO name" : "S T STATS TOP WHO");
+        if (on("MESH")) parts.add(detail ? "RANGE how well I hear you, ME your stats, S signal, T trace, STATS TOP WHO name" : "RANGE ME S T STATS");
         if (on("WEATHER")) parts.add(detail ? "W weather FCST forecast ALERTS SUN" : "W FCST ALERTS SUN");
         if (on("AVIATION")) parts.add(detail ? "METAR or any airport code (KBUF), TAF CAT DA WINDS PIREP DELAY PLANES (AV)" : "AV aviation (METAR or any airport code)");
         if (on("HAM")) parts.add(detail ? "SOLAR HF bands ISS C callsign" : "SOLAR ISS C call");
@@ -225,6 +225,86 @@ public class BbsEngine {
         if (on("BUFFALO") && detail) parts.add("GO BILLS GO SABRES 716 SCORE");
         if (detail && !store.peers.isEmpty()) parts.add("NET");
         return (detail ? "" : store.name + ": ") + String.join(" | ", parts) + (detail ? "" : " | ?2 more");
+    }
+
+    // ------------------------------------------------------------------ range check and personal stats
+    /** LongFast (SF11) still decodes down to about -17.5 dB SNR; margin above that is what keeps a link alive. */
+    private static final double DECODE_LIMIT_SNR = -17.5;
+
+    private List<meshconsole.mesh.SignalSample> samplesFrom(int from, long sinceMs) {
+        meshconsole.mesh.SignalHistory h = state.signalHistoryStore();
+        List<meshconsole.mesh.SignalSample> out = new ArrayList<>();
+        if (h == null) return out;
+        int my = state.myNodeNum();
+        for (meshconsole.mesh.SignalSample x : h.since(sinceMs)) if (x.from() == from && (my == 0 || x.rxNode() == 0 || x.rxNode() == my)) out.add(x);
+        return out;
+    }
+
+    private static String compass(double deg) {
+        String[] d = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+        return d[(int) Math.round(((deg % 360) + 360) % 360 / 45.0) % 8];
+    }
+
+    private String whereFrom(NodeEntry n) {
+        NodeEntry me = state.myNode();
+        if (me == null || !me.hasPosition || n == null || !n.hasPosition) return "";
+        double km = meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, n.lat, n.lon);
+        double y = Math.sin(Math.toRadians(n.lon - me.lon)) * Math.cos(Math.toRadians(n.lat));
+        double x = Math.cos(Math.toRadians(me.lat)) * Math.sin(Math.toRadians(n.lat)) - Math.sin(Math.toRadians(me.lat)) * Math.cos(Math.toRadians(n.lat)) * Math.cos(Math.toRadians(n.lon - me.lon));
+        return String.format(" %.1f km %s,", km, compass(Math.toDegrees(Math.atan2(y, x))));
+    }
+
+    /** RANGE: how well this station hears you right now, how much margin you have, and how you rank. */
+    String rangeReport(int from) {
+        NodeEntry n = state.node(from);
+        if (n == null || n.rssiCount == 0) return store.name + " hasn't measured you yet – send a message or two and try RANGE again.";
+        List<meshconsole.mesh.SignalSample> day = samplesFrom(from, System.currentTimeMillis() - 86_400_000L);
+        // the latest reading: the node's last packet, else the newest logged sample, else its average
+        int rssi = n.rssi; double snr = n.snr;
+        if (rssi == 0 && !day.isEmpty()) { meshconsole.mesh.SignalSample last = day.get(day.size() - 1); rssi = last.rssi(); snr = last.snr(); }
+        if (rssi == 0) { rssi = (int) Math.round(n.avgRssi()); snr = n.avgSnr(); }
+        double margin = snr - DECODE_LIMIT_SNR;
+        String grade = margin >= 15 ? "excellent" : margin >= 9 ? "good" : margin >= 4 ? "fair" : margin >= 0 ? "marginal" : "barely decoding";
+        String path = n.hopsAway == 0 ? "DIRECT" : n.hopsAway > 0 ? "via " + n.hopsAway + " hop" + (n.hopsAway == 1 ? "" : "s") : "path unknown";
+        long direct = day.stream().filter(x -> x.hops() == 0).count();
+        int best = day.stream().mapToInt(meshconsole.mesh.SignalSample::rssi).filter(v -> v != 0).max().orElse(rssi);
+        String rank = "";
+        if (n.hopsAway == 0) {   // place among nodes heard directly in the last 24 h, by SNR
+            long cutoff = System.currentTimeMillis() - 86_400_000L;
+            List<NodeEntry> d = new ArrayList<>();
+            for (NodeEntry o : state.nodes()) if (o.num != state.myNodeNum() && o.hopsAway == 0 && o.lastHeardMillis() > cutoff && o.snrCount > 0) d.add(o);
+            d.sort((a, b) -> Float.compare(b.snr, a.snr));
+            int pos = d.indexOf(n) + 1;
+            if (pos > 0) rank = String.format(" #%d of %d direct.", pos, d.size());
+        }
+        return String.format("%s hears you %s,%s %d dBm / %.1f dB = %s (%.0f dB above the limit). 24h: %d pkts, %d direct, best %d dBm.%s",
+            store.name, path, whereFrom(n), rssi, snr, grade, margin, day.size(), direct, best, rank);
+    }
+
+    /** ME: your history with this station – how long, how often, how well, and whether it's getting better. */
+    String myStats(int from) {
+        NodeEntry n = state.node(from);
+        if (n == null || n.packetsSeen == 0) return store.name + " has no history for you yet – it builds up as your node is heard.";
+        long now = System.currentTimeMillis();
+        List<meshconsole.mesh.SignalSample> week = samplesFrom(from, now - 7 * 86_400_000L);
+        String trend = "";
+        List<Float> recent = new ArrayList<>(), older = new ArrayList<>();
+        for (meshconsole.mesh.SignalSample x : week) (x.time() > now - 86_400_000L ? recent : older).add(x.snr());
+        if (recent.size() >= 3 && older.size() >= 3) {
+            double t = median(recent) - median(older);
+            trend = String.format(", today %s%.1f dB vs your week", t >= 0 ? "+" : "", t);
+        }
+        String since = n.firstSeen > 0 ? new java.text.SimpleDateFormat("MMM d").format(new java.util.Date(n.firstSeen)) : "a while";
+        BbsStore.Caller c = store.callers.get(from);
+        String bbs = c == null ? "" : String.format(" BBS: %d cmds since %s.", c.commands, new java.text.SimpleDateFormat("MMM d").format(new java.util.Date(c.first)));
+        String batt = n.battery > 100 ? " Powered." : n.battery >= 0 ? " Batt " + n.battery + "%." : "";
+        return String.format("You, heard since %s: %d pkts (%d%% direct), avg %.0f dBm / %.1f dB%s. 7d: %d pkts.%s%s",
+            since, n.packetsSeen, Math.max(0, n.directPercent()), n.avgRssi(), n.avgSnr(), trend, week.size(), bbs, batt);
+    }
+
+    private static double median(List<Float> v) {
+        List<Float> s = new ArrayList<>(v); Collections.sort(s);
+        return s.isEmpty() ? 0 : s.get(s.size() / 2);
     }
 
     private void send(int to, String text) {
@@ -267,7 +347,7 @@ public class BbsEngine {
             case "GAMES", "GAME", "PLAY" -> { return "Games on " + store.name + ": TRIVIA (A answer) " + BbsExtras.trivia(store.triviaCats).size() + " questions, GUESS the number (G n), ADV text adventure (ADV, then N/S/E/W/LOOK)" + (on("BUFFALO") ? ", GO BILLS, GO SABRES, 716" : "") + ". Scores in TOP."; }
             case "?", "H", "HELP", "MENU", "COMMANDS", "COMMAND", "START", "HI", "HELLO" -> { return menu(false); }
             case "?2", "HELP2" -> { return menu(true); }
-            case "PING" -> { return "PONG from " + store.name; }
+            case "PING" -> { return "PONG! " + rangeReport(from); }
             case "SCAN", "SCANNER" -> {
                 if (store.scannerUrl.isBlank()) return "No scanner on this board.";
                 final String u = store.scannerUrl;
@@ -374,6 +454,8 @@ public class BbsEngine {
                 if (me != null && me.hasPosition && n.hasPosition) dist = String.format(", %.1f km", meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, n.lat, n.lon));
                 return String.format("You at %s: last %d dBm / %.1f dB, %s%s, avg %.0f dBm over %d pkts. T = traceroute you.", store.name, n.rssi, n.snr, n.hopsAway == 0 ? "direct" : n.hopsAway + " hop" + (n.hopsAway == 1 ? "" : "s"), dist, n.avgRssi(), n.rssiCount);
             }
+            case "RANGE", "RANGECHECK", "HEARD", "TEST" -> { return rangeReport(from); }
+            case "ME", "MYSTATS", "MINE" -> { return myStats(from); }
             case "T", "TRACE" -> {
                 try { client.traceroute(from); pendingTrace.put(from, System.currentTimeMillis()); return "Tracing the route to you – reply follows in up to a minute."; }
                 catch (IOException e) { return "Traceroute failed: " + e.getMessage(); }

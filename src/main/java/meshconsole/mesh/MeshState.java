@@ -64,6 +64,7 @@ public class MeshState {
     private long clockDriftMs = Long.MIN_VALUE;
     private SignalHistory signalHistoryFile;
     public void setSignalHistory(SignalHistory h) { signalHistoryFile = h; }
+    public SignalHistory signalHistoryStore() { return signalHistoryFile; }
     private meshconsole.analysis.UtilHistory utilHistoryFile;
     public void setUtilHistory(meshconsole.analysis.UtilHistory h) { utilHistoryFile = h; }
     private final Map<Integer, Set<Integer>> edges = new HashMap<>();      // mesh graph (undirected), from neighbours/traceroutes/direct

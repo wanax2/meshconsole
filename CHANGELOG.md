@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.23.0 — 2026-11-04
+
+- BBS **RANGE** (also TEST, HEARD; and PING now answers with it): how well this station hears you – direct or how many
+  hops, distance and direction, the latest signal and how much margin it has above what LongFast can still decode
+  (excellent / good / fair / marginal), your last 24 h (packets, how many direct, best signal), and your place among
+  the nodes heard directly. Example: "Lyon's Den hears you DIRECT, 3.2 km NE, -113 dBm / -4.5 dB = good (13 dB above
+  the limit). 24h: 18 pkts, 14 direct, best -103 dBm. #4 of 5 direct."
+- BBS **ME**: your history with this station – heard since when, packets and % direct, average signal, today against
+  your week (better or worse), 7-day packet count, BBS commands, battery.
+- Both listed in the menu under the mesh commands.
+
+
 ## 1.22.0 — 2026-11-02
 
 - **Chat** (http://<computer>:3500/chat, also linked from the web console): a proper messaging page.
