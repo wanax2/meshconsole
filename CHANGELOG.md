@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.24.1 — 2026-11-04
+
+- This is a Buffalo board: the DC-team shortcuts (CAPS, NATS, HTTR, DCSPORTS) and the DC line in the menu are gone.
+  SCORE is Bills and Sabres; SCORE DC still answers if someone asks, but isn't advertised.
+
+
 ## 1.24.0 — 2026-11-04
 
 - **Discord bridge** (web console → Settings): one mesh channel ↔ one Discord channel. Mesh → Discord through a webhook,

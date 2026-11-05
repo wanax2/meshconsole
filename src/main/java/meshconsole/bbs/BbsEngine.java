@@ -223,7 +223,6 @@ public class BbsEngine {
         if (!store.scannerUrl.isBlank()) parts.add(detail ? "SCAN [area] latest calls (area e.g. ARL ALX), FIRE POLICE EMS [area], INC [area] [hours], SUB SCAN alerts" : "SCAN INC");
         if (on("GAMES")) parts.add(detail ? "TRIVIA (A answer) GUESS (G n) ADV" : "TRIVIA GUESS ADV");
         if (on("BUFFALO") && detail) parts.add("GO BILLS GO SABRES 716 SCORE");
-        if (detail) parts.add("SCORE DC (Commanders, Caps, Wizards, Nats, United, Mystics)");
         if (detail && !store.peers.isEmpty()) parts.add("NET");
         return (detail ? "" : store.name + ": ") + String.join(" | ", parts) + (detail ? "" : " | ?2 more");
     }
@@ -577,7 +576,6 @@ public class BbsEngine {
                 if (arg.trim().equalsIgnoreCase("DC")) { bg.submit(() -> send(from, BbsExtras.scoresDc())); return null; }
                 bg.submit(() -> send(from, BbsExtras.scores())); return null;
             }
-            case "DCSPORTS", "HTTR", "CAPS", "NATS" -> { bg.submit(() -> send(from, BbsExtras.scoresDc())); return null; }
             case "BIKE", "BIKES", "CABI", "BIKESHARE" -> {
                 NodeEntry caller = state.node(from), me0 = state.myNode();
                 final double la = caller != null && caller.hasPosition ? caller.lat : me0 != null && me0.hasPosition ? me0.lat : 0;
