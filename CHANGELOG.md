@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.26.3 — 2026-11-07
+
+- Web console: the message list no longer shows through on the other tabs (Heard by, BBS, Settings…).
+- Heard by: the map frames your node and its gateways properly when the tab opens; the private server defaults to
+  localhost; the example text in empty boxes is clearly marked as an example.
+
+
 ## 1.26.2 — 2026-11-07
 
 - **Heard by** is now also a tab in the desktop window (next to MQTT witness): the same settings, gateway table, daily

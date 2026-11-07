@@ -14,7 +14,7 @@ import java.util.List;
 class HeardByPanel extends JPanel {
     private final HeardBy hb;
     private final JCheckBox on = new JCheckBox("on"), pub = new JCheckBox("public server"), priv = new JCheckBox("my private server");
-    private final JTextField pubHost = new JTextField(16), pubTopic = new JTextField(8), privHost = new JTextField(12), privPort = new JTextField(5),
+    private final JTextField pubHost = new JTextField(16), pubTopic = new JTextField(8), privHost = new JTextField("localhost", 12), privPort = new JTextField(5),
         privUser = new JTextField(7), privTopic = new JTextField(7), extra = new JTextField(30);
     private final JPasswordField privPass = new JPasswordField(10);
     private final JComboBox<String> node = new JComboBox<>();

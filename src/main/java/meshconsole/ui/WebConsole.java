@@ -464,7 +464,7 @@ header h1 { font-size:16px; margin:0 8px 0 0; }
 input, select, textarea { background:#0f1316; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:14px; font-family:inherit; }
 main { flex:1; min-height:0; display:flex; flex-direction:column; }
 .pane { flex:1; min-height:0; overflow:auto; padding:10px 12px; }
-.pane[hidden] { display:none; }
+.pane[hidden], #pane-messages[hidden] { display:none !important; }
 #conn { width:10px; height:10px; border-radius:50%; background:#f85149; display:inline-block; }
 #conn.ok { background:#3fb950; }
 .dim { color:var(--dim); }
@@ -595,9 +595,9 @@ async function renderHeard() {
   $("hbSet").innerHTML = `<b>Heard by</b> – other stations' gateways that heard your nodes, from MQTT. ${HB.enabled ? "<span class='dim'>running</span>" : "<b style='color:#d29922'>off</b>"}
    <p><label><input type="checkbox" id="hbOn" ${HB.enabled ? "checked" : ""}> on</label> ·
       <label><input type="checkbox" id="hbPub" ${st.publicOn ? "checked" : ""}> public server</label> <input id="hbPubHost" value="${esc(st.publicHost)}" size="20"> topic <input id="hbPubTopic" value="${esc(st.publicTopic)}" size="10"></p>
-   <p><label><input type="checkbox" id="hbPriv" ${st.privateOn ? "checked" : ""}> my private server</label> <input id="hbPrivHost" value="${esc(st.privateHost)}" placeholder="mqtt-host" size="14"> port <input id="hbPrivPort" value="${esc(st.privatePort)}" size="5">
+   <p><label><input type="checkbox" id="hbPriv" ${st.privateOn ? "checked" : ""}> my private server</label> <input id="hbPrivHost" value="${esc(st.privateHost)}" placeholder="e.g. localhost" size="14"> port <input id="hbPrivPort" value="${esc(st.privatePort)}" size="5">
       user <input id="hbPrivUser" value="${esc(st.privateUser)}" size="8"> password <input id="hbPrivPass" type="password" placeholder="${st.hasPrivatePass ? "(saved)" : ""}" size="12"> topic <input id="hbPrivTopic" value="${esc(st.privateTopic)}" size="8"></p>
-   <p>Also track these nodes (other house, G2, T-Beam): <input id="hbExtra" value="${esc(st.extraNodes)}" placeholder="!a1b2c3d4, !12345678" size="40"> <button id="hbSave">Save</button> <span id="hbNote" class="dim"></span></p>
+   <p>Also track these nodes (other house, G2, T-Beam): <input id="hbExtra" value="${esc(st.extraNodes)}" placeholder="type IDs, e.g. !a1b2c3d4, !12345678" size="40"> <button id="hbSave">Save</button> <span id="hbNote" class="dim"></span></p>
    <div class="dim">${HB.sources.map(s => esc(s.name) + ": " + esc(s.status) + " · " + s.packets + " packets").join("<br>")}</div>`;
   $("hbSave").onclick = async () => {
     const body = { enabled: $("hbOn").checked, publicOn: $("hbPub").checked, publicHost: $("hbPubHost").value, publicTopic: $("hbPubTopic").value,
@@ -627,8 +627,11 @@ function drawHeard() {
     if (n.lat) L.polyline([[n.lat, n.lon], [x.lat, x.lon]], { color: col, weight: 1, opacity: .5 }).addTo(hbLayer);
     pts.push([x.lat, x.lon]);
   }
-  if (pts.length > 1) hbMap.fitBounds(pts, { padding: [20, 20], maxZoom: 12 }); else if (pts.length) hbMap.setView(pts[0], 11);
-  setTimeout(() => hbMap.invalidateSize(), 100);
+  // the map may have been created while its tab was hidden: let it measure itself first, then frame the points
+  setTimeout(() => {
+    hbMap.invalidateSize();
+    if (pts.length > 1) hbMap.fitBounds(pts, { padding: [20, 20], maxZoom: 12 }); else if (pts.length) hbMap.setView(pts[0], 11);
+  }, 150);
 }
 function loadLeaflet(cb) {
   if (window.L) { cb(); return; }

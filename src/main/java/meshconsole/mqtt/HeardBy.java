@@ -89,8 +89,8 @@ public final class HeardBy {
             if (!on("enabled")) { for (MqttClient c : conns.values()) c.close(); conns.clear(); connStatus.clear(); return; }
             if (on("publicOn") || !p.containsKey("publicOn")) ensure("public", get("publicHost", "mqtt.meshtastic.org"), 1883, get("publicUser", "meshdev"), get("publicPass", "large4cats"), get("publicTopic", "msh/US/#"));
             else drop("public");
-            if (on("privateOn") && !get("privateHost", "").isBlank())
-                ensure("private", get("privateHost", ""), Integer.parseInt(get("privatePort", "1883")), get("privateUser", "mesh"), get("privatePass", ""), get("privateTopic", "msh/#"));
+            if (on("privateOn") && !get("privateHost", "localhost").isBlank())
+                ensure("private", get("privateHost", "localhost"), Integer.parseInt(get("privatePort", "1883")), get("privateUser", "mesh"), get("privatePass", ""), get("privateTopic", "msh/#"));
             else drop("private");
         } catch (Exception e) { state.emitLog("[heard-by] " + e.getMessage()); }
     }
@@ -198,7 +198,7 @@ public final class HeardBy {
         StringBuilder sb = new StringBuilder("{\"enabled\":").append(on("enabled"));
         sb.append(",\"settings\":{\"publicOn\":").append(on("publicOn") || !p.containsKey("publicOn")).append(",\"publicHost\":").append(q(get("publicHost", "mqtt.meshtastic.org")))
           .append(",\"publicTopic\":").append(q(get("publicTopic", "msh/US/#"))).append(",\"privateOn\":").append(on("privateOn"))
-          .append(",\"privateHost\":").append(q(get("privateHost", ""))).append(",\"privatePort\":").append(q(get("privatePort", "1883")))
+          .append(",\"privateHost\":").append(q(get("privateHost", "localhost"))).append(",\"privatePort\":").append(q(get("privatePort", "1883")))
           .append(",\"privateUser\":").append(q(get("privateUser", "mesh"))).append(",\"hasPrivatePass\":").append(!get("privatePass", "").isBlank())
           .append(",\"privateTopic\":").append(q(get("privateTopic", "msh/#"))).append(",\"extraNodes\":").append(q(get("extraNodes", ""))).append("}");
         sb.append(",\"sources\":[");
