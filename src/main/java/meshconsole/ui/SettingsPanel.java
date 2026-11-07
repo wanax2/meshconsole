@@ -262,6 +262,16 @@ class SettingsPanel extends JPanel {
             private boolean tried;
             @Override public void onStatusChanged() {
                 if (!state.configComplete()) { tried = false; return; }
+                // 1.26.1: the radio's MQTT settings changed (new server, password, proxy switched off…) – follow them
+                if (proxy.isRunning() && state.configComplete() && !MqttProxy.currentKey(state).isEmpty() && !proxy.startedWith().equals(MqttProxy.currentKey(state))) {
+                    String now = MqttProxy.currentKey(state);
+                    proxy.close();
+                    if (now.startsWith("true|true|")) {
+                        state.emitLog("MQTT proxy: radio settings changed – reconnecting");
+                        new Thread(() -> { try { Thread.sleep(2000); proxy.start(); } catch (Exception ex) { state.emitLog("MQTT proxy reconnect failed: " + ex.getMessage()); } }, "mqtt-proxy-restart").start();
+                    } else state.emitLog("MQTT proxy: switched off on the radio – stopped");
+                    return;
+                }
                 if (tried || !pp.getBoolean("auto", false) || proxy.isRunning()) return;
                 tried = true;
                 new Thread(() -> { try { Thread.sleep(3000); if (!proxy.isRunning()) proxy.start(); } catch (Exception ex) { state.emitLog("MQTT proxy auto-start failed: " + ex.getMessage()); } }, "mqtt-proxy-auto").start();

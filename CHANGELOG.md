@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.26.1 — 2026-11-07
+
+- MQTT client proxy (radios without WiFi, e.g. the lake G3 on USB) now follows the radio's settings: when its MQTT
+  server, user, password or proxy switch change, the proxy reconnects to the new server by itself (or stops if proxy
+  was switched off) – no restart of Mesh Console or the Pi needed.
+
+
 ## 1.26.0 — 2026-11-07
 
 - **Heard by** (web console tab): runs in the background, listening to the public Meshtastic MQTT server and/or

@@ -35,6 +35,16 @@ public class MqttProxy implements AutoCloseable {
 
     public boolean isRunning() { return mqtt != null; }
 
+    /** The radio settings this proxy connected with; if the radio's current ones differ, it should reconnect (1.26.1). */
+    private volatile String startedWith = "";
+    public String startedWith() { return startedWith; }
+    public static String currentKey(MeshState st) {
+        ModuleConfig mc = st.moduleConfig(ModuleConfig.PayloadVariantCase.MQTT);
+        if (mc == null) return "";
+        ModuleConfig.MQTTConfig c = mc.getMqtt();
+        return c.getEnabled() + "|" + c.getProxyToClientEnabled() + "|" + c.getAddress() + "|" + c.getUsername() + "|" + c.getPassword() + "|" + c.getTlsEnabled() + "|" + c.getRoot();
+    }
+
     public synchronized void start() throws IOException {
         ModuleConfig mc = state.moduleConfig(ModuleConfig.PayloadVariantCase.MQTT);
         if (mc == null) throw new IOException("MQTT module config not loaded yet");
@@ -54,6 +64,7 @@ public class MqttProxy implements AutoCloseable {
         String pass = cfg.getPassword().isEmpty() ? "large4cats" : cfg.getPassword();
         String root = cfg.getRoot().isEmpty() ? "msh" : cfg.getRoot();
         String clientId = "meshconsole-" + String.format("%08x", state.myNodeNum());
+        startedWith = currentKey(state);
 
         status.accept("Connecting to " + host + ":" + port + (cfg.getTlsEnabled() ? " (TLS)" : "") + "…");
         mqtt = new MqttClient(host, port, cfg.getTlsEnabled(), user, pass, clientId, new MqttClient.Listener() {
