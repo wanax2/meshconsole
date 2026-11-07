@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.26.0 — 2026-11-07
+
+- **Heard by** (web console tab): runs in the background, listening to the public Meshtastic MQTT server and/or
+  your own private one, and records every time another station's gateway hears one of your nodes – which gateway,
+  how far away, how many hops, the signal at that gateway when it heard you directly. Map (green = heard you
+  directly, amber = via relays), table per gateway (24 h / 7 days, fewest hops, best SNR/RSSI) and gateways per day.
+  Track the other house, the G2 and the T-Beam too (comma-separated node IDs). Works for encrypted channels as well
+  (sender and gateway are outside the encryption). Gateway names/positions are learned from their own position,
+  node-info and map-report packets. Log in heard_by.csv; 30 days shown.
+
+
 ## 1.25.0 — 2026-11-04
 
 - **Weekly check-in net** (Settings → BBS extras: day and time): announced on the public channel 30 min before,

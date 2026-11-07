@@ -41,6 +41,7 @@ public final class WebConsole {
         String password = password(dataDir, log);
         MeshAlerts alerts = new MeshAlerts(client, bbs, dataDir);
         DiscordBridge discord = new DiscordBridge(client, dataDir);
+        meshconsole.mqtt.HeardBy heardBy = new meshconsole.mqtt.HeardBy(client, dataDir);
         Path pf = dataDir.resolve("webmap-port.txt");
         int want = 3500;
         try { want = Integer.parseInt(Files.readString(pf).trim()); } catch (Exception ignored) { }
@@ -77,6 +78,7 @@ public final class WebConsole {
                             case "/api/messages" -> send(ex, 200, "application/json", messages(state));
                             case "/api/status" -> send(ex, 200, "application/json", status(client, bbs.get()));
                             case "/api/bbs" -> send(ex, 200, "application/json", bbsJson(state, bbs.get()));
+                            case "/api/heardby" -> send(ex, 200, "application/json", heardBy.json());
                             case "/api/send" -> sendText(ex, client);
                             case "/api/export" -> exportZip(ex, dataDir);
                             case "/api/export-token" -> {
@@ -125,6 +127,7 @@ public final class WebConsole {
                                 if (b == null) { send(ex, 200, "application/json", "{\"result\":\"BBS not running\"}"); break; }
                                 b.community().save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"BBS extras saved\"}");
                             }
+                            case "/api/settings/heardby" -> { heardBy.save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"Heard-by settings saved – connecting…\"}"); }
                             case "/api/settings/discord" -> { discord.save(form(ex)); send(ex, 200, "application/json", "{\"result\":\"Discord bridge settings saved\"}"); }
                             case "/api/settings/discord-test" -> {
                                 discord.fromMesh(testMessage());
@@ -489,7 +492,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
 <body>
 <header><span id="conn"></span><h1 id="title">Mesh Console</h1><span id="sub" class="dim"></span>
   <span style="flex:1"></span>
-  <a href="chat" style="color:#58a6ff;margin-right:8px;font-weight:600">💬 Chat</a><span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
+  <a href="chat" style="color:#58a6ff;margin-right:8px;font-weight:600">💬 Chat</a><span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="heard">Heard by</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
 </header>
 <main>
   <div class="pane" id="pane-messages">
@@ -510,6 +513,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
     <div class="card"><b>Channel use</b> <span class="dim">channel utilisation and this radio's air-time, %</span><div style="height:220px"><canvas id="utilChart"></canvas></div></div>
   </div>
   <div class="pane" id="pane-bbs" hidden><div class="card" id="bbsExtra"></div><div class="card"><b>Posts</b><table><tbody id="posts"></tbody></table></div><div class="card"><b>Mail</b><table><tbody id="mail"></tbody></table></div></div>
+  <div class="pane" id="pane-heard" hidden><div class="card" id="hbSet"></div><div class="card"><b>Who hears my nodes</b> <select id="hbNode"></select> <span class="dim" id="hbSum"></span><div id="hbMap" style="height:380px;margin:8px 0"></div><table id="hbTable"></table></div><div class="card"><b>Gateways per day</b><div id="hbDaily"></div></div></div>
   <div class="pane" id="pane-status" hidden><div id="statusBox"></div></div>
   <div class="pane" id="pane-settings" hidden><div id="setBox"><p class="dim">Loading…</p></div></div>
 </main>
@@ -584,6 +588,48 @@ $("statusBox").addEventListener("click", async e => {
 });
 
 // ---------------- map and nodes
+let HB = null, hbMap = null, hbLayer = null;
+async function renderHeard() {
+  HB = await api("api/heardby");
+  const st = HB.settings;
+  $("hbSet").innerHTML = `<b>Heard by</b> – other stations' gateways that heard your nodes, from MQTT. ${HB.enabled ? "<span class='dim'>running</span>" : "<b style='color:#d29922'>off</b>"}
+   <p><label><input type="checkbox" id="hbOn" ${HB.enabled ? "checked" : ""}> on</label> ·
+      <label><input type="checkbox" id="hbPub" ${st.publicOn ? "checked" : ""}> public server</label> <input id="hbPubHost" value="${esc(st.publicHost)}" size="20"> topic <input id="hbPubTopic" value="${esc(st.publicTopic)}" size="10"></p>
+   <p><label><input type="checkbox" id="hbPriv" ${st.privateOn ? "checked" : ""}> my private server</label> <input id="hbPrivHost" value="${esc(st.privateHost)}" placeholder="mqtt-host" size="14"> port <input id="hbPrivPort" value="${esc(st.privatePort)}" size="5">
+      user <input id="hbPrivUser" value="${esc(st.privateUser)}" size="8"> password <input id="hbPrivPass" type="password" placeholder="${st.hasPrivatePass ? "(saved)" : ""}" size="12"> topic <input id="hbPrivTopic" value="${esc(st.privateTopic)}" size="8"></p>
+   <p>Also track these nodes (other house, G2, T-Beam): <input id="hbExtra" value="${esc(st.extraNodes)}" placeholder="!a1b2c3d4, !12345678" size="40"> <button id="hbSave">Save</button> <span id="hbNote" class="dim"></span></p>
+   <div class="dim">${HB.sources.map(s => esc(s.name) + ": " + esc(s.status) + " · " + s.packets + " packets").join("<br>")}</div>`;
+  $("hbSave").onclick = async () => {
+    const body = { enabled: $("hbOn").checked, publicOn: $("hbPub").checked, publicHost: $("hbPubHost").value, publicTopic: $("hbPubTopic").value,
+      privateOn: $("hbPriv").checked, privateHost: $("hbPrivHost").value, privatePort: $("hbPrivPort").value, privateUser: $("hbPrivUser").value, privateTopic: $("hbPrivTopic").value, extraNodes: $("hbExtra").value };
+    if ($("hbPrivPass").value) body.privatePass = $("hbPrivPass").value;
+    $("hbNote").textContent = (await api("api/settings/heardby", body)).result; setTimeout(renderHeard, 4000);
+  };
+  const sel = $("hbNode"), keep = sel.value;
+  sel.innerHTML = HB.nodes.map(n => `<option value="${n.id}">${esc(n.name)} (${n.id})</option>`).join("");
+  if (keep && HB.nodes.some(n => n.id === keep)) sel.value = keep;
+  sel.onchange = drawHeard; drawHeard();
+}
+function drawHeard() {
+  const n = HB.nodes.find(x => x.id === $("hbNode").value) || HB.nodes[0];
+  if (!n) { $("hbTable").innerHTML = "<tr><td>No nodes yet – is the radio connected?</td></tr>"; return; }
+  const g = n.gateways, direct = g.filter(x => x.direct > 0).length, far = g.filter(x => x.km >= 0).sort((a, b) => b.km - a.km)[0];
+  $("hbSum").textContent = `${g.length} gateway(s) heard it in 7 days · ${direct} directly` + (far ? ` · farthest ${far.km} km (${far.name || far.id})` : "");
+  $("hbTable").innerHTML = "<tr><th>Gateway</th><th>km</th><th>24 h</th><th>7 days</th><th>fewest hops</th><th>direct</th><th>best SNR</th><th>best RSSI</th><th>last</th></tr>" + g.map(x =>
+    `<tr><td>${esc(x.name || "")} <span class="dim">${x.id}</span></td><td>${x.km >= 0 ? x.km : "?"}</td><td>${x.n1}</td><td>${x.n7}</td><td>${x.minHops < 0 ? "?" : x.minHops}</td><td>${x.direct}</td><td>${x.bestSnr ?? ""}</td><td>${x.bestRssi ?? ""}</td><td>${new Date(x.last).toLocaleString()}</td></tr>`).join("");
+  $("hbDaily").innerHTML = n.daily.length ? `<table><tr><th>day</th><th>gateways</th><th>sightings</th></tr>` + n.daily.slice(-14).reverse().map(d => `<tr><td>${d.day}</td><td>${d.gateways}</td><td>${d.packets}</td></tr>`).join("") + "</table>" : "<span class='dim'>No data yet.</span>";
+  if (!hbMap) { hbMap = L.map("hbMap", { preferCanvas: true }).setView([n.lat || 38.9, n.lon || -77.05], 10); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(hbMap); hbLayer = L.layerGroup().addTo(hbMap); }
+  hbLayer.clearLayers(); const pts = [];
+  if (n.lat) { L.circleMarker([n.lat, n.lon], { radius: 8, color: "#58a6ff", fillOpacity: .9 }).bindTooltip(n.name).addTo(hbLayer); pts.push([n.lat, n.lon]); }
+  for (const x of g) if (x.lat) {
+    const col = x.direct > 0 ? "#3fb950" : "#d29922";
+    L.circleMarker([x.lat, x.lon], { radius: 6, color: col, fillOpacity: .8 }).bindTooltip(`${x.name || x.id}: ${x.n7} in 7 days, ${x.direct ? "direct, best SNR " + x.bestSnr : "via " + x.minHops + " hop(s)"}`).addTo(hbLayer);
+    if (n.lat) L.polyline([[n.lat, n.lon], [x.lat, x.lon]], { color: col, weight: 1, opacity: .5 }).addTo(hbLayer);
+    pts.push([x.lat, x.lon]);
+  }
+  if (pts.length > 1) hbMap.fitBounds(pts, { padding: [20, 20], maxZoom: 12 }); else if (pts.length) hbMap.setView(pts[0], 11);
+  setTimeout(() => hbMap.invalidateSize(), 100);
+}
 function loadLeaflet(cb) {
   if (window.L) { cb(); return; }
   const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(css);
@@ -755,7 +801,8 @@ let current = "messages";
 function show(t) {
   current = t;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  for (const p of ["messages", "map", "nodes", "signal", "bbs", "status", "settings"]) $("pane-" + p).hidden = p !== t;
+  for (const p of ["messages", "map", "nodes", "signal", "bbs", "heard", "status", "settings"]) $("pane-" + p).hidden = p !== t;
+  if (t === "heard") loadLeaflet(renderHeard);
   if (t === "settings") loadSettings();
   if (t === "signal") loadChart(renderSignal);
   if (t === "map") loadLeaflet(renderMap);
