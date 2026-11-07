@@ -323,6 +323,7 @@ public class MainWindow extends JFrame {
         tabs.insertTab("BBS", null, bbsPanel, null, tabs.indexOfComponent(alertsPanel));
         witnessPanel = new WitnessPanel(state);
         tabs.insertTab("MQTT witness", null, witnessPanel, null, tabs.indexOfComponent(alertsPanel));
+        tabs.insertTab("Heard by", null, new HeardByPanel(client), null, tabs.indexOfComponent(alertsPanel));
         scheduler = new meshconsole.tools.Scheduler(client, () -> Report.html(state, signalHistory, util, weatherPanel.history(), null, meshconsole.DataDir.file("alerts.log")));
         schedulePanel = new SchedulePanel(scheduler);
         tabs.insertTab("Schedule", null, schedulePanel, null, tabs.indexOfComponent(alertsPanel));

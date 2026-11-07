@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.26.2 — 2026-11-07
+
+- **Heard by** is now also a tab in the desktop window (next to MQTT witness): the same settings, gateway table, daily
+  counts and status as the web console's tab – both share one background service per window. "Open map in browser"
+  jumps straight to the web console's Heard by map.
+
+
 ## 1.26.1 — 2026-11-07
 
 - MQTT client proxy (radios without WiFi, e.g. the lake G3 on USB) now follows the radio's settings: when its MQTT

@@ -42,6 +42,12 @@ public final class HeardBy {
     private final Map<String, Long> seenKeys = new ConcurrentHashMap<>();       // packetId|gateway -> time (dedupe)
     private final ScheduledExecutorService ex = Executors.newSingleThreadScheduledExecutor(r -> { Thread t = new Thread(r, "heard-by"); t.setDaemon(true); return t; });
 
+    private static final Map<Path, HeardBy> BY_DIR = new HashMap<>();
+    /** One shared service per data folder, so the desktop tab and the web console show the same thing. */
+    public static synchronized HeardBy forDir(MeshClient client, Path dataDir) {
+        return BY_DIR.computeIfAbsent(dataDir.toAbsolutePath().normalize(), d -> new HeardBy(client, d));
+    }
+
     public HeardBy(MeshClient client, Path dataDir) {
         this.client = client; this.state = client.state(); this.dir = dataDir;
         cfgFile = dataDir.resolve("heard-by.properties"); logFile = dataDir.resolve("heard_by.csv"); gwFile = dataDir.resolve("heard_by_gateways.csv");

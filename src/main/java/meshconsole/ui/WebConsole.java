@@ -41,7 +41,7 @@ public final class WebConsole {
         String password = password(dataDir, log);
         MeshAlerts alerts = new MeshAlerts(client, bbs, dataDir);
         DiscordBridge discord = new DiscordBridge(client, dataDir);
-        meshconsole.mqtt.HeardBy heardBy = new meshconsole.mqtt.HeardBy(client, dataDir);
+        meshconsole.mqtt.HeardBy heardBy = meshconsole.mqtt.HeardBy.forDir(client, dataDir);
         Path pf = dataDir.resolve("webmap-port.txt");
         int want = 3500;
         try { want = Integer.parseInt(Files.readString(pf).trim()); } catch (Exception ignored) { }
@@ -824,6 +824,7 @@ async function load() {
 function refresh() { load(); }
 if (!pass) $("login").hidden = false; else refresh();
 setInterval(() => { if ($("login").hidden) load(); }, 10000);
+if (location.hash === "#heard") { const tryShow = () => { if ($("login").hidden) show("heard"); else setTimeout(tryShow, 1000); }; setTimeout(tryShow, 800); }
 </script>
 </body>
 </html>
