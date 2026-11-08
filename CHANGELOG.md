@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.26.4 — 2026-11-08
+
+- WiFi radios (TCP): if a radio connects but sends no settings within 90 s – typically because it is still holding
+  the previous connection after Mesh Console restarted for an overnight update – Mesh Console now drops the
+  connection and tries again (every 2 minutes until the radio answers), instead of waiting forever at
+  "config still loading". This is what left both Mesh Console windows without their radios for 7 hours on Nov 8.
+- Self-update: waits 3 s after closing the radio connection before restarting, so the radio sees it close.
+
+
 ## 1.26.3 — 2026-11-07
 
 - Web console: the message list no longer shows through on the other tabs (Heard by, BBS, Settings…).

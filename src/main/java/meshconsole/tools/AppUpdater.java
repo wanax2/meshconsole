@@ -138,6 +138,7 @@ public final class AppUpdater {
             new ProcessBuilder("cmd", "/c", "start", "\"\"", "/min", script.toString()).start();
         } catch (Exception e) { log.accept("Could not start the updater (" + e.getMessage() + ") – unzip the new version over " + dir + " by hand."); return; }
         try { beforeExit.run(); } catch (Exception ignored) { }
+        try { Thread.sleep(3000); } catch (InterruptedException ignored) { }   // 1.26.4: let the radio see the old connection close first
         System.exit(0);
     }
 
@@ -178,6 +179,7 @@ public final class AppUpdater {
 
     private static void restart(Consumer<String> log, Runnable beforeExit, String[] args) {
         try { beforeExit.run(); } catch (Exception ignored) { }
+        try { Thread.sleep(3000); } catch (InterruptedException ignored) { }   // 1.26.4: let the radio see the old connection close first
         if (System.getenv("INVOCATION_ID") != null) { log.accept("Exiting; systemd will restart the service."); System.exit(0); }   // under systemd (Restart=always)
         try {
             String javaBin = ProcessHandle.current().info().command().orElse("java");

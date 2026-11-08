@@ -158,8 +158,33 @@ public class MeshClient implements MeshSerial.Listener {
         serial.start(rnd.nextInt(Integer.MAX_VALUE) + 1);
         state.emitLog("Connected to " + host + ":" + port + ", requesting config…");
         connectedAt = System.currentTimeMillis();
+        armConfigWatchdog(host, port, connectedAt);
         session("connect tcp " + host + ":" + port);
         connListener.onConnectionChanged(true, host + ":" + port);
+    }
+
+    /**
+     * 1.26.4: a WiFi radio (Station G2/G3…) accepts one TCP client; after Mesh Console restarts (e.g. a nightly update)
+     * it can still be holding the old, dead connection and never send its settings to the new one. If the config
+     * hasn't arrived within 90 s, drop the connection and try again – every 2 minutes until it answers.
+     */
+    private void armConfigWatchdog(String host, int port, long session) {
+        retryTimer.schedule(() -> {
+            synchronized (this) {
+                if (serial == null || connectedAt != session || state.configComplete()) return;
+                state.emitLog("Radio at " + host + " connected but sent no settings in " + Long.getLong("meshconsole.configTimeoutSec", 90) + " s (probably still holding an old connection) – reconnecting");
+                disconnect("config timeout");
+            }
+            retryTimer.schedule(() -> reconnectTcp(host, port, 1), 5, java.util.concurrent.TimeUnit.SECONDS);
+        }, Long.getLong("meshconsole.configTimeoutSec", 90), java.util.concurrent.TimeUnit.SECONDS);
+    }
+    private void reconnectTcp(String host, int port, int attempt) {
+        synchronized (this) { if (serial != null) return; }          // something else reconnected in the meantime
+        try { connectTcp(host, port); }
+        catch (IOException e) {
+            state.emitLog("Reconnect to " + host + " failed (" + e.getMessage() + ") – trying again in 2 min (attempt " + attempt + ")");
+            retryTimer.schedule(() -> reconnectTcp(host, port, attempt + 1), 120, java.util.concurrent.TimeUnit.SECONDS);
+        }
     }
 
     public void disconnect() { disconnect("Disconnect button"); }
