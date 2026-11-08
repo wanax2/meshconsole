@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.26.5 — 2026-11-08
+
+- WiFi radios (TCP): a radio that loses power doesn't close the connection, it just goes quiet – so Mesh Console
+  could sit "connected" to nothing. Now 10 minutes of total silence on a TCP link counts as lost, and the
+  auto-reconnect takes over.
+- Auto-reconnect to a WiFi radio keeps trying for as long as it takes (every 2 s at first, then every 30 s),
+  instead of giving up after 30 minutes.
+
+
 ## 1.26.4 — 2026-11-08
 
 - WiFi radios (TCP): if a radio connects but sends no settings within 90 s – typically because it is still holding

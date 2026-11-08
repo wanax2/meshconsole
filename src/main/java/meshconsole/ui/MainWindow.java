@@ -415,14 +415,18 @@ public class MainWindow extends JFrame {
     /** Retry a lost TCP connection every 2 s for 30 minutes (the radio rebooted, WiFi dropped). */
     private void startTcpReconnectWatch() {
         if (reconnectTimer != null) reconnectTimer.stop();
-        final long deadline = System.currentTimeMillis() + 30 * 60_000;
+        // 1.26.5: keep trying – quickly at first, then every 30 s – for as long as it takes (a radio may be off for hours)
+        final long started = System.currentTimeMillis(), deadline = Long.MAX_VALUE;
         final TcpItem want = lastTcp;
         reconnectTimer = new Timer(2000, null);
         reconnectTimer.addActionListener(e -> {
             if (client.isConnected() || System.currentTimeMillis() > deadline || want == null) { reconnectTimer.stop(); reconnectTimer = null; return; }
             status.setText("Reconnecting to " + want.host() + "…");
             try { client.connectTcp(want.host(), want.port()); reconnectTimer.stop(); reconnectTimer = null; }
-            catch (IOException ex) { status.setText("Waiting for " + want.host() + " (" + ex.getMessage() + ")"); }
+            catch (IOException ex) {
+                status.setText("Waiting for " + want.host() + " (" + ex.getMessage() + ")");
+                if (System.currentTimeMillis() - started > 120_000 && reconnectTimer != null) reconnectTimer.setDelay(30_000);
+            }
         });
         reconnectTimer.start();
     }

@@ -122,6 +122,7 @@ public class MeshClient implements MeshSerial.Listener {
     public boolean isConnected() { return serial != null; }
 
     public synchronized void connect(SerialPort port) throws IOException {
+        tcpLink = false;
         disconnect();
         state.resetForConnect();
         serial = new MeshSerial(port, this);
@@ -136,6 +137,7 @@ public class MeshClient implements MeshSerial.Listener {
     /** Connect over arbitrary streams (tests, bridges). */
     public synchronized void connectStreams(java.io.InputStream in, java.io.OutputStream out, String name, Runnable onClose) {
         disconnect();
+        tcpLink = false;
         state.resetForConnect();
         serial = new MeshSerial(in, out, this, onClose);
         serial.traceFrames = traceFrames;
@@ -158,6 +160,7 @@ public class MeshClient implements MeshSerial.Listener {
         serial.start(rnd.nextInt(Integer.MAX_VALUE) + 1);
         state.emitLog("Connected to " + host + ":" + port + ", requesting config…");
         connectedAt = System.currentTimeMillis();
+        lastRx = connectedAt; tcpLink = true; startSilenceWatch();
         armConfigWatchdog(host, port, connectedAt);
         session("connect tcp " + host + ":" + port);
         connListener.onConnectionChanged(true, host + ":" + port);
@@ -605,8 +608,30 @@ public class MeshClient implements MeshSerial.Listener {
 
     // ---- MeshSerial.Listener ---------------------------------------------
 
+    private volatile long lastRx = System.currentTimeMillis();
+    private volatile boolean silenceWatch;
+    /**
+     * 1.26.5: a WiFi radio that loses power doesn't close the TCP connection – it just goes quiet, and the computer
+     * can take a quarter of an hour or more to notice. Your radios hear traffic every few seconds, so 10 minutes of
+     * total silence on a TCP link means it's dead: report it lost, so the auto-reconnect takes over.
+     */
+    private void startSilenceWatch() {
+        if (silenceWatch) return;
+        silenceWatch = true;
+        retryTimer.scheduleAtFixedRate(() -> {
+            MeshSerial s;
+            synchronized (this) { s = serial; }
+            if (s == null || !tcpLink) return;
+            long quiet = System.currentTimeMillis() - lastRx;
+            if (quiet > Long.getLong("meshconsole.silenceMin", 10) * 60_000L)
+                onDisconnected("nothing received from the radio for " + quiet / 60_000 + " min – link presumed dead");
+        }, 60, 60, java.util.concurrent.TimeUnit.SECONDS);
+    }
+    private volatile boolean tcpLink;
+
     @Override
     public void onFromRadio(FromRadio fr) {
+        lastRx = System.currentTimeMillis();
         Capture c = capture;
         if (c != null) c.write(fr);
         if (fr.hasConfigCompleteId()) session("config complete: node " + String.format("!%08x", state.myNodeNum()) + " " + state.nodeName(state.myNodeNum()) + ", firmware " + state.firmware() + ", " + state.nodes().size() + " nodes, lora " + MeshState.loraSummary(state.lora()));
