@@ -1,5 +1,76 @@
 # Changelog
 
+## 1.29.0 — 2026-11-12
+- **Rotating bulletins.** BBS tab: a list of sysop bulletins (separated by a line of `---`), posted to the board
+  one at a time at the times you set (e.g. `08:00, 18:00`). **Shuffle** posts every bulletin once per cycle in random
+  order (reshuffled each cycle and whenever the list changes, never the same one twice in a row); off = in order.
+  **Replace the previous one** keeps just the latest rotating bulletin on the board, so it doesn't fill up; users'
+  own posts are never touched. **Post next bulletin now** for an immediate one. Posted as the board's name, so they
+  show in `B` and read with `R` like any bulletin. Each is kept within 170 bytes so `R n` fits one packet.
+- Sysop by DM: `X BULLETIN` posts the next rotating bulletin.
+
+## 1.28.4 — 2026-11-11
+- **Easier replies and reactions in both web chats.**
+  - Chat (Meshtastic): tap a message → one-tap reactions (your four most-used emoji first) plus ➕ for the rest;
+    double-tap (phone) or double-click (computer) reacts with your favourite; tap someone's reaction to add the same
+    one; your own reactions are highlighted; no accidental double reactions.
+  - MeshCore page: rebuilt chat like the Meshtastic one – conversation list with unread badges, last message and
+    search; bubbles with day dividers, sender colours, hops/SNR, delivery status; Reply (channel replies start with
+    @[name], the MeshCore mention format), Copy, Reply privately; the same reactions (sent as "👍 @[name]" in
+    channels, plain emoji in DMs, shown as chips under the message they answer); quick replies; emoji picker; byte
+    counter that knows the channel/DM limits; "(3) MeshCore" unread count in the tab title and a phone/desktop
+    notification while the page is in the background; phone layout (list / conversation with a back button).
+- MeshCore link watchdog: a USB radio that resets or disappears is noticed at once, and a radio that goes silent for
+  3 minutes is asked for its battery level – no answer twice and Mesh Console reconnects. (Overnight on Nov 10–11 the
+  G3 went quiet at 00:13 and the link never recovered.)
+
+## 1.28.3 — 2026-11-11
+- **MeshCore radio settings in the desktop window** (MeshCore tab → Radio): name, TX power, position (with "include
+  position in adverts"), radio settings (frequency, bandwidth, SF, CR), flood/zero-hop advert and reboot. Each is saved
+  on the radio and read back, so what's shown is what the radio has. TX power on a Station G2/G3 asks before going
+  above MeshCore's G3 default of 7 dBm (the number drives the amplifier); a positive US longitude offers the fix.
+
+## 1.28.2 — 2026-11-10
+- MeshCore over USB: stays connected. A quiet serial port reports a read "timeout" every 250 ms; 1.28.0/1.28.1 took
+  that for a lost link and dropped the radio a second after connecting (reconnecting every 20 s). Now it just keeps
+  listening. (WiFi/TCP connections weren't affected.)
+
+## 1.28.1 — 2026-11-10
+- **MeshCore tab in the desktop window** (last tab, "MeshCore"). Connecting no longer needs the browser: plug the MeshCore
+  radio in by USB, pick it from the list (Station G3/G2 radios are named; on Linux the list uses the /dev/serial/by-id
+  names, which never change), click **Connect**. WiFi radios: type tcp:address:5000. Inside: Chat (channels and DMs,
+  delivery confirmations), Contacts, Signal (every packet heard) and Radio (details, flood/zero-hop adverts).
+  Same radio and data as the web console's /meshcore page – connecting in one shows in the other.
+
+## 1.28.1 — 2026-11-11
+- MeshCore Radio tab: **Set position** – type in latitude/longitude (no GPS needed; the phone app only offers GPS),
+  and choose whether adverts include it.
+
+## 1.28.0 — 2026-11-10
+- **MeshCore** (first stage): a MeshCore radio running Companion firmware alongside the Meshtastic one, in the web
+  console at **/meshcore** (📡 MeshCore link at the top of the main page). Connects over WiFi (`tcp:<address>:5000`)
+  or USB (`serial:/dev/ttyACM1`), set on its Radio tab (saved in `meshcore.properties`); reconnects on its own.
+  - Chat: channels and direct messages, send and receive, delivery confirmation with round-trip time for DMs,
+    room-server posts show who wrote them.
+  - Contacts: everything the radio knows (chat nodes, repeaters, rooms, sensors), last heard, hops, direct-signal
+    RSSI/SNR averages, position.
+  - Signal: every packet the radio hears (its SNR/RSSI, type, hops, last repeater), 24-hour chart, kept in
+    `meshcore_signal.csv`.
+  - Radio: firmware, board, frequency/bandwidth/SF, TX power setting, position (warns about a positive US
+    longitude), battery, public key; flood and zero-hop adverts.
+  - Kept in the data folder: `meshcore_messages.log`, `meshcore_contacts.tsv`, `meshcore_signal.csv`.
+  Protocol checked against MeshCore's companion_radio source (frames `<`/`>` + 16-bit length, same over USB and TCP).
+
+## 1.27.0 — 2026-11-09
+
+- BBS: new **ASK** command (alias AI). Mesh users send `ASK <question>` and get a one-message answer (≤200 bytes)
+  from a local AI model (Ollama). Servers are tried best first with automatic fallback, e.g. a GPU machine, then a
+  Pi with a small model; a server that fails is rested for 2 minutes. Limited per person per hour; runs on its own
+  thread so slow answers never delay other BBS replies; listed in the ? menu only when switched on.
+  Switched on by `ai.properties` in the data folder (enabled, servers=url|model,…, perHour, name) – no restart needed.
+- Linux/Pi launcher: Java memory is now a share of the machine's RAM (10 %) instead of a fixed size
+  (override with MC_JAVA_OPTS).
+
 ## 1.26.5 — 2026-11-08
 
 - WiFi radios (TCP): a radio that loses power doesn't close the connection, it just goes quiet – so Mesh Console

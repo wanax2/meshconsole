@@ -192,6 +192,7 @@ public class MainWindow extends JFrame {
         // Analysis + Weather are added once the histories are known (setHistories)
         tabs.addTab("Antenna SWR", swrPanel);
         tabs.addTab("Settings & MQTT", settingsPanel);
+        tabs.addTab("MeshCore", new MeshCorePanel());   // a MeshCore radio alongside the Meshtastic one (1.28.1)
         add(tabs, BorderLayout.CENTER);
         JLabel footer = new JLabel(" " + meshconsole.Version.NAME + " " + meshconsole.Version.VERSION + "  ·  " + meshconsole.Version.COPYRIGHT + "  ·  MIT License");
         footer.setFont(footer.getFont().deriveFont(10f));

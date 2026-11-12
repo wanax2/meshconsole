@@ -31,6 +31,9 @@ public class BbsEngine {
     private long lastMailSweep;
     private final Map<Integer, Long> pendingTrace = new HashMap<>();
     private final Map<Integer, Integer> pendingAck = new java.util.concurrent.ConcurrentHashMap<>();   // packet id → caller, for delivery stats
+    private BbsAi ai;
+    /** ASK runs on its own thread, so a slow AI answer never holds up weather, transit or mail replies. */
+    private final java.util.concurrent.ExecutorService aiPool = java.util.concurrent.Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "bbs-ai"); t.setDaemon(true); return t; });
     private final java.util.concurrent.ExecutorService bg = java.util.concurrent.Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "bbs-net"); t.setDaemon(true); return t; });
 
     public BbsCommunity community;
@@ -42,6 +45,7 @@ public class BbsEngine {
         this.store = store;
         store.started = System.currentTimeMillis();
         community = new BbsCommunity(this, meshconsole.DataDir.get());
+        ai = new BbsAi(meshconsole.DataDir.get());
         state.addListener(new MeshState.Listener() {
             @Override public void onNodesChanged() { deliverPendingMail(); }
             @Override public void onMessage(ChatMessage m, boolean isNew) {
@@ -89,6 +93,7 @@ public class BbsEngine {
         community.tick(); community.metroTick();
         if (!store.scannerUrl.isBlank() && System.currentTimeMillis() - lastScanPoll > 120_000L) { lastScanPoll = System.currentTimeMillis(); final String u = store.scannerUrl; bg.submit(() -> scannerAlerts(u)); }
         if (store.nwsBroadcast && System.currentTimeMillis() - lastNwsCheck > 10 * 60_000L) { lastNwsCheck = System.currentTimeMillis(); checkNws(); }
+        if (store.bulRotOn) bulletinTick(today, now);
         if (!store.advertOn) return;
         // one or more times a day ("08:00, 17:30"); advertDay remembers which of today's times have gone out
         java.util.Set<String> sent = new java.util.TreeSet<>();
@@ -112,6 +117,33 @@ public class BbsEngine {
     /** True once the clock has passed hh:mm today (the caller's per-day marker stops it repeating). A busy minute no longer loses the slot. */
     private static boolean due(java.time.LocalTime now, String hhmm) {
         try { java.time.LocalTime t = java.time.LocalTime.parse(hhmm.trim()); return !now.isBefore(t); } catch (Exception e) { return false; }
+    }
+
+    /** 1.29.0: rotating bulletins – same multi-time, once-per-time-per-day scheduling as the adverts. */
+    private void bulletinTick(String today, java.time.LocalTime now) {
+        java.util.Set<String> done = new java.util.TreeSet<>();
+        if (store.bulRotDay.startsWith(today + "|")) done.addAll(java.util.Arrays.asList(store.bulRotDay.substring(today.length() + 1).split(",")));
+        java.util.List<String> dueNow = new java.util.ArrayList<>();
+        for (String slot : store.bulRotTime.split("[,; ]+")) if (!slot.isBlank() && due(now, slot) && !done.contains(slot.trim())) dueNow.add(slot.trim());
+        if (dueNow.isEmpty()) return;
+        done.addAll(dueNow);                           // after a restart, several missed times post just one
+        store.bulRotDay = today + "|" + String.join(",", done); store.save();
+        postRotatingBulletin();
+    }
+
+    /** Posts the next rotating bulletin to the board (replacing the previous one if set). Returns the post or null. */
+    public BbsStore.Post postRotatingBulletin() {
+        String text = store.nextBulletin();
+        if (text == null) return null;
+        byte[] b = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (b.length > BbsStore.BUL_MAX_BYTES) text = new String(java.util.Arrays.copyOf(b, BbsStore.BUL_MAX_BYTES), java.nio.charset.StandardCharsets.UTF_8).replaceAll("\uFFFD$", "").trim() + "…";
+        if (store.bulRotReplace && store.bulRotPostId > 0) { final int old = store.bulRotPostId; store.posts.removeIf(p -> p.id == old); }
+        BbsStore.Post p = new BbsStore.Post(); p.id = store.nextId(); p.time = System.currentTimeMillis(); p.author = state.myNodeNum(); p.authorName = store.name; p.text = text;
+        store.posts.add(p);
+        while (store.posts.size() > store.maxPosts) store.posts.remove(0);
+        store.bulRotPostId = p.id; store.save();
+        log("rotating bulletin posted #" + p.id + ": " + text);
+        return p;
     }
 
     /** Sends the advertisement now (sysop). */
@@ -229,6 +261,7 @@ public class BbsEngine {
         if (on("HAM")) parts.add(detail ? "SOLAR HF bands ISS SAT passes C callsign" : "SOLAR ISS SAT C call");
         if (on("TRANSIT")) parts.add(detail ? "METRO rail alerts, METRO BUS [route], NEXT station, BUS stopid, ELEV [station], BIKE [station] bikeshare (nearest you if your node shares its position)" : "METRO NEXT station BUS stop ELEV BIKE");
         if (!store.scannerUrl.isBlank()) parts.add(detail ? "SCAN [area] latest calls (area e.g. ARL ALX), FIRE POLICE EMS [area], INC [area] [hours], SUB SCAN alerts" : "SCAN INC");
+        if (ai != null && ai.enabled()) parts.add(detail ? "ASK question – answered by a local AI (short answers)" : "ASK");
         if (on("GAMES")) parts.add(detail ? "WORD daily word game, TRIVIA (A answer) GUESS (G n) ADV" : "WORD TRIVIA GUESS ADV");
         if (on("BUFFALO") && detail) parts.add("GO BILLS GO SABRES 716 SCORE");
         if (detail && !store.peers.isEmpty()) parts.add("NET");
@@ -466,6 +499,16 @@ public class BbsEngine {
             case "CHECKIN", "CHECK-IN", "NET?" -> { return community.checkin(from, arg); }
             case "MAP", "WHEREAMI" -> { return community.map(from); }
             case "WORD", "WORDLE" -> { return community.word(from, arg); }
+            case "ASK", "AI" -> {
+                if (!ai.enabled()) return "ASK isn't switched on at " + store.name + ".";
+                if (arg.isBlank()) return "ASK your question, e.g. ASK how far can LoRa reach?";
+                String no = ai.allow(from);
+                if (no != null) return no;
+                final String qn = arg, asker = who;
+                log("ASK from " + who + ": " + arg);
+                aiPool.submit(() -> send(from, ai.ask(qn, asker)));
+                return null;
+            }
             case "SAT", "SATS", "PASSES" -> {
                 NodeEntry caller = state.node(from), me0 = state.myNode();
                 final double la = caller != null && caller.hasPosition ? caller.lat : me0 != null && me0.hasPosition ? me0.lat : 0;
@@ -556,7 +599,7 @@ public class BbsEngine {
                 if (store.sysopPassword.isBlank()) return "Remote admin is not enabled.";
                 if (!arg.equals(store.sysopPassword)) { log("bad sysop password from " + who); return "No."; }
                 store.admins.put(from, System.currentTimeMillis() + 3600_000L);
-                return "Sysop mode for 1 h. X POST text, X DEL n, X CALLERS, X BAN name, X UNBAN name, X MOTD text, X ADVERT, X STATS, X NET";
+                return "Sysop mode for 1 h. X POST text, X DEL n, X CALLERS, X BAN name, X UNBAN name, X MOTD text, X ADVERT, X BULLETIN, X STATS, X NET";
             }
             case "X" -> {
                 Long until = store.admins.get(from);
@@ -570,9 +613,10 @@ public class BbsEngine {
                     case "UNBAN" -> { Integer n = resolve(xa); if (n == null) return "Unknown node."; store.banned.remove(n); return "Unbanned " + state.nodeName(n); }
                     case "MOTD" -> { store.motd = xa; return xa.isBlank() ? "MOTD cleared." : "MOTD set."; }
                     case "ADVERT" -> { advertiseNow(); return "Advert sent."; }
+                    case "BULLETIN", "BUL" -> { BbsStore.Post bp = postRotatingBulletin(); return bp == null ? "No rotating bulletins set up." : "Posted #" + bp.id + ": " + (bp.text.length() > 60 ? bp.text.substring(0, 60) + "…" : bp.text); }
                     case "STATS" -> { return stateLine(); }
                     case "NET" -> { int sent = netExchangeNow(); return "MeshNet exchange started with " + store.peers.size() + " peer(s), " + sent + " post(s) queued."; }
-                    default -> { return "X POST|DEL|CALLERS|BAN|UNBAN|MOTD|ADVERT|STATS|NET"; }
+                    default -> { return "X POST|DEL|CALLERS|BAN|UNBAN|MOTD|ADVERT|BULLETIN|STATS|NET"; }
                 }
             }
             case "NET" -> {

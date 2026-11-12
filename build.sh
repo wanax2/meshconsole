@@ -26,6 +26,6 @@ javac -nowarn --release 17 -encoding UTF-8 -cp lib/protobuf-java.jar:lib/jSerial
 printf 'Main-Class: meshconsole.Main\nClass-Path: protobuf-java.jar jSerialComm.jar\n' > build/MANIFEST.MF
 jar cfm dist/meshconsole.jar build/MANIFEST.MF -C build/classes .
 cp lib/protobuf-java.jar lib/jSerialComm.jar dist/
-printf '#!/bin/sh\n# _JAVA_AWT_WM_NONREPARENTING: stops Java windows staying blank grey on the Pi'"'"'s Wayland desktop\nexport _JAVA_AWT_WM_NONREPARENTING=1\ncd "$(dirname "$0")" && exec java -jar meshconsole.jar "$@"\n' > dist/meshconsole.sh && chmod +x dist/meshconsole.sh
+printf '#!/bin/sh\n# _JAVA_AWT_WM_NONREPARENTING: stops Java windows staying blank grey on the Pi'"'"'s Wayland desktop\nexport _JAVA_AWT_WM_NONREPARENTING=1\ncd "$(dirname "$0")" && exec java ${MC_JAVA_OPTS:--XX:MaxRAMPercentage=10} -jar meshconsole.jar "$@"\n' > dist/meshconsole.sh && chmod +x dist/meshconsole.sh
 printf '@echo off\r\ncd /d %%~dp0\r\njava -jar meshconsole.jar %%*\r\n' > dist/meshconsole.bat
 echo "OK: run dist/meshconsole.sh (or dist\\meshconsole.bat on Windows)"

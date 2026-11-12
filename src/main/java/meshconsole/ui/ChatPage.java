@@ -57,7 +57,10 @@ input, textarea, select { background:#0b0e11; color:var(--text); border:1px soli
 .row.out .bub .meta { color:#dbe6ff; }
 .quote { border-left:3px solid var(--accent); background:rgba(255,255,255,.06); border-radius:6px; padding:3px 7px; margin:2px 0 4px; font-size:12.5px; opacity:.9; cursor:pointer; white-space:normal; }
 .reacts { display:flex; gap:4px; flex-wrap:wrap; margin-top:3px; }
-.react { background:rgba(0,0,0,.35); border-radius:10px; padding:0 6px; font-size:13px; cursor:default; }
+.react { background:rgba(0,0,0,.35); border:1px solid transparent; border-radius:10px; padding:0 6px; font-size:13px; cursor:pointer; }
+.react.mine { border-color:var(--accent); background:rgba(88,166,255,.18); }
+.acts .qr { font-size:17px; } .acts .sep { width:1px; background:var(--line); margin:3px 2px; }
+.hint { font-size:11px; color:var(--dim); text-align:center; padding:2px 0 6px; }
 .tick.ok { color:#9be9a8; } .tick.bad { color:#ffb3ad; }
 .retry { background:transparent; border:1px solid #ffb3ad; color:#ffb3ad; padding:0 6px; font-size:11px; border-radius:6px; }
 .acts { position:absolute; top:-14px; display:none; gap:2px; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:2px; z-index:3; }
@@ -104,7 +107,7 @@ input, textarea, select { background:#0b0e11; color:var(--text); border:1px soli
   <div id="main">
     <div id="head"><button id="back">←</button><div class="av" id="hav"></div><div class="who"><b id="hname">Select a chat</b><span class="dim" id="hsub"></span></div>
       <input id="tfind" type="search" placeholder="Search in chat" size="12"><button id="infoBtn" title="Details">ⓘ</button></div>
-    <div id="thread"></div>
+    <div id="thread"></div><div class="hint" id="rhint">Tap a message for reactions and reply · double-tap to react with your favourite · tap a reaction to add yours</div>
     <div id="compose">
       <div id="replyChip">↩ <span id="replyText"></span><button id="replyX">✕</button></div>
       <div id="quick"></div>
@@ -217,7 +220,7 @@ function renderThread(scroll) {
     const quote = m.replyId ? `<div class="quote" data-jump="${m.replyId}">${q2 ? `<b>${esc(q2.out ? "You" : q2.fromName)}</b> ${esc(q2.text.slice(0, 90))}` : "replying to an earlier message"}</div>` : "";
     const rs = reacts.get(m.id) || [], groups = {};
     for (const r of rs) (groups[r.text] = groups[r.text] || []).push(r.out ? "you" : r.fromName);
-    const reactHtml = Object.keys(groups).length ? `<div class="reacts">${Object.entries(groups).map(([e, who]) => `<span class="react" title="${esc(who.join(", "))}">${esc(e)}${who.length > 1 ? " " + who.length : ""}</span>`).join("")}</div>` : "";
+    const reactHtml = Object.keys(groups).length ? `<div class="reacts">${Object.entries(groups).map(([e, who]) => `<span class="react${who.includes("you") ? " mine" : ""}" data-re="${esc(e)}" title="${esc(who.join(", "))}${who.includes("you") ? "" : " – tap to add yours"}">${esc(e)}${who.length > 1 ? " " + who.length : ""}</span>`).join("")}</div>` : "";
     let meta = when(m.time);
     if (m.out) {
       const st = m.status;
@@ -229,7 +232,7 @@ function renderThread(scroll) {
       if (m.rssi) meta = m.rssi + " dBm / " + m.snr + " dB · " + meta;
     }
     html += `<div class="row ${m.out ? "out" : ""} ${mention ? "mention" : ""}" data-id="${m.id}" data-from="${esc(m.from)}">
-      <div class="acts"><button data-act="reply" title="Reply">↩</button><button data-act="react" title="React">😀</button><button data-act="copy" title="Copy">⧉</button>${m.out ? "" : `<button data-act="dm" title="Direct message">✉</button><button data-act="info" title="Node details">ⓘ</button>`}</div>
+      <div class="acts">${quickReacts()}<button data-act="react" title="More reactions">➕</button><span class="sep"></span><button data-act="reply" title="Reply">↩</button><button data-act="copy" title="Copy">⧉</button>${m.out ? "" : `<button data-act="dm" title="Direct message">✉</button><button data-act="info" title="Node details">ⓘ</button>`}</div>
       <div class="bub">${showName ? `<div class="nm" data-node="${esc(m.from)}" style="color:hsl(${hue(m.from)},70%,70%)">${esc(m.fromName)}</div>` : ""}${quote}${esc(m.text)}${reactHtml}<div class="meta">${meta}</div></div></div>`;
   }
   box.innerHTML = html || `<p class="dim" style="text-align:center;margin-top:12vh">${q ? "Nothing matches." : "No messages yet. Say hello!"}</p>`;
@@ -242,16 +245,39 @@ $("thread").addEventListener("click", async e => {
   if (e.target.closest("[data-jump]")) { const t = document.querySelector(`.row[data-id="${e.target.closest("[data-jump]").dataset.jump}"]`); if (t) { t.scrollIntoView({ block: "center" }); t.classList.add("flash"); setTimeout(() => t.classList.remove("flash"), 1300); } return; }
   if (e.target.closest("[data-node]")) { showInfo(e.target.closest("[data-node]").dataset.node, true); return; }
   if (!row) return;
-  if (!act) { document.querySelectorAll(".row.touch").forEach(r => r !== row && r.classList.remove("touch")); row.classList.toggle("touch"); return; }
-  const m = [...MSG.values()].find(x => String(x.id) === row.dataset.id && x.from === row.dataset.from);
+  const chip = e.target.closest("[data-re]");
+  if (chip) { const m0 = msgOf(row); if (m0) react(m0, chip.dataset.re); return; }
+  if (!act) {
+    const now = Date.now();
+    if (matchMedia("(pointer:coarse)").matches && lastTap.id === row.dataset.id && now - lastTap.t < 350) { const m1 = msgOf(row); if (m1) react(m1, recentEmo()[0]); lastTap = { id: null, t: 0 }; return; }
+    lastTap = { id: row.dataset.id, t: now };
+    document.querySelectorAll(".row.touch").forEach(r => r !== row && r.classList.remove("touch")); row.classList.toggle("touch"); return;
+  }
+  const m = msgOf(row);
   if (!m) return;
+  if (act.dataset.act === "qr") { react(m, act.dataset.e); return; }
   if (act.dataset.act === "reply") { replyTo = m; $("replyText").textContent = (m.out ? "You" : m.fromName) + ": " + m.text; $("replyChip").style.display = "flex"; $("text").focus(); }
-  if (act.dataset.act === "react") openEmojis(act, em => send(em, m.id, true));
+  if (act.dataset.act === "react") openEmojis(act, em => react(m, em));
   if (act.dataset.act === "copy") { navigator.clipboard?.writeText(m.text); toast("Copied"); }
   if (act.dataset.act === "dm") openConv("dm" + m.from);
   if (act.dataset.act === "info") showInfo(m.from, true);
 });
 $("replyX").onclick = () => { replyTo = null; $("replyChip").style.display = "none"; };
+
+// ---------------------------------------------------------------- reactions
+function recentEmo() { const r = JSON.parse(localStorage.getItem("mc.recentEmo") || "[]"); return [...new Set([...r, ...EMO])]; }
+function quickReacts() { return recentEmo().slice(0, 4).map(e => `<button class="qr" data-act="qr" data-e="${esc(e)}" title="React ${esc(e)}">${esc(e)}</button>`).join(""); }
+function rememberEmo(e) { const r = JSON.parse(localStorage.getItem("mc.recentEmo") || "[]").filter(x => x !== e); r.unshift(e); localStorage.setItem("mc.recentEmo", JSON.stringify(r.slice(0, 8))); }
+function alreadyReacted(m, e) { for (const x of MSG.values()) if (x.emoji && x.out && x.replyId === m.id && x.text === e) return true; return false; }
+function react(m, e) {
+  if (alreadyReacted(m, e)) { toast("You already reacted " + e); return; }
+  rememberEmo(e); send(e, m.id, true);
+  document.querySelectorAll(".row.touch").forEach(r => r.classList.remove("touch"));
+}
+// double-click (desktop) or double-tap (phone) a message = react with your most-used emoji
+let lastTap = { id: null, t: 0 };
+function msgOf(row) { return row ? [...MSG.values()].find(x => String(x.id) === row.dataset.id && x.from === row.dataset.from) : null; }
+$("thread").addEventListener("dblclick", e => { const row = e.target.closest(".row"); const m = msgOf(row); if (m && !e.target.closest("[data-act]")) { e.preventDefault(); react(m, recentEmo()[0]); } });
 
 // ---------------------------------------------------------------- composer
 function quick() {
@@ -286,7 +312,7 @@ async function send(text, replyId, emoji) {
   } catch (e) { toast(e.message); }
 }
 function openEmojis(anchor, pick) {
-  const p = $("emojis"); p.innerHTML = EMO.map(x => `<button>${x}</button>`).join("");
+  const p = $("emojis"); p.innerHTML = recentEmo().map(x => `<button>${x}</button>`).join("");
   const r = anchor.getBoundingClientRect(); p.style.display = "flex"; p.style.flexWrap = "wrap"; p.style.width = "232px";
   p.style.left = Math.max(8, Math.min(innerWidth - 240, r.left - 100)) + "px"; p.style.top = Math.max(8, r.top - 110) + "px";
   p.onclick = e => { const b = e.target.closest("button"); if (b) { p.style.display = "none"; pick(b.textContent); } };

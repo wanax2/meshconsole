@@ -97,6 +97,24 @@ class BbsPanel extends JPanel {
         JButton advSave = new JButton("Save advert"); advSave.addActionListener(e -> { store.advertShuffle = advShuffle.isSelected(); store.advertOn = advOn.isSelected(); store.advertTime = advTime.getText().trim(); store.advertText = advText.getText().trim(); store.save(); });
         JButton advNow = new JButton("Send next advert now"); advNow.addActionListener(e -> { store.advertShuffle = advShuffle.isSelected(); store.advertText = advText.getText().trim(); store.save(); if (!store.enabled) { JOptionPane.showMessageDialog(this, "Turn the BBS on first – advertising a board that's off just annoys people."); return; } engine.advertiseNow(); });
         r2c2.add(advShuffle); r2c2.add(advSave); r2c2.add(advNow); r2c2.add(advCount);
+        // ---- 1.29.0: rotating bulletins
+        JPanel r2cb = row();
+        JCheckBox bulOn = new JCheckBox("Post a rotating bulletin daily at", store.bulRotOn); JTextField bulTime = new JTextField(store.bulRotTime, 11);
+        bulTime.setToolTipText("One or more times, e.g. 08:00, 18:00 – each posts the next bulletin from the list below to the board");
+        JTextArea bulText = new JTextArea(store.bulRotText, 4, 60); bulText.setLineWrap(true); bulText.setWrapStyleWord(true);
+        bulText.setToolTipText("Bulletins separated by a line containing only ---. Each is posted to the board as a bulletin from the BBS (B lists, R reads). Keep each within " + BbsStore.BUL_MAX_BYTES + " bytes.");
+        JLabel bulCount = new JLabel();
+        Runnable countBul = () -> { java.util.List<String> v = new java.util.ArrayList<>(); for (String part : bulText.getText().split("(?m)^\\s*---\\s*$")) if (!part.isBlank()) v.add(part.trim()); int longest = 0; for (String x : v) longest = Math.max(longest, x.getBytes(java.nio.charset.StandardCharsets.UTF_8).length); bulCount.setText(v.isEmpty() ? "no bulletins yet" : v.size() + " bulletin" + (v.size() == 1 ? "" : "s") + ", longest " + longest + "/" + BbsStore.BUL_MAX_BYTES + " bytes" + (longest > BbsStore.BUL_MAX_BYTES ? "  ← too long, will be cut" : "")); };
+        bulText.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() { public void insertUpdate(javax.swing.event.DocumentEvent e) { countBul.run(); } public void removeUpdate(javax.swing.event.DocumentEvent e) { countBul.run(); } public void changedUpdate(javax.swing.event.DocumentEvent e) { countBul.run(); } });
+        countBul.run();
+        r2cb.add(bulOn); r2cb.add(bulTime); r2cb.add(new JLabel("bulletins (--- on its own line separates them):")); r2cb.add(new JScrollPane(bulText));
+        JPanel r2cb2 = row();
+        JCheckBox bulShuffle = new JCheckBox("Shuffle", store.bulRotShuffle); bulShuffle.setToolTipText("Every bulletin once per cycle, in random order; reshuffled each cycle and whenever the list changes");
+        JCheckBox bulReplace = new JCheckBox("Replace the previous one", store.bulRotReplace); bulReplace.setToolTipText("Keep only the latest rotating bulletin on the board (users' own posts are never touched)");
+        Runnable bulApply = () -> { store.bulRotOn = bulOn.isSelected(); store.bulRotTime = bulTime.getText().trim(); store.bulRotText = bulText.getText().trim(); store.bulRotShuffle = bulShuffle.isSelected(); store.bulRotReplace = bulReplace.isSelected(); store.save(); };
+        JButton bulSave = new JButton("Save bulletins"); bulSave.addActionListener(e -> bulApply.run());
+        JButton bulNow = new JButton("Post next bulletin now"); bulNow.addActionListener(e -> { bulApply.run(); BbsStore.Post bp = engine.postRotatingBulletin(); if (bp == null) JOptionPane.showMessageDialog(this, "No bulletins in the list yet."); reload(); });
+        r2cb2.add(bulShuffle); r2cb2.add(bulReplace); r2cb2.add(bulSave); r2cb2.add(bulNow); r2cb2.add(bulCount);
         // ---- 2.1: MOTD, poll, sysop password, digest time
         JPanel r2d = row();
         JTextField motd = new JTextField(store.motd, 30), pw = new JPasswordField(store.sysopPassword, 10), digest = new JTextField(store.digestTime, 5);
@@ -134,7 +152,7 @@ class BbsPanel extends JPanel {
         JButton saveBot = new JButton("Save"); saveBot.addActionListener(e -> { store.discordBotToken = new String(((JPasswordField) botTok).getPassword()).trim(); store.discordChannelId = botCh.getText().trim(); store.save(); }); r2f.add(saveBot);
         JPanel r3 = row(); r3.add(new JLabel("<html>Users DM this node: <b>?</b> menu · <b>B</b> bulletins · <b>R n</b> read · <b>P text</b> post · <b>D n</b> delete own · <b>M</b> read mail · <b>M name text</b> leave mail (delivered when they're next heard) · <b>N</b> nodes/1h · <b>S</b> signal · <b>T</b> traceroute · <b>STATS</b> · <b>TOP</b> · <b>WHO n</b> · <b>W/TAF</b> · <b>METRO</b> alerts · <b>METRO BUS [route]</b> · <b>NEXT station</b> trains · <b>BUS stopid</b> · <b>ELEV [station]</b> · <b>ALERTS</b> NWS · <b>SCORE</b> Bills/Sabres · <b>SUN</b> · <b>ISS</b> · <b>SOLAR</b> HF · <b>C call</b> · <b>E</b> events · <b>POLL / V n</b> · <b>GB</b> guestbook · <b>SUB WX|EVENTS</b> digest · <b>TRIVIA/GUESS/ADV</b> · <b>NET</b> peers · <b>SYSOP pw</b> then <b>X …</b> admin by DM</html>"));
         JPanel r4 = row(); r4.add(stats);
-        top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r2c2); top.add(r2d); top.add(r2e); top.add(r2f); top.add(r3); top.add(r4);
+        top.add(r1); top.add(r2); top.add(r2b); top.add(r2c); top.add(r2c2); top.add(r2cb); top.add(r2cb2); top.add(r2d); top.add(r2e); top.add(r2f); top.add(r3); top.add(r4);
         add(top, BorderLayout.NORTH);
 
         postTable.setRowHeight(20); mailTable.setRowHeight(20);

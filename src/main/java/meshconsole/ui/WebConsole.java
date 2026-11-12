@@ -42,6 +42,7 @@ public final class WebConsole {
         MeshAlerts alerts = new MeshAlerts(client, bbs, dataDir);
         DiscordBridge discord = new DiscordBridge(client, dataDir);
         meshconsole.mqtt.HeardBy heardBy = meshconsole.mqtt.HeardBy.forDir(client, dataDir);
+        meshconsole.meshcore.McService.start(dataDir, log);   // MeshCore radio, if meshcore.properties names one
         Path pf = dataDir.resolve("webmap-port.txt");
         int want = 3500;
         try { want = Integer.parseInt(Files.readString(pf).trim()); } catch (Exception ignored) { }
@@ -51,6 +52,34 @@ public final class WebConsole {
                 final int myPort = p;
                 s.createContext("/", ex -> send(ex, 200, "text/html; charset=utf-8", PAGE));
                 s.createContext("/chat", ex -> send(ex, 200, "text/html; charset=utf-8", ChatPage.HTML));
+                s.createContext("/meshcore", ex -> send(ex, 200, "text/html; charset=utf-8", MeshCorePage.HTML));
+                s.createContext("/api/meshcore/", ex -> {
+                    if (!authorised(ex, password)) { send(ex, 401, "application/json", "{\"error\":\"password\"}"); return; }
+                    String path = ex.getRequestURI().getPath(), qs = Optional.ofNullable(ex.getRequestURI().getQuery()).orElse("");
+                    try {
+                        switch (path) {
+                            case "/api/meshcore/state" -> send(ex, 200, "application/json", meshconsole.meshcore.McWeb.state());
+                            case "/api/meshcore/messages" -> send(ex, 200, "application/json", meshconsole.meshcore.McWeb.messages(qs.startsWith("since=") ? Long.parseLong(qs.substring(6)) : 0));
+                            case "/api/meshcore/signal" -> send(ex, 200, "application/json", meshconsole.meshcore.McWeb.signal());
+                            case "/api/meshcore/send" -> send(ex, 200, "application/json", "{\"result\":" + q(meshconsole.meshcore.McWeb.send(form(ex))) + "}");
+                            case "/api/meshcore/advert" -> {
+                                var c = meshconsole.meshcore.McService.client();
+                                String r = c == null || !c.isConnected() ? "not connected" : c.advert(!"0".equals(form(ex).get("flood")));
+                                send(ex, 200, "application/json", "{\"result\":" + q(r) + "}");
+                            }
+                            case "/api/meshcore/position" -> {
+                                var c = meshconsole.meshcore.McService.client(); var f = form(ex); String r;
+                                if (c == null || !c.isConnected()) r = "not connected";
+                                else { try { r = c.setPosition(Double.parseDouble(f.getOrDefault("lat", "x").trim()), Double.parseDouble(f.getOrDefault("lon", "x").trim()), !"0".equals(f.get("share"))); }
+                                       catch (NumberFormatException e) { r = "latitude and longitude must be numbers, e.g. 38.8895 and -77.0353"; } }
+                                send(ex, 200, "application/json", "{\"result\":" + q(r) + "}");
+                            }
+                            case "/api/meshcore/config" -> send(ex, 200, "application/json", "{\"connect\":" + q(meshconsole.meshcore.McService.spec()) + "}");
+                            case "/api/meshcore/config/save" -> send(ex, 200, "application/json", "{\"result\":" + q(meshconsole.meshcore.McService.configure(form(ex).get("connect"))) + "}");
+                            default -> send(ex, 404, "application/json", "{\"error\":\"unknown\"}");
+                        }
+                    } catch (Exception e) { send(ex, 500, "application/json", "{\"error\":" + q(String.valueOf(e.getMessage())) + "}"); }
+                });
                 s.createContext("/api/peer/", ex -> {   // read-only feed: this computer and the dashboard's Pi, no password
                     String path = ex.getRequestURI().getPath();
                     boolean keys = path.equals("/api/peer/channels");
@@ -492,7 +521,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
 <body>
 <header><span id="conn"></span><h1 id="title">Mesh Console</h1><span id="sub" class="dim"></span>
   <span style="flex:1"></span>
-  <a href="chat" style="color:#58a6ff;margin-right:8px;font-weight:600">💬 Chat</a><span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="heard">Heard by</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
+  <a href="chat" style="color:#58a6ff;margin-right:8px;font-weight:600">💬 Chat</a><a href="meshcore" style="color:#d29922;margin-right:8px;font-weight:600">📡 MeshCore</a><span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="heard">Heard by</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
 </header>
 <main>
   <div class="pane" id="pane-messages">
