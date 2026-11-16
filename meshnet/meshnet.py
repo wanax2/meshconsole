@@ -3,7 +3,7 @@ MeshNet v1 reference implementation (Python 3.8+, no dependencies).
 
 Drop into any Meshtastic BBS:
 
-    net = MeshNet(my_node_id="!435c3ff4", board_name="Lyon's Den",
+    net = MeshNet(my_node_id="!a1b2c3d4", board_name="Lyon's Den",
                   send_dm=lambda node_id, text: my_bbs.send_dm(node_id, text),
                   on_post=lambda author, text, via: my_bbs.add_bulletin(f"{author} via {via}", text),
                   on_mail=lambda user, sender, text, via: my_bbs.add_mail(user, f"{sender}@{via}", text),
