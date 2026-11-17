@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.29.2 — 2026-11-16
+- **MQTT proxy reconnects by itself.** The proxy used to start once per radio connection; if the broker connection
+  then dropped ("Connection timed out" on weak WiFi) or the broker wasn't reachable at start, it stayed down until
+  Mesh Console was next restarted, so a USB radio silently fell off MQTT for days. Now a stopped proxy is started again
+  every minute for as long as it is meant to be on and the radio has MQTT and proxy-to-client enabled. The log says
+  when it reconnects, and notes every 30 minutes while the broker can't be reached. Stopping it with the button still
+  keeps it stopped.
+
 ## 1.29.1 — 2026-11-16
 - **Web console: the "To" box no longer falls back to the public channel.** Picking someone for a first direct message
   (by clicking their name) added them to the list, but the 10-second refresh rebuilt the list from the DM history and

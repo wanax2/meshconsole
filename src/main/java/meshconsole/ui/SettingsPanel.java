@@ -277,6 +277,27 @@ class SettingsPanel extends JPanel {
                 new Thread(() -> { try { Thread.sleep(3000); if (!proxy.isRunning()) proxy.start(); } catch (Exception ex) { state.emitLog("MQTT proxy auto-start failed: " + ex.getMessage()); } }, "mqtt-proxy-auto").start();
             }
         });
+        // 1.29.2: keep the proxy up. Before, it started once per radio connection; when the broker connection dropped
+        // (weak WiFi: "Connection timed out") or the broker wasn't reachable at start, it stayed down until the next
+        // restart of Mesh Console – at the lake that was days. Now, while it is meant to be on and the radio is
+        // connected with MQTT + proxy enabled, a stopped proxy is started again every minute until it works.
+        java.util.Timer proxyWatchdog = new java.util.Timer("mqtt-proxy-watchdog", true);
+        proxyWatchdog.scheduleAtFixedRate(new java.util.TimerTask() {
+            private int fails;
+            @Override public void run() {
+                try {
+                    if (!pp.getBoolean("auto", false) || proxy.isRunning() || !client.isConnected() || !state.configComplete()) { if (proxy.isRunning()) fails = 0; return; }
+                    if (!MqttProxy.currentKey(state).startsWith("true|true|")) return;
+                    try {
+                        proxy.start();
+                        state.emitLog("MQTT proxy: reconnected" + (fails > 0 ? " after " + (fails + 1) + " attempts" : ""));
+                        fails = 0;
+                    } catch (Exception ex) {
+                        if (fails++ % 30 == 0) state.emitLog("MQTT proxy: can't reach the broker (" + ex.getMessage() + ") – retrying every minute");
+                    }
+                } catch (Exception ignored) { }
+            }
+        }, 60_000L, 60_000L);
         box.add(mq);
         box.add(mq2);
         box.add(mq3);

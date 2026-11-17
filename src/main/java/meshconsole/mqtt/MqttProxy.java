@@ -46,6 +46,7 @@ public class MqttProxy implements AutoCloseable {
     }
 
     public synchronized void start() throws IOException {
+        if (mqtt != null) return;   // 1.29.2: already running (auto-start and the reconnect watchdog can both call this)
         ModuleConfig mc = state.moduleConfig(ModuleConfig.PayloadVariantCase.MQTT);
         if (mc == null) throw new IOException("MQTT module config not loaded yet");
         ModuleConfig.MQTTConfig cfg = mc.getMqtt();
@@ -89,7 +90,12 @@ public class MqttProxy implements AutoCloseable {
             topics.add(root + "/2/e/" + name + "/+");
             if (cfg.getJsonEnabled()) topics.add(root + "/2/json/" + name + "/+");
         }
-        if (!topics.isEmpty()) mqtt.subscribe(topics.toArray(new String[0]));
+        try { if (!topics.isEmpty()) mqtt.subscribe(topics.toArray(new String[0])); }
+        catch (IOException | RuntimeException e) {   // 1.29.2: a half-made connection must not count as "running"
+            MqttClient half = mqtt; mqtt = null;
+            try { if (half != null) half.close(); } catch (Exception ignored) { }
+            throw e instanceof IOException io ? io : new IOException(e.getMessage(), e);
+        }
         state.addListener(radioListener);
         published = received = 0;
         status.accept("Connected to " + host + ":" + port + "  ·  " + (topics.isEmpty() ? "uplink only (no channel has downlink on)" : "downlink " + String.join(", ", topics)));
