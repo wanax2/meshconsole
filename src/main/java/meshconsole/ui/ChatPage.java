@@ -65,6 +65,14 @@ input, textarea, select { background:#0b0e11; color:var(--text); border:1px soli
 .retry { background:transparent; border:1px solid #ffb3ad; color:#ffb3ad; padding:0 6px; font-size:11px; border-radius:6px; }
 .acts { position:absolute; top:-14px; display:none; gap:2px; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:2px; z-index:3; }
 .row:not(.out) .acts { left:8px; } .row.out .acts { right:8px; }
+.acts .lbl { font-size:12px; }
+/* 1.29.1: on a wide screen the action bar sits beside the bubble, so it no longer covers the sender's name */
+@media (min-width:900px) and (pointer:fine) {
+  .acts { position:static; display:flex; visibility:hidden; align-self:flex-start; order:2; margin:0 0 0 6px; flex:none; }
+  .row.out .acts { order:-1; margin:0 6px 0 0; }
+  .row:hover .acts, .row.touch .acts { visibility:visible; }
+}
+@media (max-width:899px), (pointer:coarse) { .acts .lbl { display:none; } }
 .row:hover .acts, .row.touch .acts { display:flex; }
 .acts button { border:0; background:transparent; padding:2px 6px; font-size:15px; }
 .flash .bub { animation:fl 1.2s; } @keyframes fl { 0% { box-shadow:0 0 0 3px var(--accent); } 100% { box-shadow:none; } }
@@ -232,7 +240,7 @@ function renderThread(scroll) {
       if (m.rssi) meta = m.rssi + " dBm / " + m.snr + " dB · " + meta;
     }
     html += `<div class="row ${m.out ? "out" : ""} ${mention ? "mention" : ""}" data-id="${m.id}" data-from="${esc(m.from)}">
-      <div class="acts">${quickReacts()}<button data-act="react" title="More reactions">➕</button><span class="sep"></span><button data-act="reply" title="Reply">↩</button><button data-act="copy" title="Copy">⧉</button>${m.out ? "" : `<button data-act="dm" title="Direct message">✉</button><button data-act="info" title="Node details">ⓘ</button>`}</div>
+      <div class="acts">${quickReacts()}<button data-act="react" title="More reactions">➕</button><span class="sep"></span><button data-act="reply" title="Reply">↩</button><button data-act="copy" title="Copy">⧉</button>${m.out ? "" : `<button data-act="dm" title="Message ${esc(m.fromName)} directly (private, not on the channel)">✉<span class="lbl"> Message directly</span></button><button data-act="info" title="Node details">ⓘ</button>`}</div>
       <div class="bub">${showName ? `<div class="nm" data-node="${esc(m.from)}" style="color:hsl(${hue(m.from)},70%,70%)">${esc(m.fromName)}</div>` : ""}${quote}${esc(m.text)}${reactHtml}<div class="meta">${meta}</div></div></div>`;
   }
   box.innerHTML = html || `<p class="dim" style="text-align:center;margin-top:12vh">${q ? "Nothing matches." : "No messages yet. Say hello!"}</p>`;

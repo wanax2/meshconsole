@@ -39,6 +39,7 @@ public final class WebConsole {
     public static void start(MeshClient client, Supplier<BbsEngine> bbs, Path dataDir, java.util.function.Consumer<String> log) {
         MeshState state = client.state();
         String password = password(dataDir, log);
+        WebSettings.dataDir(dataDir);
         MeshAlerts alerts = new MeshAlerts(client, bbs, dataDir);
         DiscordBridge discord = new DiscordBridge(client, dataDir);
         meshconsole.mqtt.HeardBy heardBy = meshconsole.mqtt.HeardBy.forDir(client, dataDir);
@@ -566,13 +567,18 @@ $("pw").onkeydown = e => { if (e.key === "Enter") $("pwGo").click(); };
 
 // ---------------- messages
 function fillSelectors() {
-  const v = $("view").value, t = $("target").value;
+  const v = $("view").value, t = $("target").value, tLabel = $("target").selectedOptions[0]?.textContent || "";
   if (!M.channels.length) M.channels = [{ index: 0, name: "Primary" }];   // radio not connected yet: channel list unknown
   const chans = M.channels.map(c => `<option value="ch${c.index}">#${c.index} ${esc(c.name)}</option>`).join("");
   $("view").innerHTML = `<option value="all">All messages</option>${chans}<option value="dm">Direct messages</option>`;
   const dmPeers = [...new Map(M.messages.filter(m => m.to !== "^all").map(m => { const peer = m.out ? m.to : m.from; return [peer, m.out ? m.toName : m.fromName]; })).entries()];
   $("target").innerHTML = M.channels.map(c => `<option value="ch${c.index}">To #${c.index} ${esc(c.name)}</option>`).join("") + dmPeers.map(([id, name]) => `<option value="dm${id}">DM ${esc(name || id)}</option>`).join("");
-  if (v) $("view").value = v; if (t && [...$("target").options].some(o => o.value === t)) $("target").value = t;
+  if (v) $("view").value = v; if (t) {
+    // 1.29.1: a person picked for a first DM has no history yet, so the rebuilt list doesn't contain them – put them back
+    // instead of silently falling back to the first entry (the public channel)
+    if (![...$("target").options].some(o => o.value === t) && t.startsWith("dm")) $("target").insertAdjacentHTML("beforeend", `<option value="${esc(t)}">${esc(tLabel || "DM " + t.slice(2))}</option>`);
+    if ([...$("target").options].some(o => o.value === t)) $("target").value = t;
+  }
 }
 function renderMessages() {
   if (!M) return;

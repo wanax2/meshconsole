@@ -28,7 +28,37 @@ import static meshconsole.ui.WebConsole.q;
  */
 final class WebSettings {
     private WebSettings() { }
-    static List<String> dashboardHosts = List.of("arlmesh", "arlmesh.local");
+    /** Computers (names or IP addresses) allowed to read the password-free peer feed, besides this one. */
+    static final List<String> DEFAULT_DASHBOARD_HOSTS = List.of("arlmesh", "arlmesh.local");
+    static final String DASHBOARD_HOSTS_FILE = "dashboard-hosts.txt";
+    private static volatile Path dataDir;
+    private static volatile List<String> dashboardHosts = DEFAULT_DASHBOARD_HOSTS;
+    private static volatile long hostsReadAt;
+    static void dataDir(Path dir) { dataDir = dir; hostsReadAt = 0; }
+
+    /** 1.29.1: the list comes from dashboard-hosts.txt in the data folder (one name or address per line or comma-separated,
+     *  # starts a comment); re-read at most once a minute, so an edit needs no restart. No file = the built-in default. */
+    static List<String> dashboardHosts() {
+        long now = System.currentTimeMillis();
+        Path dir = dataDir;
+        if (dir == null || now - hostsReadAt < 60_000L) return dashboardHosts;
+        hostsReadAt = now;
+        try {
+            Path f = dir.resolve(DASHBOARD_HOSTS_FILE);
+            if (!java.nio.file.Files.exists(f)) return dashboardHosts = DEFAULT_DASHBOARD_HOSTS;
+            dashboardHosts = parseHosts(java.nio.file.Files.readString(f));
+        } catch (Exception ignored) { }
+        return dashboardHosts;
+    }
+    static List<String> parseHosts(String text) {
+        List<String> out = new ArrayList<>();
+        for (String line : text.split("\\R")) {
+            int c = line.indexOf('#');
+            if (c >= 0) line = line.substring(0, c);
+            for (String h : line.split("[,\\s]+")) if (!h.isBlank() && !out.contains(h.trim())) out.add(h.trim());
+        }
+        return List.copyOf(out);
+    }
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(4)).build();
 
     // ------------------------------------------------------------------ settings as JSON
@@ -200,7 +230,7 @@ final class WebSettings {
         InetAddress a = ex.getRemoteAddress().getAddress();
         if (a.isLoopbackAddress()) return true;
         if (loopbackOnly) return false;
-        for (String h : dashboardHosts) {
+        for (String h : dashboardHosts()) {
             try { for (InetAddress x : InetAddress.getAllByName(h)) if (x.equals(a)) return true; } catch (Exception ignored) { }
         }
         return false;

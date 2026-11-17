@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.29.1 — 2026-11-16
+- **Web console: the "To" box no longer falls back to the public channel.** Picking someone for a first direct message
+  (by clicking their name) added them to the list, but the 10-second refresh rebuilt the list from the DM history and
+  dropped them, so the box silently went back to "To #0 Primary" while you were typing. The chosen person now stays
+  selected until you change it.
+- **Chat page: "✉ Message directly" is labelled**, with a tooltip naming the person and saying it is private. On a
+  computer the action bar now sits beside the message instead of on top of it, so it no longer covers the sender's
+  name. (Phones keep the compact icons.)
+- **Dashboard allow-list is a setting.** The password-free peer feed (`/api/peer/…`) is readable from this computer and
+  from the hosts listed in `dashboard-hosts.txt` in the data folder – one name or IP address per line or
+  comma-separated, `#` for comments. Re-read within a minute, no restart needed. Without the file the previous
+  built-in list applies.
+
 ## 1.29.0 — 2026-11-12
 - **Rotating bulletins.** BBS tab: a list of sysop bulletins (separated by a line of `---`), posted to the board
   one at a time at the times you set (e.g. `08:00, 18:00`). **Shuffle** posts every bulletin once per cycle in random
