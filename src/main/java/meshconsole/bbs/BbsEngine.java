@@ -730,8 +730,15 @@ public class BbsEngine {
             case "W", "WX", "WEATHER" -> {
                 WeatherObs o = weather == null ? null : weather.latest();
                 if (o == null) return "No weather data on this BBS.";
-                return String.format("%s %s: %.0f°C/%.0f°F RH %.0f%% wind %s kt %.0f hPa%s", o.station(), meshconsole.ui.FmtBridge.time(o.time()), o.tempC(), o.tempC() * 9 / 5 + 32, o.humidityPct(),
-                        Double.isNaN(o.windKt()) ? "?" : String.valueOf((int) o.windKt()), o.pressureHpa(), o.wx().isEmpty() ? "" : " " + o.wx());
+                // 1.29.1: everyday words, then the next two NWS forecast periods as a second message
+                final String nowLine = WxReply.now(o, weather);
+                NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0;
+                bg.submit(() -> {
+                    send(from, nowLine);
+                    String fc = Aviation.forecastShort(la, lo, 2);
+                    if (!fc.isEmpty()) send(from, fc);
+                });
+                return null;
             }
             default -> {
                 // A bare airport code ("KBUF", "BUF", "EGLL") is a METAR request; anything that isn't one falls through to the usual reply.
@@ -898,7 +905,7 @@ public class BbsEngine {
     /** Daily subscriber digest: weather and new events, sent as DMs. */
     private void sendDigest() {
         WeatherObs o = weather == null ? null : weather.latest();
-        String wx = o == null ? null : String.format("WX %s: %.0f°F RH %.0f%% wind %s kt %s", o.station(), o.tempC() * 9 / 5 + 32, o.humidityPct(), Double.isNaN(o.windKt()) ? "?" : String.valueOf((int) o.windKt()), o.wx());
+        String wx = o == null ? null : WxReply.digest(o, weather);   // 1.29.1: same plain-words line as W
         String ev = store.events.isEmpty() ? null : command(0, "E");
         for (Map.Entry<Integer, Set<String>> e : store.subs.entrySet()) {
             if (e.getValue().contains("WX") && wx != null) send(e.getKey(), wx);

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.29.3 — 2026-11-22
+- **Weather reply (`W`, `WX`, `WEATHER`) in plain words.** Before: `KDCA 3:52 PM: 9°C/48°F RH 80% wind 4 kt 1013 hPa`.
+  Now the station's name and time, then °F first (°C in brackets) and "feels like" when wind chill or heat index
+  differs by 2° or more; sky cover from the METAR (clear, a few clouds, partly cloudy, mostly cloudy, overcast) with
+  the cloud base when it's under 10,000 ft and "storm clouds" for CB/TCU; rain, snow, drizzle, fog, mist, haze,
+  thunderstorms etc. in words ("light rain, mist", "showers nearby"); wind in mph with its compass direction and
+  gusts ("Calm" when there's none); visibility when under 10 mi; humidity; pressure in inHg with the 3-hour trend
+  (rising, falling, steady, fast). Kept to one packet: humidity, then the pressure figure, are dropped if it would
+  pass 200 bytes. An observation more than 90 minutes old says how old it is.
+- A second message follows with the next two NWS forecast periods: "Tonight: Mostly cloudy, low 41, precip 30%.
+  Monday: Chance light rain, high 55, precip 60%." (left out if the forecast can't be fetched).
+- The daily `SUB WX` digest uses the same plain-words line.
+
 ## 1.29.2 — 2026-11-16
 - **MQTT proxy reconnects by itself.** The proxy used to start once per radio connection; if the broker connection
   then dropped ("Connection timed out" on weak WiFi) or the broker wasn't reachable at start, it stayed down until

@@ -267,6 +267,36 @@ public final class Aviation {
     // ---- NWS forecast ---------------------------------------------------------------------------
     private static String forecastUrl; private static double fLat, fLon;
 
+    /**
+     * 1.29.1: the next N forecast periods in everyday words, for the W reply:
+     * "Tonight: Mostly cloudy, low 41, precip 30%. Monday: Chance light rain, high 55, precip 60%."
+     */
+    public static String forecastShort(double lat, double lon, int n) {
+        if (lat == 0) return "";
+        try {
+            if (forecastUrl == null || Math.abs(lat - fLat) > 0.01 || Math.abs(lon - fLon) > 0.01) {
+                Map<?, ?> p = (Map<?, ?>) Json.parse(fetch(String.format(Locale.ROOT, "https://api.weather.gov/points/%.4f,%.4f", lat, lon), "Accept", "application/geo+json"));
+                forecastUrl = Json.str(((Map<?, ?>) p.get("properties")).get("forecast")); fLat = lat; fLon = lon;
+            }
+            Map<?, ?> f = (Map<?, ?>) Json.parse(fetch(forecastUrl, "Accept", "application/geo+json"));
+            List<?> periods = (List<?>) ((Map<?, ?>) f.get("properties")).get("periods");
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < Math.min(n, periods.size()); i++) {
+                Map<?, ?> pr = (Map<?, ?>) periods.get(i);
+                String sf = Json.str(pr.get("shortForecast"));
+                sf = sf.isEmpty() ? sf : sf.charAt(0) + sf.substring(1).toLowerCase(Locale.ROOT);
+                boolean day = Boolean.TRUE.equals(pr.get("isDaytime"));
+                sb.append(Json.str(pr.get("name"))).append(": ").append(sf).append(", ").append(day ? "high " : "low ")
+                  .append((int) Json.num(pr.get("temperature"), 0));
+                Object pop = pr.get("probabilityOfPrecipitation") instanceof Map<?, ?> pm ? pm.get("value") : null;
+                double pp = Json.num(pop, 0);
+                if (pp >= 20) sb.append(", precip ").append((int) pp).append('%');
+                sb.append(". ");
+            }
+            return sb.toString().trim();
+        } catch (IOException | RuntimeException e) { return ""; }
+    }
+
     /** The next three NWS forecast periods for the board's position, short form. */
     public static String forecast(double lat, double lon) {
         if (lat == 0) return "No position set on this board.";
