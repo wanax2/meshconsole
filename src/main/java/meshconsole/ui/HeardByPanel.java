@@ -58,7 +58,10 @@ class HeardByPanel extends JPanel {
         r2.add(new JLabel("password")); r2.add(privPass); r2.add(new JLabel("topic")); r2.add(privTopic);
         JButton save = new JButton("Save"), map = new JButton("Open map in browser");
         JPanel r3 = new JPanel(new FlowLayout(FlowLayout.LEFT)); r3.add(new JLabel("Also track (other house, G2, T-Beam):")); r3.add(extra); r3.add(save); r3.add(map);
-        JPanel r4 = new JPanel(new FlowLayout(FlowLayout.LEFT)); r4.add(new JLabel("Node:")); r4.add(node); r4.add(summary);
+        JButton rel = new JButton("Reliability…");
+        rel.setToolTipText("What share of this node's packets each gateway heard, with an AI explanation if the local AI is set up");
+        rel.addActionListener(e -> showReliability());
+        JPanel r4 = new JPanel(new FlowLayout(FlowLayout.LEFT)); r4.add(new JLabel("Node:")); r4.add(node); r4.add(rel); r4.add(summary);
         for (JComponent c : new JComponent[]{intro, r1, r2, r3, r4}) { c.setAlignmentX(LEFT_ALIGNMENT); top.add(c); }
         add(top, BorderLayout.NORTH);
         JTable t = new JTable(model); t.setAutoCreateRowSorter(true); t.setFillsViewportHeight(true);
@@ -108,6 +111,50 @@ class HeardByPanel extends JPanel {
                 filling = false; showNode();
             }
         }.execute();
+    }
+
+    /** 1.29.5: the reliability report for the selected node, in a window of its own. */
+    private void showReliability() {
+        int i = node.getSelectedIndex();
+        if (i < 0 || i >= nodes.size()) return;
+        String id = Json.str(m(nodes.get(i)).get("id"));
+        int num = (int) Long.parseLong(id.replaceFirst("^!", ""), 16);
+        JDialog d = new JDialog(SwingUtilities.getWindowAncestor(this), "Reliability – " + node.getSelectedItem(), java.awt.Dialog.ModalityType.MODELESS);
+        JComboBox<String> span = new JComboBox<>(new String[]{"Last 24 hours", "Last 3 days", "Last 7 days"});
+        int[] hrs = {24, 72, 168};
+        JTextArea sum = new JTextArea(4, 70); sum.setLineWrap(true); sum.setWrapStyleWord(true); sum.setEditable(false);
+        JTextArea ai = new JTextArea(6, 70); ai.setLineWrap(true); ai.setWrapStyleWord(true); ai.setEditable(false);
+        String[] cols = {"Gateway", "ID", "Heard", "Share", "Median hops", "Median SNR", "Direct", "km", "Last"};
+        javax.swing.table.DefaultTableModel tm = new javax.swing.table.DefaultTableModel(cols, 0) { @Override public boolean isCellEditable(int r, int c) { return false; } };
+        JTable t = new JTable(tm); t.setAutoCreateRowSorter(true);
+        Runnable load = () -> {
+            HeardBy.Reliability r = hb.reliability(num, hrs[span.getSelectedIndex()]);
+            sum.setText(HeardBy.summary(r));
+            tm.setRowCount(0);
+            for (HeardBy.GwRel g : r.gateways()) tm.addRow(new Object[]{g.name(), g.id(), g.heard(), String.format("%.0f%%", g.pct()),
+                    Double.isNaN(g.medHops()) ? "?" : String.format("%.1f", g.medHops()), Double.isNaN(g.medSnr()) ? "" : String.format("%.1f", g.medSnr()),
+                    g.direct(), g.km() < 0 ? "?" : String.format("%.1f", g.km()), Fmt.time(g.last())});
+        };
+        span.addActionListener(e -> { load.run(); ai.setText(""); });
+        JButton explain = new JButton("Explain (AI)");
+        meshconsole.bbs.LocalAi local = meshconsole.bbs.LocalAi.forDir(meshconsole.DataDir.get());
+        explain.setEnabled(local.enabled());
+        if (!local.enabled()) explain.setToolTipText("Set enabled=true and servers in ai.properties in the data folder to use the local AI");
+        explain.addActionListener(e -> {
+            explain.setEnabled(false); ai.setText("Asking the local AI… (the first answer can take a minute while the model loads)");
+            HeardBy.Reliability r = hb.reliability(num, hrs[span.getSelectedIndex()]);
+            new SwingWorker<String, Void>() {
+                @Override protected String doInBackground() { return local.chat(WebConsole.EXPLAIN_SYSTEM, List.<String[]>of(new String[]{"user", WebConsole.explainPrompt(r)}), 450); }
+                @Override protected void done() { try { String a = get(); ai.setText(a != null ? a : "No answer: " + local.lastError()); } catch (Exception ex) { ai.setText("No answer: " + ex.getMessage()); } explain.setEnabled(true); }
+            }.execute();
+        });
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT)); top.add(span); top.add(explain);
+        JPanel north = new JPanel(new BorderLayout(4, 4)); north.add(top, BorderLayout.NORTH); north.add(new JScrollPane(sum), BorderLayout.CENTER);
+        JPanel c = new JPanel(new BorderLayout(6, 6)); c.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        c.add(north, BorderLayout.NORTH); c.add(new JScrollPane(t), BorderLayout.CENTER);
+        JScrollPane aiScroll = new JScrollPane(ai); aiScroll.setBorder(BorderFactory.createTitledBorder("AI explanation")); c.add(aiScroll, BorderLayout.SOUTH);
+        d.setContentPane(c); d.setSize(980, 620); d.setLocationRelativeTo(this);
+        load.run(); d.setVisible(true);
     }
 
     private void showNode() {

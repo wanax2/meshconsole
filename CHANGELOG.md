@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.29.5 — 2026-11-22
+- **Reliability report** (Heard by tab → "Reliability…", and a card on the web console's Heard by tab), from
+  Meshview's idea: for one of your nodes over the last 24 hours, 3 days or 7 days, what share of its packets each other
+  station's MQTT gateway heard, with median hops and SNR, a bar per gateway, which kinds of packet got through
+  (position, telemetry, node info …), how many reached no one, and the longest stretch with nobody hearing it. Packets
+  your node uplinks to MQTT itself are now remembered (heard_by_sent.csv) so they count as "sent"; heard_by.csv gains
+  the packet ID. A node that doesn't uplink itself gets shares of what at least one gateway heard, and the report says so.
+- **Explain (AI)** on the report: your local AI reads the numbers and says in a few sentences what they mean and what
+  to try.
+- **Ask AI tab** in the web console: a conversation with your local AI (the same servers as the BBS's ASK), with longer
+  answers and follow-up questions. It's told the date and time, the weather, this radio's role, hardware and channel
+  use, the mesh, hop-usage and reliability figures, and the BBS's commands. Nothing goes to a cloud service.
+- **ASK on the BBS now knows the board:** the model is told the date and time, where the board is, the latest weather
+  observation, how many nodes are heard and how the asker's node is heard, and which commands this board has – so
+  "will it rain tonight?" is answered from the observation or pointed at FCST instead of guessed.
+- **ASK fixes:** a question (or any prompt text) containing "%" made every AI call fail; a failed answer no longer uses
+  up one of the person's questions for the hour; the BBS log now says which server answered, or why none did.
+- The AI servers are shared by all three (LocalAi): the first in ai.properties is tried first, one that fails is skipped
+  for 2 minutes, and "Ask AI" shows the list and the last error.
+- Web console: the Heard by tables load even when the map library can't be fetched.
+
 ## 1.29.4 — 2026-11-22
 Ideas taken from NodeMonitor (github.com/swiings/NodeMonitor).
 - **Ask unnamed nodes for their name.** Nodes tab → "Ask unnamed nodes for their name". Once a minute it sends a

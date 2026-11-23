@@ -109,6 +109,39 @@ public final class WebConsole {
                             case "/api/status" -> send(ex, 200, "application/json", status(client, bbs.get()));
                             case "/api/bbs" -> send(ex, 200, "application/json", bbsJson(state, bbs.get()));
                             case "/api/heardby" -> send(ex, 200, "application/json", heardBy.json());
+                            // 1.29.5: reliability report, local-AI chat and "Explain"
+                            case "/api/reliability" -> {
+                                Map<String, String> qp = query(ex.getRequestURI().getRawQuery());
+                                int num = parseNode(qp.getOrDefault("node", ""), state);
+                                int hours = Math.max(1, Math.min(720, parseIntOr(qp.get("hours"), 24)));
+                                send(ex, 200, "application/json", meshconsole.mqtt.HeardBy.json(heardBy.reliability(num, hours)));
+                            }
+                            case "/api/ai/status" -> {
+                                meshconsole.bbs.LocalAi ai = meshconsole.bbs.LocalAi.forDir(dataDir);
+                                send(ex, 200, "application/json", "{\"enabled\":" + ai.enabled() + ",\"servers\":" + q(ai.describe()) + ",\"lastError\":" + q(ai.lastError()) + ",\"file\":" + q(dataDir.resolve("ai.properties").toString()) + "}");
+                            }
+                            case "/api/ai/chat" -> {
+                                Map<String, String> f = form(ex);
+                                meshconsole.bbs.LocalAi ai = meshconsole.bbs.LocalAi.forDir(dataDir);
+                                List<String[]> turns = new ArrayList<>();
+                                Object hist = meshconsole.analysis.Json.parse(f.getOrDefault("history", "[]"));
+                                if (hist instanceof List<?> hl) for (Object o : hl) if (o instanceof List<?> t && t.size() == 2) turns.add(new String[]{String.valueOf(t.get(0)), String.valueOf(t.get(1))});
+                                while (turns.size() > 12) turns.remove(0);   // the last few exchanges are enough context
+                                turns.add(new String[]{"user", f.getOrDefault("q", "")});
+                                String sys = "You are the assistant built into Mesh Console, the station software for " + (ai.place().isEmpty() ? "this Meshtastic station" : ai.place())
+                                        + ". You're talking to the station's owner. Answer clearly in plain text (short paragraphs or simple lists, no tables). "
+                                        + "Use the facts below when they help; don't invent live data you weren't given.\n" + stationContext(state, bbs.get(), heardBy);
+                                String a = ai.chat(sys, turns, 700);
+                                send(ex, 200, "application/json", a == null ? "{\"error\":" + q(ai.lastError().isEmpty() ? "no AI server answered" : ai.lastError()) + "}"
+                                        : "{\"answer\":" + q(a) + ",\"server\":" + q(ai.lastServer()) + "}");
+                            }
+                            case "/api/ai/explain" -> {
+                                Map<String, String> f = form(ex);
+                                meshconsole.bbs.LocalAi ai = meshconsole.bbs.LocalAi.forDir(dataDir);
+                                int num = parseNode(f.getOrDefault("node", ""), state), hours = Math.max(1, Math.min(720, parseIntOr(f.get("hours"), 24)));
+                                String a = ai.chat(EXPLAIN_SYSTEM, List.<String[]>of(new String[]{"user", explainPrompt(heardBy.reliability(num, hours))}), 450);
+                                send(ex, 200, "application/json", a == null ? "{\"error\":" + q(ai.lastError().isEmpty() ? "no AI server answered" : ai.lastError()) + "}" : "{\"answer\":" + q(a) + "}");
+                            }
                             case "/api/send" -> sendText(ex, client);
                             case "/api/export" -> exportZip(ex, dataDir);
                             case "/api/export-token" -> {
@@ -500,6 +533,50 @@ public final class WebConsole {
         return b.toString();
     }
 
+    // ---- 1.29.5 helpers ----------------------------------------------------------------------------------------------
+    static final String EXPLAIN_SYSTEM = "You explain Meshtastic radio statistics to the station's owner, a radio hobbyist. Plain text, no tables, "
+            + "4 to 7 sentences: what the numbers say about how well the node is being heard, anything unusual, and one or two concrete things worth trying "
+            + "(antenna height or placement, hop limit, role, transmit power, timing). Don't invent numbers that aren't given. If the data is too thin to judge, say so.";
+
+    /** The reliability report as the AI sees it: the plain-words summary plus the gateway and packet-kind tables. */
+    public static String explainPrompt(meshconsole.mqtt.HeardBy.Reliability r) {
+        StringBuilder b = new StringBuilder("Reliability report: how consistently other stations' MQTT gateways heard one of my nodes.\n");
+        b.append(meshconsole.mqtt.HeardBy.summary(r)).append("\nGateways (heard, share of all packets, median hops, median SNR, distance):\n");
+        for (int i = 0; i < Math.min(15, r.gateways().size()); i++) {
+            var g = r.gateways().get(i);
+            b.append(String.format(java.util.Locale.US, "- %s: %d, %.0f%%, %s hops, %s dB, %s%n", g.name().isBlank() ? g.id() : g.name(), g.heard(), g.pct(),
+                    Double.isNaN(g.medHops()) ? "?" : String.format(java.util.Locale.US, "%.1f", g.medHops()), Double.isNaN(g.medSnr()) ? "?" : String.format(java.util.Locale.US, "%.1f", g.medSnr()),
+                    g.km() < 0 ? "distance unknown" : String.format(java.util.Locale.US, "%.0f km", g.km())));
+        }
+        b.append("Packet kinds (sent, heard by at least one gateway):\n");
+        for (var p : r.ports()) b.append("- ").append(p.port()).append(": ").append(p.total()).append(", ").append(p.heardAny()).append('\n');
+        return b.append("Explain what this means and what I could try.").toString();
+    }
+
+    /** Facts about the station for the Ask AI tab. */
+    static String stationContext(MeshState state, BbsEngine bbs, meshconsole.mqtt.HeardBy heardBy) {
+        StringBuilder c = new StringBuilder();
+        if (bbs != null) c.append(bbs.aiContext(state.myNodeNum())).append('\n');
+        else c.append("Now: ").append(java.time.ZonedDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("EEEE d MMMM yyyy, h:mm a", java.util.Locale.US))).append('\n');
+        meshconsole.mesh.NodeEntry me = state.myNode();
+        if (me != null) c.append(String.format(java.util.Locale.US, "This radio: %s %s, role %s, hardware %s, channel busy %.1f%%, transmitting %.1f%% of the time.%n",
+                me.displayName(), me.idString(), me.role, me.hwModel, me.channelUtil, me.airUtilTx));
+        c.append("Hop usage since the last reset: ").append(meshconsole.mesh.ActivityStats.summary(state.activity.hops())).append('\n');
+        if (me != null) c.append("How other gateways heard this radio: ").append(meshconsole.mqtt.HeardBy.summary(heardBy.reliability(me.num, 24))).append('\n');
+        return c.toString();
+    }
+
+    private static Map<String, String> query(String raw) {
+        Map<String, String> m = new HashMap<>();
+        if (raw == null) return m;
+        for (String kv : raw.split("&")) { int i = kv.indexOf('='); if (i > 0) m.put(kv.substring(0, i), java.net.URLDecoder.decode(kv.substring(i + 1), java.nio.charset.StandardCharsets.UTF_8)); }
+        return m;
+    }
+    private static int parseIntOr(String s, int d) { try { return Integer.parseInt(s.trim()); } catch (Exception e) { return d; } }
+    private static int parseNode(String s, MeshState state) {
+        try { return (int) Long.parseLong(s.trim().replaceFirst("^!", ""), 16); } catch (Exception e) { return state.myNodeNum(); }
+    }
+
     static final String PAGE = """
 <!doctype html>
 <html lang="en">
@@ -546,7 +623,7 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
 <body>
 <header><span id="conn"></span><h1 id="title">Mesh Console</h1><span id="sub" class="dim"></span>
   <span style="flex:1"></span>
-  <a href="chat" style="color:#58a6ff;margin-right:8px;font-weight:600">💬 Chat</a><a href="meshcore" style="color:#d29922;margin-right:8px;font-weight:600">📡 MeshCore</a><span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="heard">Heard by</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
+  <a href="chat" style="color:#58a6ff;margin-right:8px;font-weight:600">💬 Chat</a><a href="meshcore" style="color:#d29922;margin-right:8px;font-weight:600">📡 MeshCore</a><span class="tabs"><button data-tab="messages" class="on">Messages</button><button data-tab="map">Map</button><button data-tab="nodes">Nodes</button><button data-tab="signal">Signal</button><button data-tab="bbs">BBS</button><button data-tab="heard">Heard by</button><button data-tab="ai">Ask AI</button><button data-tab="status">Status</button><button data-tab="settings">Settings</button></span>
 </header>
 <main>
   <div class="pane" id="pane-messages">
@@ -580,7 +657,16 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
     <div class="card"><b>Hop usage</b> <span class="dim">rows: hops a packet was sent with · columns: hops it used to reach this radio · red = used them all</span><div id="hopBox" style="overflow-x:auto"></div><p class="dim" id="hopSum"></p></div>
   </div>
   <div class="pane" id="pane-bbs" hidden><div class="card" id="bbsExtra"></div><div class="card"><b>Posts</b><table><tbody id="posts"></tbody></table></div><div class="card"><b>Mail</b><table><tbody id="mail"></tbody></table></div></div>
-  <div class="pane" id="pane-heard" hidden><div class="card" id="hbSet"></div><div class="card"><b>Who hears my nodes</b> <select id="hbNode"></select> <span class="dim" id="hbSum"></span><div id="hbMap" style="height:380px;margin:8px 0"></div><table id="hbTable"></table></div><div class="card"><b>Gateways per day</b><div id="hbDaily"></div></div></div>
+  <div class="pane" id="pane-heard" hidden><div class="card" id="hbSet"></div><div class="card"><b>Who hears my nodes</b> <select id="hbNode"></select> <span class="dim" id="hbSum"></span><div id="hbMap" style="height:380px;margin:8px 0"></div><table id="hbTable"></table></div><div class="card"><b>Gateways per day</b><div id="hbDaily"></div></div>
+    <div class="card"><b>Reliability</b> <select id="relHours"><option value="24">last 24 hours</option><option value="72">3 days</option><option value="168">7 days</option></select>
+      <button class="mini" id="relExplain">Explain (AI)</button> <span class="dim">share of this node's packets each gateway heard</span>
+      <p id="relSum"></p><div id="relAi" class="card" style="white-space:pre-wrap" hidden></div><div style="overflow-x:auto"><table id="relTable"></table></div><div style="overflow-x:auto"><table id="relPorts"></table></div></div></div>
+  <div class="pane" id="pane-ai" hidden>
+    <div class="card"><b>Ask AI</b> <span class="dim" id="aiStatus"></span> <button class="mini" id="aiClear">New conversation</button>
+      <p class="dim">Your station's local AI (the same servers as the BBS's ASK). It's told the time, the weather, this radio's settings and the mesh, hop and reliability figures – ask about them, or anything else. Nothing goes to a cloud service.</p>
+      <div id="aiLog"></div>
+      <div style="display:flex;gap:6px;margin-top:8px"><textarea id="aiQ" rows="2" style="flex:1" placeholder="e.g. Is my hop limit of 3 right for this mesh?"></textarea><button id="aiSend">Ask</button></div></div>
+  </div>
   <div class="pane" id="pane-status" hidden><div id="statusBox"></div></div>
   <div class="pane" id="pane-settings" hidden><div id="setBox"><p class="dim">Loading…</p></div></div>
 </main>
@@ -680,8 +766,42 @@ async function renderHeard() {
   const sel = $("hbNode"), keep = sel.value;
   sel.innerHTML = HB.nodes.map(n => `<option value="${n.id}">${esc(n.name)} (${n.id})</option>`).join("");
   if (keep && HB.nodes.some(n => n.id === keep)) sel.value = keep;
-  sel.onchange = drawHeard; drawHeard();
+  sel.onchange = () => { drawHeard(); renderRel(); }; drawHeard(); renderRel();
 }
+// ---------------- 1.29.5: reliability report
+async function renderRel() {
+  const node = $("hbNode").value; if (!node) return;
+  const r = await api("api/reliability?node=" + encodeURIComponent(node) + "&hours=" + $("relHours").value);
+  $("relSum").textContent = r.summary;
+  $("relTable").innerHTML = r.gateways.length ? "<tr><th>Gateway</th><th>heard</th><th>share</th><th></th><th>median hops</th><th>median SNR</th><th>direct</th><th>km</th><th>last</th></tr>" + r.gateways.slice(0, 60).map(g =>
+    `<tr><td>${esc(g.name || "")} <span class="dim">${g.id}</span></td><td>${g.heard}</td><td>${g.pct.toFixed(0)}%</td><td><div style="width:90px;background:#2c333b;border-radius:3px"><div style="width:${Math.min(100, g.pct)}%;height:8px;background:#3fb950;border-radius:3px"></div></div></td><td>${g.hops ?? "?"}</td><td>${g.snr ?? ""}</td><td>${g.direct}</td><td>${g.km >= 0 ? g.km : "?"}</td><td>${new Date(g.last).toLocaleString()}</td></tr>`).join("") : "";
+  $("relPorts").innerHTML = r.ports.length ? "<tr><th>kind</th><th>sent</th><th>heard by a gateway</th></tr>" + r.ports.map(p => `<tr><td>${esc(p.port.toLowerCase())}</td><td>${p.total}</td><td>${p.heard} (${p.total ? Math.round(100 * p.heard / p.total) : 0}%)</td></tr>`).join("") : "";
+}
+$("relHours").onchange = renderRel;
+$("relExplain").onclick = async () => {
+  const box = $("relAi"); box.hidden = false; box.textContent = "Asking the local AI… (the first answer can take a minute while the model loads)";
+  try { const a = await api("api/ai/explain", { node: $("hbNode").value, hours: $("relHours").value }); box.innerHTML = a.answer ? md(a.answer) : esc("No answer: " + a.error); }
+  catch (e) { box.textContent = "No answer: " + e.message; }
+};
+// ---------------- 1.29.5: Ask AI
+let aiHist = [];
+const md = t => esc(t).replace(/\\*\\*(.+?)\\*\\*/g, "<b>$1</b>").replace(/^#+\\s*(.*)$/gm, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+async function aiInit() {
+  try { const s = await api("api/ai/status"); $("aiStatus").textContent = s.enabled ? "· " + s.servers : "· off – set enabled=true and servers in " + s.file; } catch (e) { }
+}
+function aiShow() {
+  $("aiLog").innerHTML = aiHist.map(([r, t]) => `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;white-space:pre-wrap;${r === "user" ? "background:#1f6feb33;margin-left:15%" : "background:#21262d;margin-right:15%"}">${r === "user" ? esc(t) : md(t)}</div>`).join("");
+  $("aiLog").lastElementChild?.scrollIntoView({ block: "nearest" });
+}
+$("aiSend").onclick = async () => {
+  const q = $("aiQ").value.trim(); if (!q) return;
+  const before = aiHist.slice(); aiHist.push(["user", q], ["assistant", "…thinking (the first answer can take a minute while the model loads)"]); aiShow(); $("aiQ").value = ""; $("aiSend").disabled = true;
+  try { const a = await api("api/ai/chat", { q, history: JSON.stringify(before) }); aiHist[aiHist.length - 1] = ["assistant", a.answer || ("No answer: " + a.error)]; }
+  catch (e) { aiHist[aiHist.length - 1] = ["assistant", "No answer: " + e.message]; }
+  $("aiSend").disabled = false; aiShow();
+};
+$("aiQ").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("aiSend").click(); } };
+$("aiClear").onclick = () => { aiHist = []; aiShow(); };
 function drawHeard() {
   const n = HB.nodes.find(x => x.id === $("hbNode").value) || HB.nodes[0];
   if (!n) { $("hbTable").innerHTML = "<tr><td>No nodes yet – is the radio connected?</td></tr>"; return; }
@@ -690,6 +810,7 @@ function drawHeard() {
   $("hbTable").innerHTML = "<tr><th>Gateway</th><th>km</th><th>24 h</th><th>7 days</th><th>fewest hops</th><th>direct</th><th>best SNR</th><th>best RSSI</th><th>last</th></tr>" + g.map(x =>
     `<tr><td>${esc(x.name || "")} <span class="dim">${x.id}</span></td><td>${x.km >= 0 ? x.km : "?"}</td><td>${x.n1}</td><td>${x.n7}</td><td>${x.minHops < 0 ? "?" : x.minHops}</td><td>${x.direct}</td><td>${x.bestSnr ?? ""}</td><td>${x.bestRssi ?? ""}</td><td>${new Date(x.last).toLocaleString()}</td></tr>`).join("");
   $("hbDaily").innerHTML = n.daily.length ? `<table><tr><th>day</th><th>gateways</th><th>sightings</th></tr>` + n.daily.slice(-14).reverse().map(d => `<tr><td>${d.day}</td><td>${d.gateways}</td><td>${d.packets}</td></tr>`).join("") + "</table>" : "<span class='dim'>No data yet.</span>";
+  if (!window.L) return;   // 1.29.5: the tables still work when the map library can't load
   if (!hbMap) { hbMap = L.map("hbMap", { preferCanvas: true }).setView([n.lat || 38.9, n.lon || -77.05], 10); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(hbMap); hbLayer = L.layerGroup().addTo(hbMap); }
   hbLayer.clearLayers(); const pts = [];
   if (n.lat) { L.circleMarker([n.lat, n.lon], { radius: 8, color: "#58a6ff", fillOpacity: .9 }).bindTooltip(n.name).addTo(hbLayer); pts.push([n.lat, n.lon]); }
@@ -708,7 +829,7 @@ function drawHeard() {
 function loadLeaflet(cb) {
   if (window.L) { cb(); return; }
   const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(css);
-  const js = document.createElement("script"); js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; js.onload = cb; document.head.appendChild(js);
+  const js = document.createElement("script"); js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; js.onload = cb; js.onerror = cb; document.head.appendChild(js);
 }
 function nodeColor(n, now) { if (n.me) return "#ffd84d"; if (n.hops === 0) return "#3fb950"; const a = (now - n.heard) / 3600000; return a < 1 ? "#58a6ff" : a < 6 ? "#8fb8ff" : a < 24 ? "#6e7f99" : "#4a535d"; }
 const KIND_ICON = { base: "🏠", router: "📡", tracker: "🐾", mobile: "🚗", air: "✈️", mute: "🔇", sensor: "🌡️" };
@@ -727,7 +848,7 @@ function areaKm2(poly) {   // shoelace on a local flat projection – fine at me
   return Math.abs(a) / 2;
 }
 function renderMap() {
-  if (!N || !window.L) return;
+  if (!N || !window.L) return;   // (stays blank without the map library)
   if (!map) { map = L.map("map", { preferCanvas: true }).setView([38.9, -77.05], 11); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map); layer = L.layerGroup().addTo(map); }
   map.invalidateSize(); layer.clearLayers();
   const now = N.now, me = N.nodes.find(n => n.me), pts = [], maxHops = +$("mHops").value, maxAge = +$("mAge").value * 3600000;
@@ -929,7 +1050,8 @@ let current = "messages";
 function show(t) {
   current = t;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  for (const p of ["messages", "map", "nodes", "signal", "bbs", "heard", "status", "settings"]) $("pane-" + p).hidden = p !== t;
+  for (const p of ["messages", "map", "nodes", "signal", "bbs", "heard", "ai", "status", "settings"]) $("pane-" + p).hidden = p !== t;
+  if (t === "ai") aiInit();
   if (t === "heard") loadLeaflet(renderHeard);
   if (t === "settings") loadSettings();
   if (t === "signal") loadChart(() => { renderSignal(); renderActivity(); });

@@ -296,6 +296,36 @@ public class BbsEngine {
     }
 
     /** RANGE: how well this station hears you right now, how much margin you have, and how you rank. */
+    /** 1.29.5: what the ASK model is told about the board right now. */
+    public String aiContext(int from) {
+        StringBuilder c = new StringBuilder();
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+        c.append("Now: ").append(now.format(java.time.format.DateTimeFormatter.ofPattern("EEEE d MMMM yyyy, h:mm a", Locale.US))).append(" (").append(now.getZone()).append(").\n");
+        NodeEntry me = state.myNode();
+        c.append("This board: ").append(store.name);
+        if (me != null && !me.town.isEmpty()) c.append(", near ").append(me.town);
+        c.append(".\n");
+        WeatherObs o = weather == null ? null : weather.latest();
+        if (o != null && System.currentTimeMillis() - o.time() < 3 * 3600_000L) c.append("Weather observed: ").append(WxReply.now(o, weather)).append("\n");
+        long t = System.currentTimeMillis(); int hour = 0, direct = 0, total = 0;
+        for (NodeEntry n : state.nodes()) {
+            if (n.packetsSeen == 0 || (me != null && n.num == me.num)) continue;
+            total++;
+            if (t - n.lastHeardMillis() < 3_600_000L) { hour++; if (n.hopsAway == 0) direct++; }
+        }
+        c.append(String.format(Locale.US, "Mesh: %d nodes heard in the last hour (%d directly), %d known in all.%n", hour, direct, total));
+        NodeEntry caller = state.node(from);
+        if (caller != null && caller.packetsSeen > 0) {
+            c.append("The asker's node: ").append(caller.hopsAway == 0 ? "heard directly" : caller.hopsAway > 0 ? caller.hopsAway + " hops away" : "hops unknown");
+            if (caller.rssi != 0) c.append(String.format(Locale.US, ", last signal %d dBm / %.1f dB SNR", caller.rssi, caller.snr));
+            if (me != null && me.hasPosition && caller.hasPosition) c.append(String.format(Locale.US, ", %.1f km from the board", meshconsole.analysis.Metar.distanceKm(me.lat, me.lon, caller.lat, caller.lon)));
+            if (!caller.town.isEmpty()) c.append(", near ").append(caller.town);
+            c.append(".\n");
+        }
+        c.append("BBS commands this board has (sent to it by DM): ").append(menu(true));
+        return c.toString();
+    }
+
     String rangeReport(int from) {
         NodeEntry n = state.node(from);
         if (n == null || n.rssiCount == 0) return store.name + " hasn't measured you yet – send a message or two and try RANGE again.";
@@ -504,9 +534,16 @@ public class BbsEngine {
                 if (arg.isBlank()) return "ASK your question, e.g. ASK how far can LoRa reach?";
                 String no = ai.allow(from);
                 if (no != null) return no;
-                final String qn = arg, asker = who;
+                final String qn = arg, asker = who, ctx = aiContext(from);
                 log("ASK from " + who + ": " + arg);
-                aiPool.submit(() -> send(from, ai.ask(qn, asker)));
+                aiPool.submit(() -> {
+                    String a = ai.ask(qn, asker, ctx);
+                    if (a == null) {   // 1.29.5: say why in the BBS log, and don't count it against the person
+                        ai.refund(from);
+                        log("ASK failed: " + ai.lastError());
+                        send(from, "ASK: no answer right now – the AI server is unavailable. Try later.");
+                    } else { log("ASK answered by " + ai.lastServer()); send(from, a); }
+                });
                 return null;
             }
             case "SAT", "SATS", "PASSES" -> {

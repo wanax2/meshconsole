@@ -27,7 +27,10 @@ import java.util.concurrent.*;
  * map-report packets. Log: heard_by.csv; gateways: heard_by_gateways.csv; settings: heard-by.properties.
  */
 public final class HeardBy {
-    public record Sighting(long time, String source, String gateway, int from, String port, int hops, int rssi, float snr, String channel) { }
+    /** pid: the packet's id (0 in sightings logged before 1.29.5). */
+    public record Sighting(long time, String source, String gateway, int from, String port, int hops, int rssi, float snr, String channel, int pid) { }
+    /** 1.29.5: a packet one of our nodes uplinked to MQTT itself – the "sent" side of the reliability report. */
+    public record Own(long time, int from, int pid, String port) { }
     public static final class Gw { public String id, name = ""; public double lat, lon; public long last; boolean dirty; }
 
     private final MeshClient client;
@@ -39,6 +42,9 @@ public final class HeardBy {
     private final Map<String, long[]> connCounts = new ConcurrentHashMap<>();
     private final Map<String, Gw> gws = new ConcurrentHashMap<>();
     private final Deque<Sighting> recent = new ConcurrentLinkedDeque<>();       // last 30 days in memory
+    private final Deque<Own> own = new ConcurrentLinkedDeque<>();               // 1.29.5: our own uplinks, last 30 days
+    private final Map<String, Long> ownKeys = new ConcurrentHashMap<>();
+    private final Path ownFile;
     private final Map<String, Long> seenKeys = new ConcurrentHashMap<>();       // packetId|gateway -> time (dedupe)
     private final ScheduledExecutorService ex = Executors.newSingleThreadScheduledExecutor(r -> { Thread t = new Thread(r, "heard-by"); t.setDaemon(true); return t; });
 
@@ -51,8 +57,9 @@ public final class HeardBy {
     public HeardBy(MeshClient client, Path dataDir) {
         this.client = client; this.state = client.state(); this.dir = dataDir;
         cfgFile = dataDir.resolve("heard-by.properties"); logFile = dataDir.resolve("heard_by.csv"); gwFile = dataDir.resolve("heard_by_gateways.csv");
+        ownFile = dataDir.resolve("heard_by_sent.csv");
         try (var r = Files.newBufferedReader(cfgFile)) { p.load(r); } catch (Exception ignored) { }
-        loadGateways(); loadLog();
+        loadGateways(); loadLog(); loadOwn();
         ex.scheduleWithFixedDelay(this::tick, 5, 60, TimeUnit.SECONDS);
     }
 
@@ -84,6 +91,8 @@ public final class HeardBy {
         try {
             long cut = System.currentTimeMillis() - 30L * 86_400_000L;
             while (!recent.isEmpty() && recent.peekFirst().time() < cut) recent.pollFirst();
+            while (!own.isEmpty() && own.peekFirst().time() < cut) own.pollFirst();
+            ownKeys.values().removeIf(t -> t < System.currentTimeMillis() - 15 * 60_000L);
             seenKeys.values().removeIf(t -> t < System.currentTimeMillis() - 15 * 60_000L);
             saveGateways();
             if (!on("enabled")) { for (MqttClient c : conns.values()) c.close(); conns.clear(); connStatus.clear(); return; }
@@ -121,16 +130,24 @@ public final class HeardBy {
         if (d != null) learn(pk.getFrom(), d);
         if (!myNodes().contains(pk.getFrom()) || gwId.isEmpty()) return;
         int gwNum = parseId(gwId);
-        if (gwNum == pk.getFrom()) return;                                   // our own node uplinking itself: not "heard by"
+        if (gwNum == pk.getFrom()) {                                        // our own node uplinking itself: not "heard by", but it counts as "sent"
+            if (pk.getId() != 0 && ownKeys.putIfAbsent(pk.getFrom() + "|" + Integer.toUnsignedString(pk.getId()), System.currentTimeMillis()) == null) {
+                Own o = new Own(System.currentTimeMillis(), pk.getFrom(), pk.getId(), d != null ? d.getPortnum().name().replace("_APP", "") : "encrypted");
+                own.addLast(o);
+                try { Files.writeString(ownFile, o.time() + "," + String.format("!%08x", o.from()) + "," + Integer.toUnsignedString(o.pid()) + "," + o.port() + "\n",
+                        StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND); } catch (IOException ignored) { }
+            }
+            return;
+        }
         String key = Integer.toUnsignedString(pk.getId()) + "|" + gwId;
         if (seenKeys.putIfAbsent(key, System.currentTimeMillis()) != null) return;   // same packet, same gateway, other source
         String port = d != null ? d.getPortnum().name().replace("_APP", "") : "encrypted";
         int hops = pk.getHopStart() > 0 ? pk.getHopStart() - pk.getHopLimit() : -1;
-        Sighting s = new Sighting(System.currentTimeMillis(), source, gwId, pk.getFrom(), port, hops, pk.getRxRssi(), pk.getRxSnr(), env.getChannelId());
+        Sighting s = new Sighting(System.currentTimeMillis(), source, gwId, pk.getFrom(), port, hops, pk.getRxRssi(), pk.getRxSnr(), env.getChannelId(), pk.getId());
         recent.addLast(s);
         gws.computeIfAbsent(gwId, k -> { Gw g = new Gw(); g.id = k; return g; }).last = s.time();
         try {
-            Files.writeString(logFile, s.time() + "," + source + "," + gwId + "," + String.format("!%08x", s.from()) + "," + port + "," + hops + "," + s.rssi() + "," + s.snr() + "," + s.channel().replace(",", ";") + "\n",
+            Files.writeString(logFile, s.time() + "," + source + "," + gwId + "," + String.format("!%08x", s.from()) + "," + port + "," + hops + "," + s.rssi() + "," + s.snr() + "," + s.channel().replace(",", ";") + "," + Integer.toUnsignedString(s.pid()) + "\n",
                 StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException ignored) { }
     }
@@ -172,9 +189,17 @@ public final class HeardBy {
         try (var lines = Files.lines(logFile)) {
             lines.forEach(l -> { String[] c = l.split(",", -1); if (c.length < 9) return;
                 try { long t = Long.parseLong(c[0]); if (t < cut) return;
-                    recent.addLast(new Sighting(t, c[1], c[2], parseId(c[3]), c[4], Integer.parseInt(c[5]), Integer.parseInt(c[6]), Float.parseFloat(c[7]), c[8]));
+                    int pid = 0; if (c.length > 9 && !c[9].isEmpty()) try { pid = Integer.parseUnsignedInt(c[9]); } catch (NumberFormatException ignored) { }
+                    recent.addLast(new Sighting(t, c[1], c[2], parseId(c[3]), c[4], Integer.parseInt(c[5]), Integer.parseInt(c[6]), Float.parseFloat(c[7]), c[8], pid));
                     gws.computeIfAbsent(c[2], k -> { Gw g = new Gw(); g.id = k; return g; }).last = Math.max(gws.get(c[2]) == null ? 0 : gws.get(c[2]).last, t);
                 } catch (Exception ignored) { } });
+        } catch (IOException ignored) { }
+    }
+    private void loadOwn() {
+        long cut = System.currentTimeMillis() - 30L * 86_400_000L;
+        try (var lines = Files.lines(ownFile)) {
+            lines.forEach(l -> { String[] c = l.split(",", -1); if (c.length < 4) return;
+                try { long t = Long.parseLong(c[0]); if (t >= cut) own.addLast(new Own(t, parseId(c[1]), Integer.parseUnsignedInt(c[2]), c[3])); } catch (Exception ignored) { } });
         } catch (IOException ignored) { }
     }
     private void loadGateways() {
@@ -245,5 +270,115 @@ public final class HeardBy {
         }
         return sb.append("]}").toString();
     }
+    // ------------------------------------------------------------------ 1.29.5: reliability report
+    public record GwRel(String id, String name, double km, int heard, double pct, double medHops, double medSnr, int direct, long last) { }
+    public record PortRel(String port, int total, int heardAny) { }
+    /** total = every packet we know the node sent (its own uplinks plus anything a gateway heard). */
+    public record Reliability(int node, String name, int hours, int total, int ownUplinks, int heardAny, int heardByNone, long longestGapMin,
+                              List<GwRel> gateways, List<PortRel> ports) {
+        public double pctAny() { return total == 0 ? 0 : 100.0 * heardAny / total; }
+    }
+
+    /** How consistently other gateways heard one of our nodes in the last N hours. */
+    public Reliability reliability(int num, int hours) {
+        long now = System.currentTimeMillis(), from = now - hours * 3_600_000L;
+        Map<String, Set<Integer>> byGw = new HashMap<>();
+        Map<String, List<Integer>> hopsBy = new HashMap<>(); Map<String, List<Float>> snrBy = new HashMap<>();
+        Map<String, int[]> directLast = new HashMap<>(); Map<String, Long> lastBy = new HashMap<>();
+        Set<Integer> heard = new HashSet<>(); Map<Integer, String> portOf = new HashMap<>();
+        List<Long> heardTimes = new ArrayList<>();
+        for (Sighting x : recent) {
+            if (x.from() != num || x.time() < from || x.pid() == 0) continue;
+            byGw.computeIfAbsent(x.gateway(), k -> new HashSet<>()).add(x.pid());
+            if (x.hops() >= 0) hopsBy.computeIfAbsent(x.gateway(), k -> new ArrayList<>()).add(x.hops());
+            if (x.snr() != 0) snrBy.computeIfAbsent(x.gateway(), k -> new ArrayList<>()).add(x.snr());
+            if (x.hops() == 0) directLast.computeIfAbsent(x.gateway(), k -> new int[1])[0]++;
+            lastBy.merge(x.gateway(), x.time(), Math::max);
+            if (heard.add(x.pid())) heardTimes.add(x.time());
+            portOf.putIfAbsent(x.pid(), x.port());
+        }
+        Set<Integer> sent = new HashSet<>();
+        for (Own o : own) if (o.from() == num && o.time() >= from) { sent.add(o.pid()); portOf.put(o.pid(), o.port()); }
+        Set<Integer> all = new HashSet<>(sent); all.addAll(heard);
+        int none = 0; for (int id : sent) if (!heard.contains(id)) none++;
+        // longest stretch with no other gateway hearing anything from this node (within the window)
+        Collections.sort(heardTimes);
+        long gap = 0, prev = from;
+        for (long t : heardTimes) { gap = Math.max(gap, t - prev); prev = t; }
+        gap = Math.max(gap, now - prev);
+        NodeEntry ne = state.node(num); String id = String.format("!%08x", num);
+        double lat = ne != null && ne.hasPosition ? ne.lat : 0, lon = ne != null && ne.hasPosition ? ne.lon : 0;
+        Gw selfGw = gws.get(id); if (lat == 0 && selfGw != null) { lat = selfGw.lat; lon = selfGw.lon; }
+        String name = state.nodeName(num); if ((name == null || name.startsWith("!")) && selfGw != null && !selfGw.name.isBlank()) name = selfGw.name;
+        List<GwRel> gl = new ArrayList<>();
+        int total = all.size();
+        for (var e : byGw.entrySet()) {
+            Gw g = gws.get(e.getKey());
+            double km = g != null && g.lat != 0 && lat != 0 ? meshconsole.analysis.Metar.distanceKm(lat, lon, g.lat, g.lon) : -1;
+            gl.add(new GwRel(e.getKey(), g == null ? "" : g.name, km, e.getValue().size(), total == 0 ? 0 : 100.0 * e.getValue().size() / total,
+                    medianI(hopsBy.get(e.getKey())), medianF(snrBy.get(e.getKey())), directLast.getOrDefault(e.getKey(), new int[1])[0], lastBy.getOrDefault(e.getKey(), 0L)));
+        }
+        gl.sort((a, b) -> Integer.compare(b.heard(), a.heard()));
+        Map<String, int[]> pp = new TreeMap<>();
+        for (int pid : all) { int[] c = pp.computeIfAbsent(portOf.getOrDefault(pid, "?"), k -> new int[2]); c[0]++; if (heard.contains(pid)) c[1]++; }
+        List<PortRel> pl = new ArrayList<>();
+        pp.forEach((k, v) -> pl.add(new PortRel(k, v[0], v[1])));
+        pl.sort((a, b) -> Integer.compare(b.total(), a.total()));
+        return new Reliability(num, name == null ? id : name, hours, total, sent.size(), heard.size(), none, gap / 60_000L, gl, pl);
+    }
+
+    private static double medianI(List<Integer> l) { if (l == null || l.isEmpty()) return Double.NaN; List<Integer> c = new ArrayList<>(l); Collections.sort(c); return c.size() % 2 == 1 ? c.get(c.size() / 2) : (c.get(c.size() / 2 - 1) + c.get(c.size() / 2)) / 2.0; }
+    private static double medianF(List<Float> l) { if (l == null || l.isEmpty()) return Double.NaN; List<Float> c = new ArrayList<>(l); Collections.sort(c); return c.size() % 2 == 1 ? c.get(c.size() / 2) : (c.get(c.size() / 2 - 1) + c.get(c.size() / 2)) / 2.0; }
+
+    /** The report in plain words: shown under the table, and handed to the AI for "Explain". */
+    public static String summary(Reliability r) {
+        String span = r.hours() <= 24 ? "the last " + r.hours() + " hours" : "the last " + (r.hours() / 24) + " days";
+        if (r.total() == 0) return "Nothing from " + r.name() + " in " + span + ": no gateway heard it and it didn't uplink anything itself.";
+        StringBuilder b = new StringBuilder();
+        b.append(String.format(Locale.US, "In %s, %,d packets from %s are known", span, r.total(), r.name()));
+        if (r.ownUplinks() > 0) b.append(String.format(Locale.US, " (%,d uplinked by the node itself)", r.ownUplinks()));
+        b.append(String.format(Locale.US, ". %.0f%% were heard by at least one other gateway", r.pctAny()));
+        if (r.ownUplinks() > 0) b.append(String.format(Locale.US, "; %,d reached no one else", r.heardByNone()));
+        b.append(String.format(Locale.US, ". %d gateway%s heard it.", r.gateways().size(), r.gateways().size() == 1 ? "" : "s"));
+        for (int i = 0; i < Math.min(3, r.gateways().size()); i++) {
+            GwRel g = r.gateways().get(i);
+            b.append(String.format(Locale.US, " %s: %.0f%%%s%s%s.", g.name().isBlank() ? g.id() : g.name(), g.pct(),
+                    Double.isNaN(g.medHops()) ? "" : String.format(Locale.US, ", usually %s hop%s", fmtHalf(g.medHops()), g.medHops() == 1 ? "" : "s"),
+                    Double.isNaN(g.medSnr()) ? "" : String.format(Locale.US, ", SNR %.1f dB", g.medSnr()),
+                    g.km() < 0 ? "" : String.format(Locale.US, ", %.0f km away", g.km())));
+        }
+        if (!r.ports().isEmpty()) {
+            b.append(" By kind:");
+            for (int i = 0; i < Math.min(4, r.ports().size()); i++) { PortRel p = r.ports().get(i); b.append(String.format(Locale.US, " %s %d of %d heard%s", p.port().toLowerCase(Locale.ROOT).replace('_', ' '), p.heardAny(), p.total(), i < Math.min(4, r.ports().size()) - 1 ? "," : ".")); }
+        }
+        if (r.longestGapMin() >= 60) b.append(String.format(Locale.US, " Longest stretch with no gateway hearing it: %s.", r.longestGapMin() >= 1440 ? (r.longestGapMin() / 60) + " h" : (r.longestGapMin() / 60) + " h " + (r.longestGapMin() % 60) + " min"));
+        if (r.ownUplinks() == 0) b.append(" This node doesn't uplink to MQTT itself, so packets no gateway heard can't be counted: the percentages are shares of what at least one gateway heard.");
+        return b.toString();
+    }
+    private static String fmtHalf(double v) { return v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.US, "%.1f", v); }
+
+    public static String json(Reliability r) {
+        StringBuilder b = new StringBuilder("{\"node\":").append(q(String.format("!%08x", r.node()))).append(",\"name\":").append(q(r.name()))
+            .append(",\"hours\":").append(r.hours()).append(",\"total\":").append(r.total()).append(",\"own\":").append(r.ownUplinks())
+            .append(",\"heardAny\":").append(r.heardAny()).append(",\"none\":").append(r.heardByNone()).append(",\"gapMin\":").append(r.longestGapMin())
+            .append(",\"pctAny\":").append(String.format(Locale.ROOT, "%.1f", r.pctAny())).append(",\"gateways\":[");
+        for (int i = 0; i < r.gateways().size(); i++) {
+            GwRel g = r.gateways().get(i);
+            b.append(i > 0 ? "," : "").append("{\"id\":").append(q(g.id())).append(",\"name\":").append(q(g.name()))
+             .append(",\"km\":").append(String.format(Locale.ROOT, "%.1f", g.km())).append(",\"heard\":").append(g.heard())
+             .append(",\"pct\":").append(String.format(Locale.ROOT, "%.1f", g.pct()))
+             .append(",\"hops\":").append(Double.isNaN(g.medHops()) ? "null" : String.format(Locale.ROOT, "%.1f", g.medHops()))
+             .append(",\"snr\":").append(Double.isNaN(g.medSnr()) ? "null" : String.format(Locale.ROOT, "%.1f", g.medSnr()))
+             .append(",\"direct\":").append(g.direct()).append(",\"last\":").append(g.last()).append('}');
+        }
+        b.append("],\"ports\":[");
+        for (int i = 0; i < r.ports().size(); i++) { PortRel p = r.ports().get(i); b.append(i > 0 ? "," : "").append("{\"port\":").append(q(p.port())).append(",\"total\":").append(p.total()).append(",\"heard\":").append(p.heardAny()).append('}'); }
+        return b.append("],\"summary\":").append(q(summary(r))).append('}').toString();
+    }
+
     static String q(String s) { return meshconsole.ui.WebConsole.q(s == null ? "" : s); }
+
+    /** For tests: feed sightings and own uplinks without MQTT. */
+    public void addForTest(Sighting x) { recent.addLast(x); }
+    public void addForTest(Own o) { own.addLast(o); }
 }
