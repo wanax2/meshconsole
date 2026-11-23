@@ -123,6 +123,15 @@ class NodesPanel extends JPanel {
             try { state.resetNodeDb(); refreshDbInfo(); } catch (IOException ex) { error(ex); }
         });
         dbBar.add(save); dbBar.add(reset);
+        // 1.29.4: ask unnamed nodes for their name, one a minute
+        JCheckBox askNames = new JCheckBox("Ask unnamed nodes for their name", client.autoNodeInfo());
+        askNames.setToolTipText("<html>Once a minute, sends a node-info request to the most recently heard node that has no name yet<br>"
+                + "(heard over the air in the last hour, within the hop limit, asked at most once per session).<br>"
+                + "Paused while the channel is more than 20% busy. Uses a little airtime: turn it on for one radio, not every window.</html>");
+        askNames.addActionListener(e -> client.setAutoNodeInfo(askNames.isSelected()));
+        JLabel askStatus = new JLabel();
+        new javax.swing.Timer(5000, e -> askStatus.setText(client.autoNodeInfo() && !client.autoNodeInfoStatus().isEmpty() ? "(" + client.autoNodeInfoStatus() + ")" : "")).start();
+        dbBar.add(askNames); dbBar.add(askStatus);
         // search: name, short name, node ID (with or without "!"), hardware or role – any column
         JTextField find = new JTextField(18);
         find.setToolTipText("Type part of a name, a node ID such as !33357952 or 33357952, hardware or role");

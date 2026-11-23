@@ -89,7 +89,10 @@ public final class WebMap {
               .append(",\"mqtt\":").append(n.viaMqtt)
               .append(",\"pkts\":").append(n.packetsSeen)
               .append(",\"direct\":").append(n.directPackets)
-              .append(",\"me\":").append(n.num == my);
+              .append(",\"me\":").append(n.num == my)
+              .append(",\"kind\":").append(q(n.kind(System.currentTimeMillis())))   // 1.29.4: marker icon
+              .append(",\"locsrc\":").append(n.locationSource)
+              .append(",\"town\":").append(q(n.town));
             if (n.hasPosition && !(n.lat == 0 && n.lon == 0))
                 sb.append(",\"lat\":").append(String.format(Locale.ROOT, "%.6f", n.lat)).append(",\"lon\":").append(String.format(Locale.ROOT, "%.6f", n.lon)).append(",\"alt\":").append(n.altitude);
             if (n.temperature != null) sb.append(",\"temp\":").append(String.format(Locale.ROOT, "%.1f", n.temperature));

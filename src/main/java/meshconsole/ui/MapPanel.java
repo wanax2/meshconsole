@@ -39,6 +39,12 @@ class MapPanel extends JPanel {
     private final JCheckBox showCoverage = new JCheckBox("Coverage", false);
     private final JCheckBox showGrid = new JCheckBox("Coverage grid", false);
     private final JCheckBox showNames = new JCheckBox("Names", true);
+    // 1.29.4: filters, outline with area, marker shapes by kind
+    private final JComboBox<String> hopsFilter = new JComboBox<>(new String[]{"Any hops", "Direct only", "Up to 1 hop", "Up to 2 hops", "Up to 3 hops"});
+    private final JComboBox<String> ageFilter = new JComboBox<>(new String[]{"Heard: any time", "Heard: 1 hour", "Heard: 6 hours", "Heard: 24 hours", "Heard: 7 days"});
+    private final JCheckBoxMenuItem[] srcItems = {new JCheckBoxMenuItem("Unknown", true), new JCheckBoxMenuItem("Typed in by hand", true), new JCheckBoxMenuItem("Radio's own GPS", true), new JCheckBoxMenuItem("Phone or computer", true)};
+    private final JCheckBox showHull = new JCheckBox("Outline & area", false);
+    private String hullText = "";
     // "Nearby on MQTT": nodes the public server's map reports place around us, heard by our radio or not
     private final java.util.prefs.Preferences mqttPrefs = java.util.prefs.Preferences.userRoot().node("meshconsole-mqttmap-" + Integer.toHexString(meshconsole.DataDir.get().toString().toLowerCase().hashCode()));
     private final JCheckBox showMqtt = new JCheckBox("Nearby on MQTT", mqttPrefs.getBoolean("on", false));
@@ -64,6 +70,18 @@ class MapPanel extends JPanel {
         top.add(zoomOut); top.add(zoomIn);
         top.add(new JLabel("Go to:")); top.add(find); top.add(findGo);
         top.add(me); top.add(fit); top.add(showLinks); top.add(showNeighbors); top.add(showTracks); top.add(showWaypoints); top.add(showCoverage); top.add(showGrid); top.add(showNames);
+        // 1.29.4: which nodes to show, and the outline around them
+        JButton srcBtn = new JButton("Positions from ▾");
+        JPopupMenu srcMenu = new JPopupMenu();
+        for (JCheckBoxMenuItem it : srcItems) { srcMenu.add(it); it.addActionListener(e -> view.repaint()); }
+        srcBtn.setToolTipText("Show only nodes whose position came from these sources – hand-typed positions are often wrong");
+        srcBtn.addActionListener(e -> srcMenu.show(srcBtn, 0, srcBtn.getHeight()));
+        hopsFilter.setToolTipText("Hide nodes further away than this many hops (nodes with unknown hops are hidden when a limit is set)");
+        ageFilter.setToolTipText("Hide nodes not heard within this time");
+        showHull.setToolTipText("Draw a line around the nodes shown and give the area it encloses – a quick number to compare before and after antenna changes");
+        for (JComboBox<String> c : java.util.List.of(hopsFilter, ageFilter)) c.addActionListener(e -> view.repaint());
+        showHull.addActionListener(e -> view.repaint());
+        top.add(hopsFilter); top.add(ageFilter); top.add(srcBtn); top.add(showHull);
         JButton mqttList = new JButton("Nearby list…");
         showMqtt.setToolTipText("Show the nodes that report themselves to the public MQTT map within the radius – heard by your radio or not (grey squares). Uses this computer's internet; nothing goes through the radio.");
         mqttRadius.setToolTipText("Radius around your position, km");
@@ -93,7 +111,7 @@ class MapPanel extends JPanel {
         for (String k : new String[]{"MINUS", "SUBTRACT"}) im.put(KeyStroke.getKeyStroke(k), "zoomOut");
         am.put("zoomIn", new AbstractAction() { @Override public void actionPerformed(java.awt.event.ActionEvent e) { view.zoomBy(1); } });
         am.put("zoomOut", new AbstractAction() { @Override public void actionPerformed(java.awt.event.ActionEvent e) { view.zoomBy(-1); } });
-        JLabel credit = new JLabel("  Map data © OpenStreetMap contributors  ·  drag to pan, wheel to zoom, click a marker for details, right-click to add a waypoint");
+        JLabel credit = new JLabel("  Map data © OpenStreetMap contributors  ·  ● client  ▲ router  ■ base  ◆ tracker  pentagon moving  ✈ above 20,000 ft  ○ mute  ·  colour = how recently heard  ·  drag to pan, wheel to zoom, click a marker, right-click for a waypoint");
         credit.setFont(credit.getFont().deriveFont(10f));
         add(credit, BorderLayout.SOUTH);
 
@@ -125,6 +143,65 @@ class MapPanel extends JPanel {
         long exp = secs[expire.getSelectedIndex()] == 0 ? 0 : System.currentTimeMillis() / 1000 + secs[expire.getSelectedIndex()];
         try { client.sendWaypoint(name.getText().trim(), desc.getText().trim(), lat, lon, exp); }
         catch (java.io.IOException e) { status.setText("Waypoint failed: " + e.getMessage()); }
+    }
+
+    // ---- 1.29.4 helpers -------------------------------------------------------------------------------------------
+    /** Passes the hop, last-heard and position-source filters. */
+    private boolean visible(NodeEntry n, long now, NodeEntry me) {
+        if (me != null && n.num == me.num) return true;
+        int hi = hopsFilter.getSelectedIndex();
+        if (hi > 0 && (n.hopsAway < 0 || n.hopsAway > hi - 1)) return false;
+        long[] ages = {0, 3600_000L, 6 * 3600_000L, 24 * 3600_000L, 7 * 86400_000L};
+        int ai = ageFilter.getSelectedIndex();
+        if (ai > 0 && now - n.lastHeardMillis() > ages[ai]) return false;
+        int src = n.locationSource >= 0 && n.locationSource < srcItems.length ? n.locationSource : 0;
+        return srcItems[src].isSelected();
+    }
+
+    /** Marker shape by kind; colour says how recently it was heard. */
+    private static void drawMarker(Graphics2D g, String kind, Point p, int r, Color fill, Color edge) {
+        Shape s;
+        switch (kind) {
+            case "router" -> { java.awt.geom.Path2D.Double t = new java.awt.geom.Path2D.Double(); t.moveTo(p.x, p.y - r - 2); t.lineTo(p.x + r + 1, p.y + r); t.lineTo(p.x - r - 1, p.y + r); t.closePath(); s = t; }
+            case "base" -> s = new Rectangle(p.x - r, p.y - r, 2 * r, 2 * r);
+            case "tracker" -> { java.awt.geom.Path2D.Double d = new java.awt.geom.Path2D.Double(); d.moveTo(p.x, p.y - r - 2); d.lineTo(p.x + r + 2, p.y); d.lineTo(p.x, p.y + r + 2); d.lineTo(p.x - r - 2, p.y); d.closePath(); s = d; }
+            case "mobile" -> { java.awt.geom.Path2D.Double pe = new java.awt.geom.Path2D.Double(); for (int i = 0; i < 5; i++) { double a = -Math.PI / 2 + i * 2 * Math.PI / 5; double x = p.x + (r + 2) * Math.cos(a), y = p.y + (r + 2) * Math.sin(a); if (i == 0) pe.moveTo(x, y); else pe.lineTo(x, y); } pe.closePath(); s = pe; }
+            case "air" -> {
+                Font f0 = g.getFont(); g.setFont(f0.deriveFont(Font.PLAIN, 20f));
+                g.setColor(edge); g.drawString("✈", p.x - 9, p.y + 8); g.setColor(fill); g.drawString("✈", p.x - 10, p.y + 7);
+                g.setFont(f0); return;
+            }
+            default -> s = new java.awt.geom.Ellipse2D.Double(p.x - r, p.y - r, 2 * r, 2 * r);
+        }
+        if (kind.equals("mute")) { g.setColor(Color.WHITE); g.fill(s); g.setColor(fill); g.setStroke(new BasicStroke(2.5f)); g.draw(s); return; }
+        g.setColor(fill); g.fill(s);
+        g.setColor(edge); g.setStroke(new BasicStroke(2f)); g.draw(s);
+    }
+
+    /** Convex hull of {lat, lon} points (Andrew's monotone chain). */
+    static List<double[]> convexHull(List<double[]> in) {
+        List<double[]> a = new java.util.ArrayList<>(in);
+        if (a.size() < 3) return List.of();
+        a.sort((u, v) -> u[1] != v[1] ? Double.compare(u[1], v[1]) : Double.compare(u[0], v[0]));
+        java.util.ArrayList<double[]> lo = new java.util.ArrayList<>(), up = new java.util.ArrayList<>();
+        for (double[] q : a) { while (lo.size() >= 2 && cross(lo.get(lo.size() - 2), lo.get(lo.size() - 1), q) <= 0) lo.remove(lo.size() - 1); lo.add(q); }
+        for (int i = a.size() - 1; i >= 0; i--) { double[] q = a.get(i); while (up.size() >= 2 && cross(up.get(up.size() - 2), up.get(up.size() - 1), q) <= 0) up.remove(up.size() - 1); up.add(q); }
+        lo.remove(lo.size() - 1); up.remove(up.size() - 1); lo.addAll(up);
+        return lo;
+    }
+    private static double cross(double[] o, double[] u, double[] v) { return (u[1] - o[1]) * (v[0] - o[0]) - (u[0] - o[0]) * (v[1] - o[1]); }
+
+    /** Area of a {lat, lon} polygon in km², on a local flat projection (good to well under 1% at mesh scale). */
+    static double areaKm2(List<double[]> poly) {
+        if (poly.size() < 3) return 0;
+        double lat0 = 0; for (double[] q : poly) lat0 += q[0]; lat0 = Math.toRadians(lat0 / poly.size());
+        double s = 0;
+        for (int i = 0; i < poly.size(); i++) {
+            double[] u = poly.get(i), v = poly.get((i + 1) % poly.size());
+            double x1 = u[1] * 111.32 * Math.cos(lat0), y1 = u[0] * 110.57, x2 = v[1] * 111.32 * Math.cos(lat0), y2 = v[0] * 110.57;
+            s += x1 * y2 - x2 * y1;
+        }
+        return Math.abs(s) / 2;
     }
 
     void centerOnMe() {
@@ -391,8 +468,9 @@ class MapPanel extends JPanel {
                         }
                     }
                     NodeEntry hit = null;
+                    long nowHit = System.currentTimeMillis(); NodeEntry meHit = state.myNode();
                     for (NodeEntry n : state.nodes()) {
-                        if (!n.hasPosition) continue;
+                        if (!n.hasPosition || !visible(n, nowHit, meHit)) continue;
                         Point p = toScreen(n.lat, n.lon);
                         if (p.distance(e.getPoint()) < 10) { hit = n; break; }
                     }
@@ -406,7 +484,8 @@ class MapPanel extends JPanel {
                     if (hit != null) {
                         NodeEntry me = state.myNode();
                         String dist = (me != null && me.hasPosition && me.num != hit.num) ? "  " + Fmt.distance(Fmt.distanceM(me.lat, me.lon, hit.lat, hit.lon)) + " away" : "";
-                        status.setText(hit.displayName() + " " + hit.idString() + dist + "  heard " + Fmt.ago(hit.lastHeardMillis()) + " ago"
+                        status.setText(hit.displayName() + " " + hit.idString() + (hit.town.isEmpty() ? "" : "  near " + hit.town) + dist + "  heard " + Fmt.ago(hit.lastHeardMillis()) + " ago"
+                                + "  · position: " + hit.locationSourceName() + (hit.altitude != 0 ? String.format("  · %,d ft", Math.round(hit.altitude * 3.281)) : "")
                                 + (hit.snr != 0 ? String.format("  SNR %.1f", hit.snr) : "") + (hit.rssi != 0 ? "  RSSI " + hit.rssi : ""));
                     }
                     repaint();
@@ -616,21 +695,34 @@ class MapPanel extends JPanel {
                     }
                 }
             }
+            // 1.29.4: outline around the nodes shown, with the area it encloses
+            hullText = "";
+            if (showHull.isSelected()) {
+                List<double[]> pts = new java.util.ArrayList<>();
+                for (NodeEntry n : nodes) if (n.hasPosition && !(n.lat == 0 && n.lon == 0) && !n.viaMqtt && visible(n, now, me)) pts.add(new double[]{n.lat, n.lon});
+                List<double[]> hull = convexHull(pts);
+                if (hull.size() >= 3) {
+                    java.awt.geom.Path2D.Double path = new java.awt.geom.Path2D.Double();
+                    for (int i = 0; i < hull.size(); i++) { Point hp = toScreen(hull.get(i)[0], hull.get(i)[1]); if (i == 0) path.moveTo(hp.x, hp.y); else path.lineTo(hp.x, hp.y); }
+                    path.closePath();
+                    g.setColor(new Color(210, 153, 34, 30)); g.fill(path);
+                    g.setColor(new Color(190, 130, 20)); g.setStroke(new BasicStroke(1.8f)); g.draw(path);
+                    double km2 = areaKm2(hull);
+                    hullText = String.format("   outline: %,.0f sq mi (%,.0f km²) around %d nodes", km2 / 2.58999, km2, pts.size());
+                } else hullText = "   outline: needs 3 nodes with positions";
+            }
             g.setFont(g.getFont().deriveFont(Font.BOLD, 11f));
             for (NodeEntry n : nodes) {
                 if (!n.hasPosition) continue;
                 Point p = toScreen(n.lat, n.lon);
                 if (p.x < -50 || p.y < -50 || p.x > w + 50 || p.y > h + 50) continue;
                 boolean isMe = me != null && n.num == me.num;
+                if (!isMe && !visible(n, now, me)) continue;
                 long age = now - n.lastHeardMillis();
                 Color c = isMe ? new Color(30, 100, 220) : age < 15 * 60_000 ? new Color(30, 170, 60)
                         : age < 2 * 3600_000 ? new Color(230, 170, 20) : new Color(140, 140, 140);
                 int r = isMe ? 8 : 6;
-                g.setColor(c);
-                g.fillOval(p.x - r, p.y - r, 2 * r, 2 * r);
-                g.setColor(n == selected ? Color.RED : Color.WHITE);
-                g.setStroke(new BasicStroke(2f));
-                g.drawOval(p.x - r, p.y - r, 2 * r, 2 * r);
+                drawMarker(g, isMe ? "client" : n.kind(now), p, r, c, n == selected ? Color.RED : Color.WHITE);
                 if (showNames.isSelected()) {
                     String label = isMe ? "ME" : n.shortLabel();
                     int lw = g.getFontMetrics().stringWidth(label);
@@ -644,7 +736,7 @@ class MapPanel extends JPanel {
             g.setFont(g.getFont().deriveFont(Font.PLAIN, 11f));
             long withPos = nodes.stream().filter(n -> n.hasPosition).count();
             String cov = showCoverage.isSelected() ? "   coverage: " + state.coverage().size() + " pts (green strong → red weak)" : "";
-            g.drawString("z" + zoom + "   " + withPos + "/" + nodes.size() + " nodes have a position" + cov + (online ? "" : "   (tile download failed – offline?)"), 6, h - 6);
+            g.drawString("z" + zoom + "   " + withPos + "/" + nodes.size() + " nodes have a position" + cov + hullText + (online ? "" : "   (tile download failed – offline?)"), 6, h - 6);
         }
     }
 }

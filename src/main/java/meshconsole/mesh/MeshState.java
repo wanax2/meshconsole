@@ -56,6 +56,8 @@ public class MeshState {
     private final Deque<UtilSample> util = new ArrayDeque<>();
     private final Map<Integer, WaypointEntry> waypoints = new LinkedHashMap<>();
     private final Map<String, Traffic> trafficByPort = new TreeMap<>();
+    /** 1.29.4: packets per minute by kind, and hop usage (see ActivityStats). */
+    public final ActivityStats activity = new ActivityStats();
     private final Map<Integer, Traffic> trafficByChannel = new TreeMap<>();
     private final Traffic trafficTotal = new Traffic();
     private long trafficSince;
@@ -143,6 +145,7 @@ public class MeshState {
             trafficByPort.clear(); trafficByChannel.clear(); trafficTotal.packets = trafficTotal.bytes = trafficTotal.airtimeMs = 0; trafficSince = System.currentTimeMillis();
             for (NodeEntry n : nodes.values()) { n.airtimeMs = 0; n.airBytes = 0; }
         }
+        activity.reset();
         fire(Listener::onTrafficChanged);
     }
     /** Radio clock minus PC clock in ms, or Long.MIN_VALUE if unknown. */
@@ -412,6 +415,7 @@ public class MeshState {
             if (p.hasGroundTrack()) n.groundTrack = (int) (p.getGroundTrack() / 100000L);
             if (p.getSatsInView() != 0) n.satsInView = p.getSatsInView();
             n.precisionBits = p.getPrecisionBits();
+            n.locationSource = p.getLocationSourceValue();   // 1.29.4: 0 unset, 1 manual, 2 internal GPS, 3 external (phone)
             n.addTrackPoint(System.currentTimeMillis(), n.lat, n.lon);
         }
     }
@@ -477,6 +481,8 @@ public class MeshState {
                 trafficTotal.add(airBytes, ms);
                 n.airtimeMs += Math.round(ms);
                 n.airBytes += airBytes;
+                NodeEntry meNow = nodes.get(myNodeNum);
+                activity.record(System.currentTimeMillis(), portKey, !fromMe, p.getViaMqtt(), p.getHopStart(), p.getHopLimit(), meNow == null ? Float.NaN : meNow.channelUtil);
             }
             if (p.getRelayNode() != 0) { n.lastRelayNode = p.getRelayNode(); relayCounts.merge(p.getRelayNode(), 1L, Long::sum); }
             if (!fromMe && hops == 0) addEdge(myNodeNum, from);

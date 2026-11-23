@@ -17,6 +17,9 @@ class TrafficPanel extends JPanel {
     private final NodeModel byNode = new NodeModel();
     private final KeyModel byPort = new KeyModel("App (port)");
     private final KeyModel byChannel = new KeyModel("Channel");
+    private final ActivityCharts.Timeline timeline;
+    private final ActivityCharts.Hops hopChart;
+    private final JTextArea hopSummary = new JTextArea(3, 30);
 
     record KeyRow(String key, MeshState.Traffic t) { }
 
@@ -82,7 +85,27 @@ class TrafficPanel extends JPanel {
         grid.add(titled("By node", byNode));
         grid.add(titled("By app", byPort));
         grid.add(titled("By channel", byChannel));
-        add(grid, BorderLayout.CENTER);
+        // 1.29.4: packets per minute by kind, and hop usage
+        timeline = new ActivityCharts.Timeline(state);
+        hopChart = new ActivityCharts.Hops(state);
+        JPanel tl = new JPanel(new BorderLayout());
+        JComboBox<String> span = new JComboBox<>(new String[]{"Last hour", "Last 3 hours", "Last 6 hours"});
+        span.addActionListener(e -> timeline.setMinutes(new int[]{60, 180, 360}[span.getSelectedIndex()]));
+        JPanel tlTop = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0)); tlTop.add(span);
+        tl.add(tlTop, BorderLayout.NORTH); tl.add(timeline, BorderLayout.CENTER);
+        tl.setBorder(BorderFactory.createTitledBorder("Packets per minute (hover a bar for the breakdown)"));
+        JPanel hp = new JPanel(new BorderLayout());
+        hp.add(hopChart, BorderLayout.CENTER);
+        hopSummary.setFont(UIManager.getFont("Label.font").deriveFont(11f));
+        hopSummary.setLineWrap(true); hopSummary.setWrapStyleWord(true); hopSummary.setEditable(false); hopSummary.setOpaque(false);
+        hp.add(hopSummary, BorderLayout.SOUTH);
+        hp.setBorder(BorderFactory.createTitledBorder("Hop usage: hops sent with (rows) against hops used (columns)"));
+        JSplitPane charts = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tl, hp);
+        charts.setResizeWeight(0.65);
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, charts, grid);
+        split.setResizeWeight(0.45);
+        add(split, BorderLayout.CENTER);
+        new javax.swing.Timer(15_000, e -> { if (isShowing()) reloadCharts(); }).start();   // keeps the minute bars moving when it's quiet
         JLabel note = new JLabel("  Airtime is computed from packet size and this radio's modem preset (Semtech LoRa formula); only packets this radio heard are counted, so it's a lower bound for the whole mesh.");
         note.setFont(note.getFont().deriveFont(11f));
         add(note, BorderLayout.SOUTH);
@@ -102,6 +125,12 @@ class TrafficPanel extends JPanel {
 
     private long lastReload;
 
+    private void reloadCharts() {
+        timeline.reload();
+        hopChart.reload();
+        hopSummary.setText(meshconsole.mesh.ActivityStats.summary(hopChart.data()));
+    }
+
     void reload() {
         long now = System.currentTimeMillis();
         if (now - lastReload < 1000) return;      // packets can arrive in bursts
@@ -119,6 +148,7 @@ class TrafficPanel extends JPanel {
         List<KeyRow> chs = new ArrayList<>();
         state.trafficByChannel().forEach((k, v) -> chs.add(new KeyRow(String.valueOf(k), v)));
         byChannel.rows = chs; byChannel.total = tot; byChannel.fireTableDataChanged();
+        reloadCharts();
         long elapsed = Math.max(1, now - state.trafficSince());
         summary.setText(String.format("  Since %s: %d packets, %.1f s of airtime = %.2f%% of elapsed time   ·   modem %s%s",
                 Fmt.time(state.trafficSince()), total.packets, total.airtimeMs / 1000.0, Math.min(100.0, 100.0 * total.airtimeMs / elapsed), Airtime.presetName(state.lora()),

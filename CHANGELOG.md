@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.29.4 — 2026-11-22
+Ideas taken from NodeMonitor (github.com/swiings/NodeMonitor).
+- **Ask unnamed nodes for their name.** Nodes tab → "Ask unnamed nodes for their name". Once a minute it sends a
+  node-info request to the most recently heard node that still has no name – heard over the air in the last hour,
+  within the hop limit, each asked at most once per session – and pauses while the channel is more than 20% busy.
+  Sent without a delivery ack to save airtime. Off by default and remembered per data folder; turn it on for one
+  radio, not every window. The line next to it says what it last did.
+- **Packets per minute** (Traffic tab, and the web console's Signal tab): stacked bars by kind – text, position, node
+  info, telemetry, routing, traceroute, neighbours, encrypted, other – for the last 1, 3 or 6 hours, with the radio's
+  channel-busy reading as a line. Hover a bar for that minute's breakdown.
+- **Hop usage** (same places): packets heard from other nodes, by the hops they were sent with (rows) against the hops
+  they used to reach this radio (columns), with a plain-words summary – how many used every hop, how many hops were
+  left unused on average, and how many were sent with more than 3 hops and needed them. Evidence for choosing a hop
+  limit. Both reset with the Traffic tab's "Reset counters".
+- **Map filters** (desktop map and web map): hops away (direct only, up to 1/2/3), heard within (1 h … 7 days), and
+  where the position came from – the radio's own GPS, a phone or computer, typed in by hand, or unknown – so hand-typed
+  positions can be hidden. Clicking a node says where its position came from and its altitude in feet.
+- **Marker shapes by kind:** router ▲, base ■, tracker ◆, moving (positions more than 150 m apart within the hour) as
+  a pentagon, airborne (above 20,000 ft) ✈, mute ○, everything else ●; colour still says how recently it was heard.
+  The web map uses 🏠 📡 🐾 🚗 ✈️ 🔇 🌡️ icons.
+- **Outline & area:** a line around the nodes shown, with the area it encloses in square miles and km² – one number
+  to compare before and after an antenna change.
+- **Town names:** the nearest town for each node with a position ("Aurora, NY"), from OpenStreetMap's Nominatim
+  service (one lookup every 3 s at most, cached on a ~2 km grid in towns.csv, nodes heard in the last week only).
+  Shown when you click a node on either map, and saved in nodes.json.
+
 ## 1.29.3 — 2026-11-22
 - **Weather reply (`W`, `WX`, `WEATHER`) in plain words.** Before: `KDCA 3:52 PM: 9°C/48°F RH 80% wind 4 kt 1013 hPa`.
   Now the station's name and time, then °F first (°C in brackets) and "feels like" when wind chill or heat index

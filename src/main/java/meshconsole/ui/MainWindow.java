@@ -76,6 +76,7 @@ public class MainWindow extends JFrame {
         this.client = client;
         this.state = client.state();
         WebConsole.start(client, () -> bbs, meshconsole.DataDir.get(), msg -> state.emitLog(msg));   // Mesh Console in a browser (port 3500, 3501 …)
+        meshconsole.mesh.TownLookup.start(state, meshconsole.DataDir.get());   // 1.29.4: nearest town for each node with a position
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) { client.disconnect("window closing"); client.saveDbQuietly(); dispose(); System.exit(0); }

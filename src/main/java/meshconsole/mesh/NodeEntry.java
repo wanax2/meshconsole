@@ -37,6 +37,8 @@ public class NodeEntry {
     public int groundTrack = -1;    // degrees*1e-5 in proto → stored as degrees
     public int satsInView = -1;
     public int precisionBits;
+    public int locationSource;      // 1.29.4: Position.LocSource – 0 unset, 1 typed in (manual), 2 radio's own GPS, 3 phone/computer
+    public String town = "";        // 1.29.4: nearest town for the position (OpenStreetMap), filled in the background
     public long positionTime;
     public final java.util.ArrayDeque<double[]> track = new java.util.ArrayDeque<>();   // {millis, lat, lon}
 
@@ -71,6 +73,38 @@ public class NodeEntry {
         if (last != null && Math.abs(last[1] - lat) < 1e-6 && Math.abs(last[2] - lon) < 1e-6) return;
         track.addLast(new double[]{millis, lat, lon});
         while (track.size() > 1000) track.removeFirst();
+    }
+
+    /** 1.29.4: above 20,000 ft – an aircraft or a high-altitude balloon. */
+    public boolean isAirborne() { return hasPosition && altitude > 6096; }
+
+    /** 1.29.4: positions more than 150 m apart within the last hour. */
+    public boolean isMobile(long now) {
+        double[] last = track.peekLast();
+        if (last == null || now - (long) last[0] > 3600_000L) return false;
+        for (double[] p : track) {
+            if (now - (long) p[0] > 3600_000L) continue;
+            if (meshconsole.analysis.Metar.distanceKm(p[1], p[2], last[1], last[2]) > 0.15) return true;
+        }
+        return false;
+    }
+
+    /** 1.29.4: what the map marker shows – air, mobile, router, base, tracker, sensor, mute, client. */
+    public String kind(long now) {
+        if (isAirborne()) return "air";
+        if (isMobile(now)) return "mobile";
+        String r = role == null ? "" : role;
+        if (r.startsWith("ROUTER") || r.equals("REPEATER")) return "router";
+        if (r.equals("CLIENT_BASE")) return "base";
+        if (r.equals("TRACKER") || r.equals("TAK_TRACKER") || r.equals("LOST_AND_FOUND")) return "tracker";
+        if (r.equals("SENSOR")) return "sensor";
+        if (r.equals("CLIENT_MUTE") || r.equals("CLIENT_HIDDEN")) return "mute";
+        return "client";
+    }
+
+    /** 1.29.4: where the position came from, in words. */
+    public String locationSourceName() {
+        return switch (locationSource) { case 1 -> "typed in"; case 2 -> "radio GPS"; case 3 -> "phone/computer"; default -> "unknown"; };
     }
 
     public NodeEntry(int num) {

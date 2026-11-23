@@ -43,6 +43,52 @@ public class MeshClient implements MeshSerial.Listener {
         state.addListener(new MeshState.Listener() {
             @Override public void onMessage(ChatMessage m, boolean isNew) { if (!isNew) considerRetry(m); }
         });
+        try { autoNodeInfo = autoNodeInfoPrefs().getBoolean("on", false); } catch (RuntimeException ignored) { }
+        retryTimer.scheduleWithFixedDelay(this::seekNodeInfo, 90, AUTO_NODEINFO_SEC, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    // ---- 1.29.4: ask nodes heard without a name for their node info, one at a time ----------------------------------
+    static final int AUTO_NODEINFO_SEC = 60;            // one request a minute at most
+    static final float AUTO_NODEINFO_MAX_UTIL = 20f;    // skip while the channel is busier than this (%)
+    private volatile boolean autoNodeInfo;
+    private final java.util.Set<Integer> nodeInfoAsked = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private volatile String autoNodeInfoStatus = "";
+
+    private java.util.prefs.Preferences autoNodeInfoPrefs() {
+        return java.util.prefs.Preferences.userRoot().node("meshconsole-autonodeinfo-" + Integer.toHexString(meshconsole.DataDir.get().toString().toLowerCase().hashCode()));
+    }
+    public boolean autoNodeInfo() { return autoNodeInfo; }
+    public String autoNodeInfoStatus() { return autoNodeInfoStatus; }
+    public int autoNodeInfoAsked() { return nodeInfoAsked.size(); }
+    public void setAutoNodeInfo(boolean on) {
+        autoNodeInfo = on;
+        try { autoNodeInfoPrefs().putBoolean("on", on); } catch (RuntimeException ignored) { }
+        state.emitLog(on ? "Asking unnamed nodes for their node info: on (one a minute, paused while the channel is over " + (int) AUTO_NODEINFO_MAX_UTIL + "% busy)" : "Asking unnamed nodes for their node info: off");
+    }
+
+    /** Picks the most recently heard node that has no name, is heard over the air within reach, and hasn't been asked this session. */
+    private void seekNodeInfo() {
+        try {
+            if (!autoNodeInfo || !isConnected()) return;
+            NodeEntry me = state.myNode();
+            if (me == null) return;
+            if (me.channelUtil > AUTO_NODEINFO_MAX_UTIL) { autoNodeInfoStatus = String.format("paused: channel %.0f%% busy", me.channelUtil); return; }
+            long now = System.currentTimeMillis();
+            int reach = Math.max(1, hopLimit());
+            NodeEntry pick = null; int waiting = 0;
+            for (NodeEntry n : state.nodes()) {
+                if (n.num == me.num || n.num == 0xffffffff || n.num == 0) continue;
+                if (!n.longName.isBlank() || n.packetsSeen == 0 || n.viaMqtt) continue;
+                if (now - n.lastLocalRx > 3600_000L || n.hopsAway < 0 || n.hopsAway > reach) continue;
+                if (nodeInfoAsked.contains(n.num)) continue;
+                waiting++;
+                if (pick == null || n.lastLocalRx > pick.lastLocalRx) pick = n;
+            }
+            if (pick == null) { autoNodeInfoStatus = "nothing to ask (" + nodeInfoAsked.size() + " asked this session)"; return; }
+            nodeInfoAsked.add(pick.num);
+            requestNodeInfo(pick.num, true);
+            autoNodeInfoStatus = "asked " + state.nodeName(pick.num) + "; " + (waiting - 1) + " more waiting";
+        } catch (Throwable e) { autoNodeInfoStatus = "error: " + e.getMessage(); }
     }
 
     public void setAutoRetry(boolean on, int maxAttempts, int delaySec) {
@@ -512,7 +558,10 @@ public class MeshClient implements MeshSerial.Listener {
     }
 
     /** Asks a node to (re)send its user info: name, hardware, role, public key. */
-    public void requestNodeInfo(int to) throws IOException {
+    public void requestNodeInfo(int to) throws IOException { requestNodeInfo(to, false); }
+
+    /** auto = from the unnamed-node queue: no delivery ack (saves airtime) and a quieter log line. */
+    public void requestNodeInfo(int to, boolean auto) throws IOException {
         NodeEntry me = state.myNode();
         User.Builder u = User.newBuilder().setId(String.format("!%08x", state.myNodeNum()));
         if (me != null) {
@@ -521,7 +570,8 @@ public class MeshClient implements MeshSerial.Listener {
             if (me.publicKey.length > 0) u.setPublicKey(com.google.protobuf.ByteString.copyFrom(me.publicKey));   // the other node needs this for PKI DMs
         }
         Data d = Data.newBuilder().setPortnum(PortNum.NODEINFO_APP).setPayload(u.build().toByteString()).setWantResponse(true).build();
-        sendTo(to, d, true, "Node info (with our public key) sent to " + state.nodeName(to) + " – its reply can take up to a minute");
+        if (auto) sendTo(to, d, false, "Asked " + state.nodeName(to) + " (no name yet) for its node info");
+        else sendTo(to, d, true, "Node info (with our public key) sent to " + state.nodeName(to) + " – its reply can take up to a minute");
     }
 
     /** Admin message to another node (needs our public key in its admin list, or the legacy admin channel). */

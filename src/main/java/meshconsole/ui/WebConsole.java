@@ -117,6 +117,7 @@ public final class WebConsole {
                                 send(ex, 200, "application/json", "{\"token\":" + q(tok) + "}");
                             }
                             case "/api/signal" -> send(ex, 200, "application/json", signal(state, dataDir, ex.getRequestURI().getRawQuery()));
+                            case "/api/activity" -> send(ex, 200, "application/json", activityJson(state, ex.getRequestURI().getRawQuery()));
                             case "/api/update-check" -> {
                                 if (meshconsole.tools.AppUpdater.source().isBlank()) { send(ex, 200, "application/json", "{\"result\":\"No update source set – Help → Updates… in the window first.\"}"); break; }
                                 updateResult = "checking…";
@@ -476,6 +477,29 @@ public final class WebConsole {
         return b.append('"').toString();
     }
 
+    /** 1.29.4: packets per minute by kind (with channel use) and the hop-usage table, for the Signal tab. */
+    static String activityJson(MeshState state, String qs) {
+        int mins = 60;
+        if (qs != null && qs.startsWith("minutes=")) try { mins = Math.max(10, Math.min(360, Integer.parseInt(qs.substring(8)))); } catch (NumberFormatException ignored) { }
+        StringBuilder b = new StringBuilder("{\"kinds\":[");
+        for (int i = 0; i < meshconsole.mesh.ActivityStats.KINDS.length; i++) b.append(i > 0 ? "," : "").append(q(meshconsole.mesh.ActivityStats.KINDS[i]));
+        b.append("],\"colours\":[");
+        for (int i = 0; i < meshconsole.mesh.ActivityStats.COLOURS.length; i++) b.append(i > 0 ? "," : "").append(q(meshconsole.mesh.ActivityStats.COLOURS[i]));
+        b.append("],\"minutes\":[");
+        boolean first = true;
+        for (meshconsole.mesh.ActivityStats.Minute m : state.activity.minutes(mins, System.currentTimeMillis())) {
+            b.append(first ? "" : ",").append('[').append(m.startMillis());
+            for (int c : m.counts()) b.append(',').append(c);
+            b.append(',').append(Float.isNaN(m.util()) ? "null" : String.format(java.util.Locale.ROOT, "%.1f", m.util())).append(']');
+            first = false;
+        }
+        long[][] h = state.activity.hops();
+        b.append("],\"hops\":[");
+        for (int i = 0; i < h.length; i++) { b.append(i > 0 ? "," : "").append('['); for (int j = 0; j < h[i].length; j++) b.append(j > 0 ? "," : "").append(h[i][j]); b.append(']'); }
+        b.append("],\"summary\":").append(q(meshconsole.mesh.ActivityStats.summary(h))).append('}');
+        return b.toString();
+    }
+
     static final String PAGE = """
 <!doctype html>
 <html lang="en">
@@ -530,7 +554,18 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
     <div id="msgs"></div>
     <div id="compose"><select id="target"></select><input id="text" maxlength="200" placeholder="Message (200 bytes max)"><button id="sendBtn">Send</button><span id="sendNote" class="dim"></span></div>
   </div>
-  <div class="pane" id="pane-map" hidden><div id="map"></div></div>
+  <div class="pane" id="pane-map" hidden>
+    <div id="mapBar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;font-size:13px">
+      <label class="dim">Hops <select id="mHops"><option value="99">any</option><option value="0">direct only</option><option value="1">up to 1</option><option value="2">up to 2</option><option value="3">up to 3</option></select></label>
+      <label class="dim">Heard within <select id="mAge"><option value="1">1 hour</option><option value="6">6 hours</option><option value="24" selected>24 hours</option><option value="168">7 days</option></select></label>
+      <span class="dim">Positions from</span>
+      <label><input type="checkbox" class="mSrc" value="2" checked> radio GPS</label><label><input type="checkbox" class="mSrc" value="3" checked> phone</label>
+      <label><input type="checkbox" class="mSrc" value="1" checked> typed in</label><label><input type="checkbox" class="mSrc" value="0" checked> unknown</label>
+      <label><input type="checkbox" id="mHull"> outline &amp; area</label><span id="mArea" class="dim"></span>
+    </div>
+    <div id="map"></div>
+    <div class="dim" style="font-size:12px;margin-top:4px">🏠 base · 📡 router · 🐾 tracker · 🚗 moving · ✈️ above 20,000 ft · 🔇 mute · 🌡️ sensor · ● other (colour = how recently heard; green = heard directly)</div>
+  </div>
   <div class="pane" id="pane-nodes" hidden>
     <input type="search" id="nfind" placeholder="Find node by name or ID" style="width:min(360px,100%);margin-bottom:8px">
     <table><thead><tr><th>Node</th><th>Heard</th><th>Hops</th><th>Signal</th><th>Battery</th><th></th></tr></thead><tbody id="nlist"></tbody></table>
@@ -541,6 +576,8 @@ th { color:var(--dim); position:sticky; top:0; background:var(--bg); }
       <span class="dim">Node</span><select id="sigNode"><option value="">all nodes (medians)</option></select><span id="sigNote" class="dim"></span></div>
     <div class="card"><b>Received signal</b> <span class="dim">median RSSI (dBm) and SNR (dB), packets per slot</span><div style="height:300px"><canvas id="sigChart"></canvas></div></div>
     <div class="card"><b>Channel use</b> <span class="dim">channel utilisation and this radio's air-time, %</span><div style="height:220px"><canvas id="utilChart"></canvas></div></div>
+    <div class="card"><b>Packets per minute</b> <select id="actMin"><option value="60">last hour</option><option value="180">3 hours</option><option value="360">6 hours</option></select> <span class="dim">by kind, with this radio's channel-busy reading</span><div style="height:240px"><canvas id="actChart"></canvas></div></div>
+    <div class="card"><b>Hop usage</b> <span class="dim">rows: hops a packet was sent with · columns: hops it used to reach this radio · red = used them all</span><div id="hopBox" style="overflow-x:auto"></div><p class="dim" id="hopSum"></p></div>
   </div>
   <div class="pane" id="pane-bbs" hidden><div class="card" id="bbsExtra"></div><div class="card"><b>Posts</b><table><tbody id="posts"></tbody></table></div><div class="card"><b>Mail</b><table><tbody id="mail"></tbody></table></div></div>
   <div class="pane" id="pane-heard" hidden><div class="card" id="hbSet"></div><div class="card"><b>Who hears my nodes</b> <select id="hbNode"></select> <span class="dim" id="hbSum"></span><div id="hbMap" style="height:380px;margin:8px 0"></div><table id="hbTable"></table></div><div class="card"><b>Gateways per day</b><div id="hbDaily"></div></div></div>
@@ -674,21 +711,47 @@ function loadLeaflet(cb) {
   const js = document.createElement("script"); js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; js.onload = cb; document.head.appendChild(js);
 }
 function nodeColor(n, now) { if (n.me) return "#ffd84d"; if (n.hops === 0) return "#3fb950"; const a = (now - n.heard) / 3600000; return a < 1 ? "#58a6ff" : a < 6 ? "#8fb8ff" : a < 24 ? "#6e7f99" : "#4a535d"; }
+const KIND_ICON = { base: "🏠", router: "📡", tracker: "🐾", mobile: "🚗", air: "✈️", mute: "🔇", sensor: "🌡️" };
+const SRC_NAME = ["unknown", "typed in", "radio GPS", "phone/computer"];
+function hull(p) {   // convex hull (Andrew's monotone chain) of [lat, lon] points
+  const a = p.map(x => [x[1], x[0]]).sort((u, v) => u[0] - v[0] || u[1] - v[1]); if (a.length < 3) return [];
+  const cr = (o, u, v) => (u[0] - o[0]) * (v[1] - o[1]) - (u[1] - o[1]) * (v[0] - o[0]), lo = [], up = [];
+  for (const q of a) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of a.slice().reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1)).map(q => [q[1], q[0]]);
+}
+function areaKm2(poly) {   // shoelace on a local flat projection – fine at mesh scale
+  if (poly.length < 3) return 0; const lat0 = poly.reduce((s, q) => s + q[0], 0) / poly.length * Math.PI / 180;
+  const xy = poly.map(q => [q[1] * 111.32 * Math.cos(lat0), q[0] * 110.57]); let a = 0;
+  for (let i = 0; i < xy.length; i++) { const j = (i + 1) % xy.length; a += xy[i][0] * xy[j][1] - xy[j][0] * xy[i][1]; }
+  return Math.abs(a) / 2;
+}
 function renderMap() {
   if (!N || !window.L) return;
   if (!map) { map = L.map("map", { preferCanvas: true }).setView([38.9, -77.05], 11); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map); layer = L.layerGroup().addTo(map); }
   map.invalidateSize(); layer.clearLayers();
-  const now = N.now, me = N.nodes.find(n => n.me), pts = [];
+  const now = N.now, me = N.nodes.find(n => n.me), pts = [], maxHops = +$("mHops").value, maxAge = +$("mAge").value * 3600000;
+  const srcs = new Set([...document.querySelectorAll(".mSrc:checked")].map(c => +c.value));
   for (const n of N.nodes) {
-    if (n.lat === undefined || (!n.me && (!n.heard || now - n.heard > 86400000 || n.mqtt))) continue;
+    if (n.lat === undefined) continue;
+    if (!n.me && (!n.heard || now - n.heard > maxAge || n.mqtt || n.hops > maxHops || (maxHops < 99 && n.hops < 0) || !srcs.has(n.locsrc || 0))) continue;
     if (me && me.lat !== undefined && n.hops === 0 && !n.me) L.polyline([[me.lat, me.lon], [n.lat, n.lon]], { color: "#3fb950", weight: 1, opacity: 0.45 }).addTo(layer);
-    L.circleMarker([n.lat, n.lon], { radius: n.me ? 9 : n.hops === 0 ? 7 : 5, color: nodeColor(n, now), fillColor: nodeColor(n, now), fillOpacity: 0.8, weight: 1 })
-      .bindPopup(`<b>${esc(n.long || n.id)}</b> ${esc(n.short)} · ${esc(n.id)}<br>${esc(n.hw)}<br>heard ${ago(now - n.heard)} ago${n.hops >= 0 ? " · " + (n.hops === 0 ? "direct" : n.hops + " hops") : ""}${n.rssi ? "<br>" + n.rssi + " dBm / " + n.snr + " dB" : ""}`)
-      .addTo(layer);
+    const pop = `<b>${esc(n.long || n.id)}</b> ${esc(n.short)} · ${esc(n.id)}<br>${esc(n.hw)}${n.role ? " · " + esc(n.role) : ""}${n.town ? "<br>near " + esc(n.town) : ""}<br>heard ${ago(now - n.heard)} ago${n.hops >= 0 ? " · " + (n.hops === 0 ? "direct" : n.hops + " hops") : ""}${n.rssi ? "<br>" + n.rssi + " dBm / " + n.snr + " dB" : ""}<br><span class="dim">position: ${SRC_NAME[n.locsrc || 0]}${n.alt ? " · " + Math.round(n.alt * 3.281).toLocaleString() + " ft" : ""}</span>`;
+    const ic = KIND_ICON[n.kind];
+    const m = ic && !n.me
+      ? L.marker([n.lat, n.lon], { icon: L.divIcon({ className: "", html: `<div style="font-size:18px;line-height:18px;text-shadow:0 0 3px ${nodeColor(n, now)},0 0 2px #000">${ic}</div>`, iconSize: [20, 20], iconAnchor: [10, 10] }) })
+      : L.circleMarker([n.lat, n.lon], { radius: n.me ? 9 : n.hops === 0 ? 7 : 5, color: nodeColor(n, now), fillColor: nodeColor(n, now), fillOpacity: 0.8, weight: 1 });
+    m.bindPopup(pop).bindTooltip(esc(n.short || n.long || n.id), { direction: "top" }).addTo(layer);
     pts.push([n.lat, n.lon]);
   }
+  if ($("mHull").checked) {
+    const h = hull(pts), km2 = areaKm2(h);
+    if (h.length) L.polygon(h, { color: "#d29922", weight: 1.5, fillOpacity: 0.08 }).addTo(layer);
+    $("mArea").textContent = h.length ? `${(km2 / 2.58999).toLocaleString(undefined, { maximumFractionDigits: 0 })} sq mi (${km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²) around ${pts.length} nodes` : "needs 3 nodes with positions";
+  } else $("mArea").textContent = "";
   if (!fitted && pts.length) { map.fitBounds(pts, { padding: [20, 20], maxZoom: 12 }); fitted = true; }
 }
+for (const el of [$("mHops"), $("mAge"), $("mHull"), ...document.querySelectorAll(".mSrc")]) el.addEventListener("change", renderMap);
 function renderNodes() {
   if (!N) return;
   const q = $("nfind").value.trim().toLowerCase(), now = N.now;
@@ -742,6 +805,33 @@ async function renderSignal() {
       { label: "air-time TX %", data: d.util.map(u => ({ x: u[0], y: u[2] })), borderColor: "#f0883e", pointRadius: 0, borderWidth: 1.2 }] }, options: opts("%", null) });
 }
 $("sigHours").onchange = renderSignal; $("sigNode").onchange = renderSignal;
+
+// ---------------- 1.29.4: packets per minute by kind, and hop usage
+let actChart = null;
+async function renderActivity() {
+  const d = await api("api/activity?minutes=" + $("actMin").value), n = d.kinds.length;
+  const sets = d.kinds.map((k, i) => ({ label: k, type: "bar", stack: "p", backgroundColor: d.colours[i], data: d.minutes.map(m => ({ x: m[0], y: m[1 + i] })), yAxisID: "y" }));
+  sets.push({ label: "channel busy %", type: "line", data: d.minutes.map(m => ({ x: m[0], y: m[1 + n] })), borderColor: "#e6b400", pointRadius: 0, borderWidth: 1.5, spanGaps: true, yAxisID: "y2" });
+  if (actChart) actChart.destroy();
+  actChart = new Chart($("actChart"), { data: { datasets: sets }, options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
+    scales: { x: { type: "linear", stacked: true, ticks: { color: "#8b949e", callback: v => new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }, grid: { color: "#2c333b" } },
+      y: { stacked: true, beginAtZero: true, title: { display: true, text: "packets", color: "#8b949e" }, ticks: { color: "#8b949e" }, grid: { color: "#2c333b" } },
+      y2: { position: "right", beginAtZero: true, title: { display: true, text: "busy %", color: "#8b949e" }, ticks: { color: "#8b949e" }, grid: { display: false } } },
+    plugins: { legend: { labels: { color: "#e6e9ec", boxWidth: 10 } }, tooltip: { filter: it => it.parsed.y > 0, callbacks: { title: it => new Date(it[0].parsed.x).toLocaleTimeString() } } } } });
+  let max = 1; for (let s = 1; s < d.hops.length; s++) for (let u = 0; u <= s; u++) max = Math.max(max, d.hops[s][u]);
+  let t = '<table style="width:auto"><tr><th></th>' + d.hops.map((_, u) => `<th style="text-align:center">${u}</th>`).join("") + '<th>total</th></tr>';
+  for (let s = 1; s < d.hops.length; s++) {
+    let row = 0; t += `<tr><td class="dim">sent ${s}</td>`;
+    for (let u = 0; u < d.hops.length; u++) {
+      if (u > s) { t += "<td></td>"; continue; }
+      const c = d.hops[s][u]; row += c; const a = c ? 0.15 + 0.85 * Math.sqrt(c / max) : 0;
+      t += `<td style="text-align:center;min-width:34px;background:rgba(62,142,208,${a.toFixed(2)});${u === s ? "outline:1px solid #e5484d;" : ""}">${c || ""}</td>`;
+    }
+    t += `<td>${row}</td></tr>`;
+  }
+  $("hopBox").innerHTML = t + "</table>"; $("hopSum").textContent = d.summary;
+}
+$("actMin").onchange = renderActivity;
 
 // ---------------- settings
 const opt = (list, cur) => list.map(v => `<option${v === cur ? " selected" : ""}>${esc(v)}</option>`).join("");
@@ -842,7 +932,7 @@ function show(t) {
   for (const p of ["messages", "map", "nodes", "signal", "bbs", "heard", "status", "settings"]) $("pane-" + p).hidden = p !== t;
   if (t === "heard") loadLeaflet(renderHeard);
   if (t === "settings") loadSettings();
-  if (t === "signal") loadChart(renderSignal);
+  if (t === "signal") loadChart(() => { renderSignal(); renderActivity(); });
   if (t === "map") loadLeaflet(renderMap);
   if (t === "bbs") renderBbs();
   if (t === "nodes") renderNodes();

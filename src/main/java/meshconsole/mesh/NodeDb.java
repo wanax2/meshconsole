@@ -28,7 +28,7 @@ public class NodeDb {
             sb.append("  {")
               .append("\"num\":").append(Integer.toUnsignedString(n.num)).append(',').append(kv("long", n.longName)).append(kv("short", n.shortName)).append(kv("hw", n.hwModel)).append(kv("role", n.role))
               .append(kv("key", n.publicKey.length == 0 ? "" : Base64.getEncoder().encodeToString(n.publicKey)))
-              .append(kv("lat", n.hasPosition ? n.lat : null)).append(kv("lon", n.hasPosition ? n.lon : null)).append(kv("alt", n.hasPosition ? n.altitude : null))
+              .append(kv("lat", n.hasPosition ? n.lat : null)).append(kv("lon", n.hasPosition ? n.lon : null)).append(kv("alt", n.hasPosition ? n.altitude : null)).append(kv("locsrc", n.hasPosition ? n.locationSource : null)).append(kv("town", n.town.isEmpty() ? null : n.town))
               .append(kv("lastHeard", n.lastHeardMillis())).append(kv("firstSeen", n.firstSeen)).append(kv("packets", n.packetsSeen)).append(kv("direct", n.directPackets))
               .append(kv("rssiSum", n.rssiSum)).append(kv("rssiCount", n.rssiCount)).append(kv("snrSum", n.snrSum)).append(kv("snrCount", n.snrCount))
               .append(kv("hops", n.hopsAway)).append(kv("battery", n.battery)).append(kv("favorite", n.isFavorite)).append(kv("licensed", n.isLicensed))
@@ -65,7 +65,9 @@ public class NodeDb {
                 n.longName = m.getOrDefault("long", ""); n.shortName = m.getOrDefault("short", ""); n.hwModel = m.getOrDefault("hw", ""); n.role = m.getOrDefault("role", "");
                 String key = m.getOrDefault("key", "");
                 if (!key.isEmpty() && !key.equals("null")) n.publicKey = Base64.getDecoder().decode(key);
-                if (!"null".equals(m.get("lat")) && m.containsKey("lat")) { n.lat = Double.parseDouble(m.get("lat")); n.lon = Double.parseDouble(m.get("lon")); n.altitude = (int) Double.parseDouble(m.getOrDefault("alt", "0")); n.hasPosition = true; }
+                if (!"null".equals(m.get("lat")) && m.containsKey("lat")) { n.lat = Double.parseDouble(m.get("lat")); n.lon = Double.parseDouble(m.get("lon")); n.altitude = (int) Double.parseDouble(m.getOrDefault("alt", "0")); n.hasPosition = true;
+                    try { n.locationSource = (int) Double.parseDouble(m.getOrDefault("locsrc", "0")); } catch (NumberFormatException ignored) { }
+                    String tw = m.get("town"); if (tw != null && !"null".equals(tw)) n.town = tw; }
                 n.lastLocalRx = Long.parseLong(m.getOrDefault("lastHeard", "0"));
                 n.firstSeen = Long.parseLong(m.getOrDefault("firstSeen", "0"));
                 n.packetsSeen = (int) Long.parseLong(m.getOrDefault("packets", "0"));
