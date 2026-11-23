@@ -27,7 +27,7 @@ public final class Elevation {
 
     private static double[] fetch(double[] lats, double[] lons) throws IOException {
         StringBuilder loc = new StringBuilder();
-        for (int i = 0; i < lats.length; i++) { if (i > 0) loc.append('|'); loc.append(String.format(Locale.ROOT, "%.5f,%.5f", lats[i], lons[i])); }
+        for (int i = 0; i < lats.length; i++) { if (i > 0) loc.append("%7C"); /* 1.29.6: "|" encoded – a bare one made every terrain lookup fail */ loc.append(String.format(Locale.ROOT, "%.5f,%.5f", lats[i], lons[i])); }
         IOException last = null;
         for (String base : new String[]{"https://api.opentopodata.org/v1/srtm30m?locations=", "https://api.open-elevation.com/api/v1/lookup?locations="}) {
             try {

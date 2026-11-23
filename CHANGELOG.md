@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.29.6 — 2026-11-23
+- **Path / LOS works again:** every terrain lookup failed with "Illegal character in query" because the list of points was
+  joined with a bare "|", which Java won't put in a web address. It's now sent encoded.
+
 ## 1.29.5 — 2026-11-22
 - **Reliability report** (Heard by tab → "Reliability…", and a card on the web console's Heard by tab), from
   Meshview's idea: for one of your nodes over the last 24 hours, 3 days or 7 days, what share of its packets each other
