@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.29.7 — 2026-11-25
+- **Direct messages no longer fail with PKI_SEND_FAIL_PUBLIC_KEY.** Mesh Console asks the radio to encrypt a DM with
+  the other node's public key whenever its own node list has that key, but the radio keeps a much smaller node list and
+  drops nodes it hasn't heard lately. When the radio has dropped the node, it refuses the DM before sending anything (the
+  BBS's morning weather digest hit this). Mesh Console now resends the message straight away without the public-key
+  request, so the radio encrypts it with the channel key the way DMs were sent before public keys, and asks that node for
+  its node info so the radio learns the key again and later DMs are private. The log says when this happens.
+- The fake test radio can refuse public-key DMs (`-Dfake.nokeys=true`) to check this.
+
 ## 1.29.6 — 2026-11-23
 - **Path / LOS works again:** every terrain lookup failed with "Illegal character in query" because the list of points was
   joined with a bare "|", which Java won't put in a web address. It's now sent encoded.

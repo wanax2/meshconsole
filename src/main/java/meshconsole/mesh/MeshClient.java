@@ -103,6 +103,8 @@ public class MeshClient implements MeshSerial.Listener {
      * happens, or a DM was transmitted but never acknowledged, send it again after a pause.
      */
     private void considerRetry(ChatMessage m) {
+        if (m.outgoing && !m.isBroadcast() && !m.noPki && m.status == ChatMessage.Status.FAILED
+                && m.statusDetail.startsWith("PKI_SEND_FAIL_PUBLIC_KEY")) { resendWithoutPki(m); return; }
         if (!autoRetry || !m.outgoing || m.isBroadcast() || m.noRetry || m.attempt >= maxAttempts) return;
         boolean failed = m.status == ChatMessage.Status.FAILED
                 && (m.statusDetail.startsWith("MAX_RETRANSMIT") || m.statusDetail.startsWith("NO_ROUTE") || m.statusDetail.startsWith("TIMEOUT"));
@@ -127,6 +129,35 @@ public class MeshClient implements MeshSerial.Listener {
                 state.emitLog("Auto-retry failed: " + e.getMessage());
             }
         }, delay, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    /**
+     * 1.29.7: our app knows the node's public key but the radio's own (smaller) node list has dropped that node, so the
+     * radio refuses a PKI direct message with PKI_SEND_FAIL_PUBLIC_KEY before it ever goes on air. Send it again at once
+     * without the PKI request (the radio then encrypts it with the channel key, as DMs were sent before PKI), and ask the
+     * node for its node info so the radio learns the key again and later DMs are private.
+     */
+    private void resendWithoutPki(ChatMessage m) {
+        if (!isConnected()) return;
+        m.noPki = true;   // handled: the updates below must not send it again
+        try {
+            ChatMessage r = new ChatMessage();
+            r.replyId = m.replyId; r.emoji = m.emoji; r.time = System.currentTimeMillis();
+            r.from = state.myNodeNum(); r.to = m.to; r.channel = m.channel; r.text = m.text; r.outgoing = true;
+            r.packetId = newPacketId(); r.status = ChatMessage.Status.QUEUED; r.statusDetail = "queued (radio lacked the key – sending on the channel key)";
+            r.airtimeMs = m.airtimeMs; r.attempt = m.attempt; r.noRetry = m.noRetry; r.noPki = true;
+            state.addOutgoing(r);
+            requireSerial();
+            sender.submit(() -> {
+                try { transmit(r); } catch (IOException e) { r.status = ChatMessage.Status.FAILED; r.statusDetail = e.getMessage(); state.updateMessage(r); }
+            });
+            m.statusDetail = "PKI_SEND_FAIL_PUBLIC_KEY – radio didn't have the key; resent on the channel key";
+            state.updateMessage(m);
+            state.emitLog("Radio had no public key for " + state.nodeName(m.to) + " – resent the DM on the channel key and asked it for its node info");
+            requestNodeInfo(m.to, false);
+        } catch (IOException e) {
+            state.emitLog("Resend without PKI failed: " + e.getMessage());
+        }
     }
 
     public MeshState state() { return state; }
@@ -323,7 +354,7 @@ public class MeshClient implements MeshSerial.Listener {
         if (!m.isBroadcast()) {
             NodeEntry dest = state.node(m.to);
             // Direct messages to nodes that advertise a public key use PKI, like the official apps.
-            if (dest != null && dest.publicKey.length > 0 && m.channel == 0) {
+            if (dest != null && dest.publicKey.length > 0 && m.channel == 0 && !m.noPki) {
                 pkt.setPkiEncrypted(true);
             }
         }

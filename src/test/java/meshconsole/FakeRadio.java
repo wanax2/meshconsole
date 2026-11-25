@@ -9,6 +9,8 @@ import java.io.*; import java.net.*; import java.util.Arrays;
 
 /** Fake Meshtastic node on TCP 4403 for trying the GUI / CLI without hardware: answers the config dump, acks text, answers traceroute, broadcasts a message every 2 s. Run: gradle fakeRadio, then connect with TCP… 127.0.0.1:4403 */
 public class FakeRadio {
+    /** -Dfake.nokeys=true: refuse PKI direct messages with PKI_SEND_FAIL_PUBLIC_KEY, as a radio does when it no longer has the node's key. */
+    static final boolean NO_KEYS = Boolean.getBoolean("fake.nokeys");
     static byte[] frame(FromRadio fr) { byte[] p = fr.toByteArray(); byte[] f = new byte[p.length + 4]; f[0] = (byte)0x94; f[1] = (byte)0xC3; f[2] = (byte)(p.length >> 8); f[3] = (byte)p.length; System.arraycopy(p, 0, f, 4, p.length); return f; }
     public static void main(String[] a) throws Exception {
         int me = 0x11223344, other = 0xAABBCCDD;
@@ -43,6 +45,11 @@ public class FakeRadio {
                                     MeshPacket p = tr.getPacket();
                                     System.out.println("radio got: to=" + Integer.toHexString(p.getTo()) + " port=" + p.getDecoded().getPortnum() + " pki=" + p.getPkiEncrypted() + " text=" + p.getDecoded().getPayload().toStringUtf8());
                                     Routing ok = Routing.newBuilder().setErrorReason(Routing.Error.NONE).build();
+                                    if (NO_KEYS && p.getPkiEncrypted()) {   // like a radio whose node list has dropped the destination
+                                        Routing nak = Routing.newBuilder().setErrorReason(Routing.Error.PKI_SEND_FAIL_PUBLIC_KEY).build();
+                                        out.write(frame(FromRadio.newBuilder().setPacket(MeshPacket.newBuilder().setFrom(me).setTo(me).setDecoded(Data.newBuilder().setPortnum(PortNum.ROUTING_APP).setRequestId(p.getId()).setPayload(nak.toByteString()))).build()));
+                                        continue;
+                                    }
                                     out.write(frame(FromRadio.newBuilder().setPacket(MeshPacket.newBuilder().setFrom(me).setTo(me).setDecoded(Data.newBuilder().setPortnum(PortNum.ROUTING_APP).setRequestId(p.getId()).setPayload(ok.toByteString()))).build()));
                                     if (p.getTo() != 0xFFFFFFFF) {
                                         Thread.sleep(300);
