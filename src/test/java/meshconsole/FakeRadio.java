@@ -11,6 +11,9 @@ import java.io.*; import java.net.*; import java.util.Arrays;
 public class FakeRadio {
     /** -Dfake.nokeys=true: refuse PKI direct messages with PKI_SEND_FAIL_PUBLIC_KEY, as a radio does when it no longer has the node's key. */
     static final boolean NO_KEYS = Boolean.getBoolean("fake.nokeys");
+    /** -Dfake.contacts=true (with nokeys): an admin add_contact gives the radio the key, as real firmware does. */
+    static final boolean CONTACTS_WORK = Boolean.getBoolean("fake.contacts");
+    static final java.util.Set<Integer> contacts = java.util.concurrent.ConcurrentHashMap.newKeySet();
     static byte[] frame(FromRadio fr) { byte[] p = fr.toByteArray(); byte[] f = new byte[p.length + 4]; f[0] = (byte)0x94; f[1] = (byte)0xC3; f[2] = (byte)(p.length >> 8); f[3] = (byte)p.length; System.arraycopy(p, 0, f, 4, p.length); return f; }
     public static void main(String[] a) throws Exception {
         int me = 0x11223344, other = 0xAABBCCDD;
@@ -45,7 +48,12 @@ public class FakeRadio {
                                     MeshPacket p = tr.getPacket();
                                     System.out.println("radio got: to=" + Integer.toHexString(p.getTo()) + " port=" + p.getDecoded().getPortnum() + " pki=" + p.getPkiEncrypted() + " text=" + p.getDecoded().getPayload().toStringUtf8());
                                     Routing ok = Routing.newBuilder().setErrorReason(Routing.Error.NONE).build();
-                                    if (NO_KEYS && p.getPkiEncrypted()) {   // like a radio whose node list has dropped the destination
+                                    if (p.getDecoded().getPortnum() == PortNum.ADMIN_APP && p.getTo() == me) {
+                                        var adm = org.meshtastic.proto.AdminProtos.AdminMessage.parseFrom(p.getDecoded().getPayload());
+                                        if (adm.hasAddContact()) { contacts.add(adm.getAddContact().getNodeNum()); System.out.println("radio got: add_contact " + Integer.toHexString(adm.getAddContact().getNodeNum()) + " key=" + adm.getAddContact().getUser().getPublicKey().size() + " bytes"); }
+                                        continue;
+                                    }
+                                    if (NO_KEYS && p.getPkiEncrypted() && !(CONTACTS_WORK && contacts.contains(p.getTo()))) {   // like a radio whose node list has dropped the destination
                                         Routing nak = Routing.newBuilder().setErrorReason(Routing.Error.PKI_SEND_FAIL_PUBLIC_KEY).build();
                                         out.write(frame(FromRadio.newBuilder().setPacket(MeshPacket.newBuilder().setFrom(me).setTo(me).setDecoded(Data.newBuilder().setPortnum(PortNum.ROUTING_APP).setRequestId(p.getId()).setPayload(nak.toByteString()))).build()));
                                         continue;

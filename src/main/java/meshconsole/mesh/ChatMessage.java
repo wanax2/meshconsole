@@ -21,7 +21,7 @@ public class ChatMessage {
     public int replyId;
     /** Set for automated replies (BBS): sent once, never re-queued by the auto-retry. */
     public transient boolean noRetry;          // packet id this message replies to (0 = none)
-    /** 1.29.7: sent without asking the radio for PKI (the radio no longer had this node's key). */
+    /** 1.29.8: the radio's missing-key refusal has been handled for this message (contact shared, resent once). */
     public transient boolean noPki;
     public boolean emoji;        // true = this is a reaction (text is the emoji) to replyId
     public long ackTime;         // millis when DELIVERED/FAILED arrived (0 = pending)

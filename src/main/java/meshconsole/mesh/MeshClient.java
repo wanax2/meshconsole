@@ -3,6 +3,7 @@ package meshconsole.mesh;
 import com.fazecast.jSerialComm.SerialPort;
 import com.google.protobuf.ByteString;
 import org.meshtastic.proto.AdminProtos.AdminMessage;
+import org.meshtastic.proto.AdminProtos.SharedContact;
 import org.meshtastic.proto.ChannelProtos.Channel;
 import org.meshtastic.proto.ConfigProtos.Config;
 import org.meshtastic.proto.MeshProtos.*;
@@ -104,7 +105,7 @@ public class MeshClient implements MeshSerial.Listener {
      */
     private void considerRetry(ChatMessage m) {
         if (m.outgoing && !m.isBroadcast() && !m.noPki && m.status == ChatMessage.Status.FAILED
-                && m.statusDetail.startsWith("PKI_SEND_FAIL_PUBLIC_KEY")) { resendWithoutPki(m); return; }
+                && m.statusDetail.startsWith("PKI_SEND_FAIL_PUBLIC_KEY")) { resendAfterContact(m); return; }
         if (!autoRetry || !m.outgoing || m.isBroadcast() || m.noRetry || m.attempt >= maxAttempts) return;
         boolean failed = m.status == ChatMessage.Status.FAILED
                 && (m.statusDetail.startsWith("MAX_RETRANSMIT") || m.statusDetail.startsWith("NO_ROUTE") || m.statusDetail.startsWith("TIMEOUT"));
@@ -132,32 +133,43 @@ public class MeshClient implements MeshSerial.Listener {
     }
 
     /**
-     * 1.29.7: our app knows the node's public key but the radio's own (smaller) node list has dropped that node, so the
-     * radio refuses a PKI direct message with PKI_SEND_FAIL_PUBLIC_KEY before it ever goes on air. Send it again at once
-     * without the PKI request (the radio then encrypts it with the channel key, as DMs were sent before PKI), and ask the
-     * node for its node info so the radio learns the key again and later DMs are private.
+     * 1.29.8: hands the radio our copy of a node's contact card (name and public key) with the admin add_contact
+     * message, as the official apps do before every DM. The radio keeps a much smaller node list than we do and drops
+     * nodes it hasn't heard lately; without the key it refuses the DM with PKI_SEND_FAIL_PUBLIC_KEY, and its firmware
+     * never falls back to sending a DM on the channel key. The radio marks a contact added this way as a favourite so it
+     * isn't dropped again. Returns false if we don't have the node's key either.
      */
-    private void resendWithoutPki(ChatMessage m) {
-        if (!isConnected()) return;
-        m.noPki = true;   // handled: the updates below must not send it again
+    private boolean shareContact(int node) {
+        NodeEntry n = state.node(node);
+        if (n == null || n.publicKey.length != 32) return false;
+        User.Builder u = User.newBuilder().setId(String.format("!%08x", node)).setLongName(n.longName == null ? "" : n.longName)
+                .setShortName(n.shortName == null ? "" : n.shortName).setPublicKey(ByteString.copyFrom(n.publicKey));
+        try { if (n.hwModel != null && !n.hwModel.isEmpty()) u.setHwModel(HardwareModel.valueOf(n.hwModel)); } catch (IllegalArgumentException ignored) { }
         try {
-            ChatMessage r = new ChatMessage();
-            r.replyId = m.replyId; r.emoji = m.emoji; r.time = System.currentTimeMillis();
-            r.from = state.myNodeNum(); r.to = m.to; r.channel = m.channel; r.text = m.text; r.outgoing = true;
-            r.packetId = newPacketId(); r.status = ChatMessage.Status.QUEUED; r.statusDetail = "queued (radio lacked the key – sending on the channel key)";
-            r.airtimeMs = m.airtimeMs; r.attempt = m.attempt; r.noRetry = m.noRetry; r.noPki = true;
-            state.addOutgoing(r);
-            requireSerial();
-            sender.submit(() -> {
-                try { transmit(r); } catch (IOException e) { r.status = ChatMessage.Status.FAILED; r.statusDetail = e.getMessage(); state.updateMessage(r); }
-            });
-            m.statusDetail = "PKI_SEND_FAIL_PUBLIC_KEY – radio didn't have the key; resent on the channel key";
-            state.updateMessage(m);
-            state.emitLog("Radio had no public key for " + state.nodeName(m.to) + " – resent the DM on the channel key and asked it for its node info");
-            requestNodeInfo(m.to, false);
-        } catch (IOException e) {
-            state.emitLog("Resend without PKI failed: " + e.getMessage());
+            sendAdmin(AdminMessage.newBuilder().setAddContact(SharedContact.newBuilder().setNodeNum(node).setUser(u)), false);
+            return true;
+        } catch (IOException e) { state.emitLog("Couldn't give the radio the contact for " + state.nodeName(node) + ": " + e.getMessage()); return false; }
+    }
+
+    /** The radio refused a DM for want of the node's key: give it the contact card and send the DM again, once. */
+    private void resendAfterContact(ChatMessage m) {
+        if (!isConnected()) return;
+        m.noPki = true;   // handled once; the updates below must not trigger this again
+        boolean shared = shareContact(m.to);
+        m.statusDetail = "PKI_SEND_FAIL_PUBLIC_KEY – " + (shared ? "radio didn't have the key; gave it the contact and resent" : "we don't have this node's key either");
+        state.updateMessage(m);
+        if (!shared) {
+            state.emitLog("Can't DM " + state.nodeName(m.to) + ": neither the radio nor Mesh Console has its public key – asked it for its node info");
+            try { requestNodeInfo(m.to, false); } catch (IOException ignored) { }
+            return;
         }
+        state.emitLog("Radio had no public key for " + state.nodeName(m.to) + " – gave it the contact from Mesh Console's node list and resent");
+        retryTimer.schedule(() -> {
+            try {
+                ChatMessage r = sendText(m.text, m.to, m.channel, m.replyId, m.emoji);
+                r.attempt = m.attempt; r.noRetry = m.noRetry; r.noPki = true;
+            } catch (IOException e) { state.emitLog("Resend failed: " + e.getMessage()); }
+        }, 2, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     public MeshState state() { return state; }
@@ -354,8 +366,9 @@ public class MeshClient implements MeshSerial.Listener {
         if (!m.isBroadcast()) {
             NodeEntry dest = state.node(m.to);
             // Direct messages to nodes that advertise a public key use PKI, like the official apps.
-            if (dest != null && dest.publicKey.length > 0 && m.channel == 0 && !m.noPki) {
+            if (dest != null && dest.publicKey.length > 0 && m.channel == 0) {
                 pkt.setPkiEncrypted(true);
+                shareContact(m.to);   // 1.29.8: make sure the radio holds the key (it forgets nodes we still know)
             }
         }
         if (state.verbose()) state.emitLog(String.format("[tx] text id=%08x → %s ch=%d %d B%s", m.packetId, state.nodeName(m.to), m.channel, m.text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length, pkt.getPkiEncrypted() ? " pki" : ""));

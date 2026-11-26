@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.29.8 — 2026-11-26
+- **Direct messages to nodes the radio has forgotten now really go through.** 1.29.7's fix was wrong: the radio's
+  firmware never sends a DM on the channel key, so the resend was refused too. Mesh Console now does what the official
+  apps do: before each DM it hands the radio the node's contact card (name and public key, from Mesh Console's own much
+  larger node list) with the admin "add contact" message. The radio stores the key and marks the node a favourite so it
+  isn't dropped again. If a DM is still refused for want of a key, the contact is sent and the DM resent once; if
+  Mesh Console doesn't have the key either, it says so and asks the node for its node info.
+- The fake test radio can learn keys from add_contact (`-Dfake.contacts=true`).
+
 ## 1.29.7 — 2026-11-25
 - **Direct messages no longer fail with PKI_SEND_FAIL_PUBLIC_KEY.** Mesh Console asks the radio to encrypt a DM with
   the other node's public key whenever its own node list has that key, but the radio keeps a much smaller node list and
