@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.29.9 — 2026-11-27
+- **Scheduled weather broadcasts.** BBS tab: "Broadcast the weather report at 07:00, 17:00" (any number of times),
+  sent to everyone on the primary channel – the same plain-words report as W, optionally followed by the next two NWS
+  forecast periods as a second message. "Send now" sends it straight away. A time missed while Mesh Console was closed
+  is skipped if it's more than an hour old, so a restart never sends a stale report or a burst of them. The DM digest
+  (SUB WX) carries on as before.
+
 ## 1.29.8 — 2026-11-26
 - **Direct messages to nodes the radio has forgotten now really go through.** 1.29.7's fix was wrong: the radio's
   firmware never sends a DM on the channel key, so the resend was refused too. Mesh Console now does what the official

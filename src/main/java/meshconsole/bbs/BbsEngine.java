@@ -94,6 +94,7 @@ public class BbsEngine {
         if (!store.scannerUrl.isBlank() && System.currentTimeMillis() - lastScanPoll > 120_000L) { lastScanPoll = System.currentTimeMillis(); final String u = store.scannerUrl; bg.submit(() -> scannerAlerts(u)); }
         if (store.nwsBroadcast && System.currentTimeMillis() - lastNwsCheck > 10 * 60_000L) { lastNwsCheck = System.currentTimeMillis(); checkNws(); }
         if (store.bulRotOn) bulletinTick(today, now);
+        if (store.wxCastOn) wxCastTick(today, now);
         if (!store.advertOn) return;
         // one or more times a day ("08:00, 17:30"); advertDay remembers which of today's times have gone out
         java.util.Set<String> sent = new java.util.TreeSet<>();
@@ -112,6 +113,44 @@ public class BbsEngine {
             try { client.sendOnce(text.length() > 190 ? text.substring(0, 190) : text, ChatMessage.BROADCAST, 0); log("advert sent: " + text); community.advertSent(text); }
             catch (IOException e) { log("advert failed: " + e.getMessage()); }
         }
+    }
+
+    /**
+     * 1.29.9: the weather report broadcast on the primary channel at the sysop's times ("07:00, 17:00") – the same
+     * plain-words line as W, optionally followed by the next two NWS forecast periods. A time missed while the program
+     * was closed is skipped rather than sent late in a burst; after a restart only the latest missed slot goes out.
+     */
+    private void wxCastTick(String today, java.time.LocalTime now) {
+        java.util.Set<String> sent = new java.util.TreeSet<>();
+        if (store.wxCastDay.startsWith(today + "|")) sent.addAll(java.util.Arrays.asList(store.wxCastDay.substring(today.length() + 1).split(",")));
+        java.util.List<String> dueNow = new java.util.ArrayList<>();
+        for (String slot : store.wxCastTime.split("[,; ]+")) if (!slot.isBlank() && due(now, slot) && !sent.contains(slot.trim())) dueNow.add(slot.trim());
+        if (dueNow.isEmpty()) return;
+        sent.addAll(dueNow);
+        store.wxCastDay = today + "|" + String.join(",", sent); store.save();
+        // a slot more than an hour old (program was closed) is marked done without broadcasting stale-sounding news
+        boolean fresh = false;
+        for (String slot : dueNow) try { if (java.time.Duration.between(java.time.LocalTime.parse(slot), now).toMinutes() <= 60) fresh = true; } catch (Exception ignored) { }
+        if (!fresh) return;
+        broadcastWeather("scheduled");
+    }
+
+    /** Sends the weather report to everyone on the primary channel now. Returns null, or why it couldn't. */
+    public String broadcastWeather(String why) {
+        WeatherObs o = weather == null ? null : weather.latest();
+        if (o == null) { log("weather broadcast skipped: no weather data"); return "No weather data yet – set a station on the Weather tab."; }
+        final String nowLine = WxReply.digest(o, weather);
+        final boolean withFc = store.wxCastForecast;
+        NodeEntry me0 = state.myNode(); final double la = me0 != null && me0.hasPosition ? me0.lat : 0, lo = me0 != null && me0.hasPosition ? me0.lon : 0;
+        bg.submit(() -> {
+            try {
+                client.sendOnce(nowLine, ChatMessage.BROADCAST, 0);
+                String fc = withFc && (la != 0 || lo != 0) ? Aviation.forecastShort(la, lo, 2) : "";
+                if (!fc.isEmpty()) { Thread.sleep(5000); client.sendOnce(fc, ChatMessage.BROADCAST, 0); }
+                log("weather broadcast (" + why + "): " + nowLine + (fc.isEmpty() ? "" : " / " + fc));
+            } catch (Exception e) { log("weather broadcast failed: " + e.getMessage()); }
+        });
+        return null;
     }
 
     /** True once the clock has passed hh:mm today (the caller's per-day marker stops it repeating). A busy minute no longer loses the slot. */
